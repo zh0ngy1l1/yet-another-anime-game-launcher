@@ -1,3 +1,4 @@
+import { launchOwnership } from "./launcher/launch-ownership";
 import {
   exec,
   log,
@@ -45,7 +46,12 @@ export async function createApp() {
 
   await Neutralino.events.on("windowClose", async () => {
     if (await GLOBAL_onClose(false)) {
-      exit(0);
+      try {
+        await exit(0);
+      } catch (error) {
+        launchOwnership.cancelClose();
+        throw error;
+      }
     }
   });
 

@@ -173,13 +173,18 @@ describe("FPS configuration composition", () => {
   // here and type-check the full modules rather than running game bootstrap.
   it("composes the control through the HK4E configuration hook", () => {
     const source = readFileSync("src/clients/mhy/hk4e/index.tsx", "utf8");
-    expect(source).toContain(
+    expect(source).toContain('import { createHk4eSettings } from "./settings"');
+    expect(source).toMatch(
+      /createConfig: \(locale, config\) =>\s*createHk4eSettings\(locale, config, gameCurrentVersion\)/
+    );
+    const settings = readFileSync("src/clients/mhy/hk4e/settings.tsx", "utf8");
+    expect(settings).toContain(
       'import { createFpsUnlockConfig } from "./config/fps-unlock"'
     );
-    expect(source).toMatch(
-      /async createConfig\([^]*const \[FPS\] = await createFpsUnlockConfig\(\{ locale, config \}\)/
+    expect(settings).toMatch(
+      /const \[FPS\] = await createFpsUnlockConfig\(\{ locale, config \}\)/
     );
-    expect(source).toContain("<FPS />");
+    expect(settings).toContain("<FPS />");
   });
 
   it.each([

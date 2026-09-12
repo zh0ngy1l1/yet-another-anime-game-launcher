@@ -51,6 +51,14 @@ export async function createFpsUnlockSettings(config: Partial<Config>) {
   const [saveFailed, setSaveFailed] = createSignal(false);
   config.hk4eFpsUnlock = validation();
   let pending: Promise<unknown> = Promise.resolve();
+  config.flushHk4eFpsSettings = async () => {
+    await pending;
+    if (saveFailed()) throw new Error("FPS settings have not been saved");
+    if (!validation().ok)
+      throw new Error(
+        "Invalid enabled Target FPS; expected an integer from 1 to 360"
+      );
+  };
 
   async function change(next: FpsUnlockDraft) {
     const previous = draft();

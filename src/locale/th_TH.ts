@@ -89,6 +89,7 @@ export const th_TH: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "ปลดล็อกจำกัด FPS",
   SETTING_FPS_UNLOCK_DEFAULT: "ปิดใช้งาน",
+  SETTING_HK4E_FPS_ENABLE: en.SETTING_HK4E_FPS_ENABLE,
   SETTING_HK4E_FPS_TARGET: "FPS เป้าหมาย (1–360)",
   SETTING_HK4E_FPS_TARGET_ERROR:
     "ป้อนจำนวนเต็มตั้งแต่ 1 ถึง 360 โดยใช้เฉพาะตัวเลขฐานสิบและไม่มีช่องว่าง",

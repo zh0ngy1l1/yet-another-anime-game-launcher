@@ -1,0 +1,262 @@
+import { join } from "path-browserify";
+import type {
+  CommonProgressUICommand,
+  CommonUpdateProgram,
+} from "../../../common-update-ui";
+import type { Config } from "../../../config";
+import type { Server } from "../../../constants";
+import { launchOwnership } from "../../../launcher/launch-ownership";
+import { getKeyOrDefault, log, mkdirp, resolve, setKey } from "../../../utils";
+import type { Wine } from "../../../wine";
+import { createFpsCompanion } from "./fps-companion";
+import { FpsBridgePreparationFailure, prepareFpsBridge } from "./fps-bridge";
+import { admitFpsLaunch } from "./fps-admission";
+import { createLaunchJournal } from "./launch-journal";
+import { createLaunchTransaction } from "./launch-transaction";
+
+export function launchFpsGame(
+  input: {
+    admitted: NonNullable<Awaited<ReturnType<typeof admitFpsLaunch>>>;
+    config: Config;
+    wine: Wine;
+    server: Server;
+    environment: Record<string, string>;
+    registryResolution: boolean;
+    resources: (enabledFps?: boolean) => CommonUpdateProgram;
+    setup: (
+      capture: (path: string) => Promise<void>,
+      progress: (command: CommonProgressUICommand) => void
+    ) => Promise<void>;
+  },
+  owner: ReturnType<typeof launchOwnership.claim>,
+  dependencies = {
+    bridge: prepareFpsBridge,
+    journal: createLaunchJournal,
+    companion: {} as Parameters<typeof createFpsCompanion>[1],
+  }
+) {
+  let bridge: Awaited<ReturnType<typeof prepareFpsBridge>> | undefined;
+  let preparationRecovery: (() => Promise<void>) | undefined;
+  function preparedBridge() {
+    if (!bridge) throw new Error("FPS bridge requested before preparation");
+    return bridge;
+  }
+  let journal: ReturnType<typeof createLaunchJournal> | undefined;
+  let registrySaved = false,
+    booted = false,
+    launched = false;
+  let bridgeReleased = false,
+    wineWaited = false,
+    registryRestored = false,
+    filesRestored = false,
+    journalDisposed = false;
+  let originalPatched = "NOTFOUND";
+  let patchStateOwned = false;
+  const { admitted, wine, config, server } = input;
+  const companion = admitted.plan.companion;
+  const environment = Object.freeze({
+    ...input.environment,
+    DXMT_CONFIG: companion.dxmtConfig,
+  });
+  const context = Object.freeze({
+    ...admitted.wine,
+    environment: Object.freeze({
+      ...admitted.wine.environment,
+      ...environment,
+    }),
+  });
+  const observationErrors: unknown[] = [];
+  function diagnostic(text: string) {
+    if (!observationErrors.some(error => String(error) === `Error: ${text}`))
+      observationErrors.push(new Error(text));
+    owner.problem(text);
+    void log(text).catch(() => undefined);
+  }
+  async function waitWine(phase: (text: string) => void) {
+    phase("Waiting for this request's wineserver -w; close remains blocked");
+    await wine.waitUntilServerOff();
+  }
+  return createLaunchTransaction(
+    {
+      reportedErrors: () => observationErrors,
+      async prepare(signal, progress) {
+        const check = () => {
+          if (signal.aborted) throw new Error("Launch preparation cancelled");
+        };
+        owner.phase("Acquiring and verifying the request-private FPS bridge");
+        await mkdirp(resolve("./logs"));
+        try {
+          bridge = await dependencies.bridge({
+            wine: context,
+            executable: admitted.executable,
+            gameDirectory: admitted.gameDirectory,
+            gameDxmtConfig: admitted.plan.gameDxmtConfig,
+            log: resolve(`./logs/game_${Date.now()}.log`),
+            diagnostic,
+            event: text => {
+              void log(text).catch(() => undefined);
+            },
+          });
+        } catch (error) {
+          if (error instanceof FpsBridgePreparationFailure)
+            preparationRecovery = error.retryCleanup;
+          throw error;
+        }
+        const launchJournal = dependencies.journal(bridge.directory);
+        journal = launchJournal;
+        await log(
+          `FPS request ${bridge.token}: artifact=${bridge.path}; loader=${context.loader}; prefix=${context.prefix}; target=${companion.fpsArgument}; game DXMT_CONFIG=${admitted.plan.gameDxmtConfig}; companion DXMT_CONFIG=${companion.dxmtConfig}`
+        );
+        check();
+        for await (const command of input.resources(true)) {
+          progress(command);
+          check();
+        }
+        originalPatched = await getKeyOrDefault("patched", "NOTFOUND");
+        if (originalPatched !== "NOTFOUND")
+          throw new Error(
+            "An earlier patch state is still present; resolve it before FPS launch"
+          );
+        // A shared prefix may have previous users. Waiting here is a preparation
+        // prerequisite, not attribution of the new game. No helper is alive yet.
+        await waitWine(owner.phase);
+        check();
+        owner.phase(
+          "Snapshotting original registry values and preparing game files"
+        );
+        await bridge.registry(
+          "save",
+          server.id,
+          config.hk4eEnableHDR,
+          input.registryResolution
+        );
+        registrySaved = true;
+        check();
+        patchStateOwned = true;
+        await input.setup(async path => {
+          check();
+          await launchJournal.capture(path);
+        }, progress);
+        check();
+        await bridge.boot();
+        booted = true;
+        check();
+      },
+      async launch() {
+        launched = true;
+        await preparedBridge().launch();
+      },
+      gameExit: () => preparedBridge().waitForGameExit(),
+      companion: () =>
+        createFpsCompanion(
+          {
+            verifiedExecutable: preparedBridge().path,
+            companion,
+            wine: context,
+            game: preparedBridge().game,
+          },
+          {
+            ...dependencies.companion,
+            spawn: request => {
+              if (
+                request.executable !== preparedBridge().path ||
+                request.wine.loader !== context.loader ||
+                request.wine.prefix !== context.prefix ||
+                request.environment.DXMT_CONFIG !== companion.dxmtConfig ||
+                request.args.length !== 1 ||
+                request.args[0] !== String(companion.fpsArgument)
+              )
+                throw new Error(
+                  "FPS controller request disagrees with admitted launch"
+                );
+              return preparedBridge().spawnWorker(companion.fpsArgument);
+            },
+          }
+        ),
+      async cleanup(phase) {
+        if (!bridge) {
+          if (preparationRecovery) {
+            await preparationRecovery();
+            preparationRecovery = undefined;
+          }
+          return [];
+        }
+        await bridge.settleRegistry();
+        const errors: unknown[] = [];
+        if (!bridgeReleased) {
+          phase(
+            "Confirming FPS worker, bridge and its direct Wine child completion"
+          );
+          try {
+            if (booted || launched) await bridge.release();
+            else await bridge.discardBeforeLaunch();
+            bridgeReleased = true;
+          } catch (error) {
+            return [error];
+          } // Wine/file cleanup depends on this.
+        }
+        if (!wineWaited) {
+          try {
+            await waitWine(phase);
+            wineWaited = true;
+          } catch (error) {
+            return [error];
+          }
+        }
+        if (registrySaved && !registryRestored) {
+          phase("Restoring original HDR, resolution and Wine registry values");
+          wineWaited = false;
+          try {
+            await bridge.registry(
+              "restore",
+              server.id,
+              config.hk4eEnableHDR,
+              input.registryResolution
+            );
+            registryRestored = true;
+          } catch (error) {
+            errors.push(error);
+          }
+          try {
+            await bridge.settleRegistry();
+          } catch (error) {
+            return [...errors, error];
+          }
+          // A failed registry command may still have used Wine. Await this request
+          // before touching Wine libraries; attempt other safe restoration below.
+          try {
+            await waitWine(phase);
+            wineWaited = true;
+          } catch (error) {
+            return [...errors, error];
+          }
+        }
+        if (!filesRestored && journal) {
+          phase("Restoring config.bat and game/Wine patch files");
+          const restoration = await journal.restore();
+          errors.push(...restoration);
+          if (!restoration.length) {
+            try {
+              if (patchStateOwned)
+                await setKey(
+                  "patched",
+                  originalPatched === "NOTFOUND" ? null : originalPatched
+                );
+              filesRestored = true;
+            } catch (error) {
+              errors.push(error);
+            }
+          }
+        }
+        if (errors.length) return errors;
+        if (journal && !journalDisposed) {
+          await journal.dispose();
+          journalDisposed = true;
+        }
+        await bridge.dispose();
+        return [];
+      },
+    },
+    owner
+  );
+}

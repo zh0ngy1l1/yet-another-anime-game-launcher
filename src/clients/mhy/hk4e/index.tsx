@@ -1,3 +1,4 @@
+import { createHk4eSettings } from "./settings";
 import { batch, createSignal } from "solid-js";
 import { CommonUpdateProgram } from "@common-update-ui";
 import {
@@ -39,14 +40,6 @@ import {
   checkAndDownloadDXVK,
   checkAndDownloadReshade,
 } from "../../../downloadable-resource";
-import { createWorkaround3Config } from "./config/workaround-3";
-import createPatchOff from "./config/patch-off";
-import createSteamPatch from "./config/steam-patch";
-import createBlockNet from "./config/block-net";
-import createResolution from "./config/resolution";
-import createTimeoutFix from "./config/timeout-fix";
-import { createEnableHDRConfig } from "./config/enable-hdr";
-import { createFpsUnlockConfig } from "./config/fps-unlock";
 import { getGameVersion } from "../unity";
 import {
   VoicePackNames,
@@ -261,19 +254,26 @@ export async function createHK4EChannelClient({
       //   );
       //   return;
       // }
-      if (config.reshade) {
-        yield* checkAndDownloadReshade(aria2, wine, _gameInstallDir());
-      }
-      if (wine.attributes.renderBackend == "dxmt") {
-        yield* checkAndDownloadDXMT(aria2);
-      }
-      yield* launchGameProgram({
-        gameDir: _gameInstallDir(),
-        wine,
-        gameExecutable: server.executable,
-        config,
-        server,
-      });
+      yield* launchGameProgram(
+        {
+          gameDir: _gameInstallDir(),
+          wine,
+          gameExecutable: server.executable,
+          config,
+          server,
+        },
+        async function* (enabledFps = false) {
+          if (config.reshade)
+            yield* checkAndDownloadReshade(
+              aria2,
+              wine,
+              _gameInstallDir(),
+              !enabledFps
+            );
+          if (wine.attributes.renderBackend == "dxmt")
+            yield* checkAndDownloadDXMT(aria2);
+        }
+      );
     },
     async *checkIntegrity() {
       yield* checkIntegrityProgram({
@@ -296,31 +296,8 @@ export async function createHK4EChannelClient({
         });
       }
     },
-    async createConfig(locale: Locale, config: Partial<Config>) {
-      const [W3] = await createWorkaround3Config({ locale, config });
-      const [PO] = await createPatchOff({ locale, config });
-      const [SP] = await createSteamPatch({ locale, config });
-      const [BN] = await createBlockNet({ locale, config });
-      const [HDR] = await createEnableHDRConfig({ locale, config });
-      const [RES] = await createResolution({ locale, config });
-      const [TF] = await createTimeoutFix({ locale, config });
-      const [FPS] = await createFpsUnlockConfig({ locale, config });
-
-      return function () {
-        return [
-          "Game Version: ",
-          gameCurrentVersion(),
-          <HDR />,
-          <W3 />,
-          <PO />,
-          <SP />,
-          <BN />,
-          <RES />,
-          <TF />,
-          <FPS />,
-        ];
-      };
-    },
+    createConfig: (locale, config) =>
+      createHk4eSettings(locale, config, gameCurrentVersion),
   };
 }
 

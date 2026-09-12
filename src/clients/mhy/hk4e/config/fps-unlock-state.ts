@@ -11,6 +11,7 @@ export type FpsUnlockDraft = {
 
 declare module "@config/config-def" {
   interface Config {
+    flushHk4eFpsSettings?: () => Promise<void>;
     // Absent on other clients. An error has no usable FPS domain value.
     // Future consumers must check ok before accessing enabled or target.
     hk4eFpsUnlock?: FpsValidation<FpsUnlockConfig>;

@@ -90,6 +90,7 @@ export const ko_KR: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "FPS 제한 해제",
   SETTING_FPS_UNLOCK_DEFAULT: "비활성화",
+  SETTING_HK4E_FPS_ENABLE: en.SETTING_HK4E_FPS_ENABLE,
   SETTING_HK4E_FPS_TARGET: "목표 FPS (1–360)",
   SETTING_HK4E_FPS_TARGET_ERROR:
     "공백 없이 십진수 숫자만 사용하여 1부터 360까지의 정수를 입력하세요.",

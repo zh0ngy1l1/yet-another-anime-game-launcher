@@ -89,7 +89,8 @@ export const en: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "Unlock FPS Limit",
   SETTING_FPS_UNLOCK_DEFAULT: "Disabled",
-  SETTING_HK4E_FPS_TARGET: "Target FPS (1–360)",
+  SETTING_HK4E_FPS_ENABLE: "Enable unlocking",
+  SETTING_HK4E_FPS_TARGET: "Target FPS",
   SETTING_HK4E_FPS_TARGET_ERROR:
     "Enter a whole number from 1 to 360 using decimal digits only, without spaces.",
   SETTING_HK4E_FPS_SAVE_ERROR:

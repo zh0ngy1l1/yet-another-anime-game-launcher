@@ -208,7 +208,8 @@ const CURRENT_RESHADE_VERSION = "5.8.0";
 export async function* checkAndDownloadReshade(
   aria2: Aria2,
   wine: Wine,
-  gameDir: string
+  gameDir: string,
+  configureGame = true
 ): CommonUpdateProgram {
   const reshaderDir = resolve("./reshade");
 
@@ -279,12 +280,16 @@ export async function* checkAndDownloadReshade(
     join(reshaderDir, "dxgi.dll")
   );
 
-  writeFile(
+  if (configureGame) await prepareReshadeConfiguration(wine, gameDir);
+  await setKey("installed_reshade", CURRENT_RESHADE_VERSION);
+}
+
+// Enabled direct HK4E calls this inside its file journal after acquisition.
+export async function prepareReshadeConfiguration(wine: Wine, gameDir: string) {
+  await writeFile(
     join(gameDir, "ReShade.ini"),
     `[GENERAL]
 EffectSearchPaths=${wine.toWinePath(resolve("./reshade/Shaders"))}
 TextureSearchPaths=${wine.toWinePath(resolve("./reshade/Textures"))}`
   );
-
-  setKey("installed_reshade", CURRENT_RESHADE_VERSION);
 }

@@ -92,6 +92,7 @@ export const vi_VN: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "Mở khoá giới hạn FPSUnlock FPS Limit",
   SETTING_FPS_UNLOCK_DEFAULT: "Tắt",
+  SETTING_HK4E_FPS_ENABLE: en.SETTING_HK4E_FPS_ENABLE,
   SETTING_HK4E_FPS_TARGET: "FPS mục tiêu (1–360)",
   SETTING_HK4E_FPS_TARGET_ERROR:
     "Nhập số nguyên từ 1 đến 360 chỉ bằng chữ số thập phân, không có khoảng trắng.",

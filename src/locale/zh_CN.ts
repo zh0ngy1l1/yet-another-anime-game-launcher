@@ -86,6 +86,7 @@ export const zh_CN = {
 
   SETTING_FPS_UNLOCK: "帧率限制解锁",
   SETTING_FPS_UNLOCK_DEFAULT: "不解锁",
+  SETTING_HK4E_FPS_ENABLE: "启用帧率解锁",
   SETTING_HK4E_FPS_TARGET: "目标帧率（1–360）",
   SETTING_HK4E_FPS_TARGET_ERROR:
     "请输入 1 至 360 之间的整数，仅使用十进制数字，不含空格。",

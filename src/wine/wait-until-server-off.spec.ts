@@ -68,6 +68,41 @@ afterEach(() => {
 });
 
 describe("Wine shutdown wait request ownership", () => {
+  it("keeps concurrent waits independent after one request completes", async () => {
+    const { handlers, execCommand } = mockNeutralino();
+    const first = deferred<Neutralino.os.ExecCommandResult>();
+    const second = deferred<Neutralino.os.ExecCommandResult>();
+    execCommand
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    const wine = await createTestWine();
+    const firstWait = wine.waitUntilServerOff();
+    const secondWait = wine.waitUntilServerOff();
+    let secondSettled = false;
+    const observed = secondWait.then(() => {
+      secondSettled = true;
+    });
+    const result = { pid: 2000, exitCode: 0, stdOut: "first", stdErr: "" };
+    try {
+      await flushPromises();
+      expect(execCommand).toHaveBeenCalledTimes(2);
+      first.resolve(result);
+      await expect(firstWait).resolves.toEqual(result);
+      await flushPromises();
+      expect(secondSettled).toBe(false);
+      expect(handlers.size).toBe(0);
+      second.resolve({ ...result, pid: 2001, stdOut: "second" });
+      await expect(secondWait).resolves.toMatchObject({
+        pid: 2001,
+        stdOut: "second",
+      });
+    } finally {
+      first.resolve(result);
+      second.resolve(result);
+      await observed;
+    }
+  });
+
   it.each([0, 143])(
     "ignores a stale exit %i for a reused spawned-process ID",
     async exitCode => {

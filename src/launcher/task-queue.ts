@@ -1,6 +1,7 @@
 import { CommonUpdateProgram } from "@common-update-ui";
 import { Locale } from "@locale";
 import { fatal } from "@utils";
+import { LaunchFailure, launchOwnership } from "./launch-ownership";
 import { createSignal } from "solid-js";
 
 export function createTaskQueueState({ locale }: { locale: Locale }) {
@@ -28,9 +29,12 @@ export function createTaskQueueState({ locale }: { locale: Locale }) {
             }
           }
         } catch (e) {
-          // fatal
-          await fatal(e);
-          return;
+          if (e instanceof LaunchFailure) setStatusText(e.message);
+          else {
+            launchOwnership.releaseUnclaimed();
+            await fatal(e);
+            return;
+          }
         }
         setBusy(false);
       }

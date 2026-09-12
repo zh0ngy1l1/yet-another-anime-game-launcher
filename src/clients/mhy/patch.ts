@@ -30,19 +30,32 @@ export async function* patchProgram(
   gameDir: string,
   wine: Wine,
   server: Server,
-  config: Config
+  config: Config,
+  beforeChange: (path: string) => Promise<void> = async () => undefined
 ): CommonUpdateProgram {
+  // The enabled direct launch journals every destination before its first
+  // mutation. Default operations retain the existing behavior for other routes.
+  const move = async (from: string, to: string) => {
+    await beforeChange(from);
+    await beforeChange(to);
+    await forceMove(from, to);
+  };
+  const copy = async (from: string, to: string) => {
+    await beforeChange(to);
+    await cp(from, to);
+  };
+  const put = async (url: string, to: string) => {
+    await beforeChange(to);
+    await putLocal(url, to);
+  };
   if ((await getKeyOrDefault("patched", "NOTFOUND")) != "NOTFOUND") {
     return;
   }
   if (!config.patchOff) {
     for (const file of server.patched) {
       if (file.tag === "workaround3" && config.workaround3) continue;
-      await forceMove(
-        join(gameDir, file.file),
-        join(gameDir, file.file + ".bak")
-      );
-      await putLocal(file.diffUrl, join(gameDir, file.file + ".diff"));
+      await move(join(gameDir, file.file), join(gameDir, file.file + ".bak"));
+      await put(file.diffUrl, join(gameDir, file.file + ".diff"));
       await xdelta3(
         join(gameDir, file.file + ".bak"),
         join(gameDir, file.file + ".diff"),
@@ -54,12 +67,13 @@ export async function* patchProgram(
     for (const { file, tag } of server.removed) {
       if (tag === "workaround3" && config.workaround3) continue;
       if (await fileOrDirExists(join(gameDir, file))) {
-        await forceMove(join(gameDir, file), join(gameDir, file + ".bak"));
+        await move(join(gameDir, file), join(gameDir, file + ".bak"));
       }
     }
     for (const file of server.added) {
+      await beforeChange(join(gameDir, dirname(file.file)));
       await mkdirp(join(gameDir, dirname(file.file)));
-      await putLocal(file.url, join(gameDir, file.file));
+      await put(file.url, join(gameDir, file.file));
     }
   }
 
@@ -68,60 +82,60 @@ export async function* patchProgram(
 
   for (const f of DXMT_FILES) {
     const wineLibPath = resolve(`./wine/lib/wine/x86_64-windows/${f}`);
-    await forceMove(wineLibPath, wineLibPath + ".bak");
-    await cp(`./dxmt/${f}`, wineLibPath);
+    await move(wineLibPath, wineLibPath + ".bak");
+    await copy(`./dxmt/${f}`, wineLibPath);
   }
 
   // winemetal files always go to Wine lib directories
-  await cp(
+  await copy(
     `./dxmt/winemetal.dll`,
     resolve("./wine/lib/wine/x86_64-windows/winemetal.dll")
   );
 
-  await cp(
+  await copy(
     `./dxmt/winemetal.so`,
     resolve("./wine/lib/wine/x86_64-unix/winemetal.so")
   );
 
   // winemetal.dll also to system32 for both native and builtin
-  await cp(`./dxmt/winemetal.dll`, join(system32Dir, "winemetal.dll"));
+  await copy(`./dxmt/winemetal.dll`, join(system32Dir, "winemetal.dll"));
 
   if (server.id.startsWith("hkrpg")) {
-    await cp(
+    await copy(
       `./dxmt/nvngx.dll`,
       resolve("./wine/lib/wine/x86_64-windows/nvngx.dll")
     );
-    await cp(`./dxmt/nvngx.dll`, join(system32Dir, "nvngx.dll"));
+    await copy(`./dxmt/nvngx.dll`, join(system32Dir, "nvngx.dll"));
   }
 
   if (config.reshade) {
-    await cp(resolve("./reshade/dxgi.dll"), join(gameDir, "dxgi.dll"));
-    await cp(
+    await copy(resolve("./reshade/dxgi.dll"), join(gameDir, "dxgi.dll"));
+    await copy(
       resolve("./reshade/d3dcompiler_47.dll"),
       join(gameDir, "d3dcompiler_47.dll")
     );
   }
 
   if (!server.id.startsWith("hkrpg")) {
-    await cp(
+    await copy(
       resolve("./sidecar/protonextras/steam64.exe"),
       join(system32Dir, "steam.exe")
     );
-    await cp(
+    await copy(
       resolve("./sidecar/protonextras/steam32.exe"),
       join(syswow64Dir, "steam.exe")
     );
-    await cp(
+    await copy(
       resolve("./sidecar/protonextras/lsteamclient64.dll"),
       join(system32Dir, "lsteamclient.dll")
     );
-    await cp(
+    await copy(
       resolve("./sidecar/protonextras/lsteamclient32.dll"),
       join(syswow64Dir, "lsteamclient.dll")
     );
   }
 
-  setKey("patched", "1");
+  await setKey("patched", "1");
 }
 
 export async function* patchRevertProgram(

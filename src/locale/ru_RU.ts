@@ -90,6 +90,7 @@ export const ru_RU: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "Снять ограничение FPS",
   SETTING_FPS_UNLOCK_DEFAULT: "Выключено",
+  SETTING_HK4E_FPS_ENABLE: en.SETTING_HK4E_FPS_ENABLE,
   SETTING_HK4E_FPS_TARGET: "Целевая частота кадров (1–360)",
   SETTING_HK4E_FPS_TARGET_ERROR:
     "Введите целое число от 1 до 360, используя только десятичные цифры без пробелов.",

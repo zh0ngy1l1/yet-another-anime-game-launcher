@@ -1,3 +1,10 @@
+import { createLaunchJournal } from "./launch-journal";
+import {
+  launchOwnership,
+  LaunchFailure,
+} from "../../../launcher/launch-ownership";
+import { admitFpsLaunch } from "./fps-admission";
+import { launchFpsGame } from "./launch-fps-game";
 import { join } from "path-browserify";
 import { CommonUpdateProgram } from "../../../common-update-ui";
 import { Server } from "../../../constants";
@@ -11,19 +18,40 @@ import {
   utf16le,
   writeBinary,
   getKeyOrDefault,
+  setKey,
 } from "../../../utils";
 import { Wine } from "../../../wine";
 import { Config } from "@config";
-import { putLocal, patchProgram, patchRevertProgram } from "../patch";
+import { patchProgram } from "../patch";
+import { prepareReshadeConfiguration } from "../../../downloadable-resource";
 import { CN_BLOCK_URL, OS_BLOCK_URL } from "../../secret";
 import hk4eHDRGlobalReg from "../../../constants/hk4e_hdr_os.reg?raw";
 import hk4eHDRCnReg from "../../../constants/hk4e_hdr_cn.reg?raw";
-import { gt } from "semver";
 
 const HDR_REGISTRY_FILES = {
   hk4e_global: hk4eHDRGlobalReg,
   hk4e_cn: hk4eHDRCnReg,
 } as const;
+
+async function withRegistryTemporary(
+  path: string,
+  apply: () => Promise<unknown>
+) {
+  let primary: unknown;
+  try {
+    await apply();
+  } catch (error) {
+    primary = error;
+  }
+  try {
+    await removeFile(path);
+  } catch (error) {
+    if (primary !== undefined)
+      throw new LaunchFailure(String(primary), primary, [error]);
+    throw error;
+  }
+  if (primary !== undefined) throw primary;
+}
 
 async function applyHDRRegistry({
   wine,
@@ -38,11 +66,17 @@ async function applyHDRRegistry({
 
   const regPath = resolve("./hk4e_enable_hdr.reg");
   await writeFile(regPath, regContent);
-  try {
-    await wine.exec("regedit", [wine.toWinePath(regPath)], {}, "/dev/null");
-  } finally {
-    await removeFile(regPath);
-  }
+  await withRegistryTemporary(regPath, () =>
+    wine.exec("regedit", [wine.toWinePath(regPath)], {}, "/dev/null")
+  );
+}
+
+function resolutionDimensions(config: Config) {
+  const width = Number(config.resolutionWidth),
+    height = Number(config.resolutionHeight);
+  return isNaN(width) || isNaN(height) || width <= 0 || height <= 0
+    ? undefined
+    : { width, height };
 }
 
 async function applyResolutionRegistry(
@@ -59,11 +93,9 @@ async function applyResolutionRegistry(
     return;
   }
 
-  const width = Number(config.resolutionWidth);
-  const height = Number(config.resolutionHeight);
-  if (isNaN(width) || isNaN(height) || width <= 0 || height <= 0) {
-    return;
-  }
+  const dimensions = resolutionDimensions(config);
+  if (!dimensions) return;
+  const { width, height } = dimensions;
 
   const lines = [
     `Windows Registry Editor Version 5.00`,
@@ -80,56 +112,101 @@ async function applyResolutionRegistry(
 
   const path = resolve("./hk4e_resolution.reg");
   await writeBinary(path, utf16le(lines.join("\r\n")));
-  try {
-    await wine.exec("regedit", [wine.toWinePath(path)], {}, "/dev/null");
-  } finally {
-    await removeFile(path);
-  }
+  await withRegistryTemporary(path, () =>
+    wine.exec("regedit", [wine.toWinePath(path)], {}, "/dev/null")
+  );
 }
 
-export async function* launchGameProgram({
-  gameDir,
-  gameExecutable,
-  wine,
-  config,
-  server,
-}: {
-  gameDir: string;
-  gameExecutable: string;
-  wine: Wine;
-  config: Config;
-  server: Server;
-}): CommonUpdateProgram {
-  yield ["setUndeterminedProgress"];
-  yield ["setStateText", "PATCHING"];
-
-  await wine.setProps(config);
-  if (config.hk4eEnableHDR) {
-    await applyHDRRegistry({ wine, server });
+async function* launchGameDisabledProgram(
+  {
+    gameDir,
+    gameExecutable,
+    wine,
+    config,
+    server,
+  }: {
+    gameDir: string;
+    gameExecutable: string;
+    wine: Wine;
+    config: Config;
+    server: Server;
+  },
+  owner: ReturnType<typeof launchOwnership.claim>
+): CommonUpdateProgram {
+  const result = await exec([
+    "/usr/bin/mktemp",
+    "-d",
+    "/tmp/yaagl-launch.XXXXXXXXXX",
+  ]);
+  const directory = result.stdOut.replace(/\n$/, "");
+  if (!/^\/tmp\/yaagl-launch\.[A-Za-z0-9]{10}$/.test(directory))
+    throw new Error("Unknown launch journal directory");
+  const journal = createLaunchJournal(directory);
+  let originalPatched = "NOTFOUND",
+    patchedStateOwned = false,
+    hdr = false,
+    resolution = false;
+  let primary: unknown;
+  const secondary: unknown[] = [];
+  let registryDone = false,
+    filesDone = false,
+    journalDone = false;
+  async function waitWine() {
+    const timer = setTimeout(
+      () =>
+        owner.problem(
+          `Wine lifetime/cleanup remains pending; close and launch stay blocked. Journal: ${directory}`
+        ),
+      30000
+    );
+    try {
+      await wine.waitUntilServerOff();
+    } finally {
+      clearTimeout(timer);
+    }
   }
-
-  if (config.resolutionCustom) {
-    await applyResolutionRegistry(wine, server, config);
-  }
-  await wine.waitUntilServerOff();
-
-  const cmd = `@echo off
+  try {
+    yield ["setUndeterminedProgress"];
+    yield ["setStateText", "PATCHING"];
+    originalPatched = await getKeyOrDefault("patched", "NOTFOUND");
+    await journal.capture(resolve("winedrv_config.bat"));
+    await wine.setProps(config);
+    if (config.hk4eEnableHDR) {
+      await journal.capture(resolve("hk4e_enable_hdr.reg"));
+      await journal.capture(resolve("hk4e_revert_hdr.reg"));
+      hdr = true;
+      await applyHDRRegistry({ wine, server });
+    }
+    if (config.resolutionCustom) {
+      await journal.capture(resolve("hk4e_resolution.reg"));
+      await journal.capture(resolve("hk4e_revert_resolution.reg"));
+      resolution = true;
+      await applyResolutionRegistry(wine, server, config);
+    }
+    await waitWine();
+    const cmd = `@echo off
 cd "%~dp0"
 copy "${wine.toWinePath(
-    join(gameDir, atob("SG9Zb0tQcm90ZWN0LnN5cw=="))
-  )}" "%WINDIR%\\system32\\"
+      join(gameDir, atob("SG9Zb0tQcm90ZWN0LnN5cw=="))
+    )}" "%WINDIR%\\system32\\"
 cd /d "${wine.toWinePath(gameDir)}"
 "${wine.toWinePath(
-    join(gameDir, gameExecutable)
-  )}" -platform_type CLOUD_THIRD_PARTY_PC -is_cloud 1`;
-  await writeFile(resolve("config.bat"), cmd);
-  yield* patchProgram(gameDir, wine, server, config);
-  await mkdirp(resolve("./logs"));
-  const yaaglDir = resolve("./");
-  try {
+      join(gameDir, gameExecutable)
+    )}" -platform_type CLOUD_THIRD_PARTY_PC -is_cloud 1`;
+    await journal.capture(resolve("config.bat"));
+    await journal.capture(
+      join(
+        wine.prefix,
+        "drive_c/windows/system32",
+        atob("SG9Zb0tQcm90ZWN0LnN5cw==")
+      )
+    );
+    await writeFile(resolve("config.bat"), cmd);
+    patchedStateOwned = true;
+    yield* patchProgram(gameDir, wine, server, config, journal.capture);
+    await mkdirp(resolve("./logs"));
     yield ["setStateText", "GAME_RUNNING"];
     const logfile = resolve(`./logs/game_${Date.now()}.log`);
-
     if (config.blockNet) {
       const tmpScriptPath = "/tmp/yaagl_network_block_script.sh";
       const blockUrl = server.id == "hk4e_global" ? OS_BLOCK_URL : CN_BLOCK_URL;
@@ -168,46 +245,75 @@ cd /d "${wine.toWinePath(gameDir)}"
       config.steamPatch
         ? [wine.toWinePath(join(gameDir, gameExecutable))]
         : ["/c", `${wine.toWinePath(resolve("./config.bat"))} `],
-      {
-        MTL_HUD_ENABLED: config.metalHud ? "1" : "",
-        WINEDLLOVERRIDES: "",
-        WINE_ENABLE_TIMEOUT_FIX: config.timeoutFix ? "1" : "0",
-        ...(wine.attributes.renderBackend == "dxmt"
-          ? {
-              WINEESYNC: "1",
-              DXMT_LOG_PATH: yaaglDir,
-              DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
-              DXMT_CONFIG_FILE: join(yaaglDir, "dxmt.conf"),
-              GST_PLUGIN_FEATURE_RANK: "atdec:MAX,avdec_h264:MAX",
-            }
-          : {
-              WINEESYNC: "1",
-            }),
-        ...(config.proxyEnabled
-          ? {
-              HTTP_PROXY: config.proxyHost,
-              HTTPS_PROXY: config.proxyHost,
-            }
-          : {}),
-      },
-      logfile
+      gameEnvironment(wine, config),
+      logfile,
+      true
     );
-    await wine.waitUntilServerOff();
-    if (config.hk4eEnableHDR) {
-      await revertHDRRegistry({ wine, server });
+  } catch (error) {
+    primary = error;
+  } finally {
+    // No yields in cleanup: an async-generator return may consume only one
+    // value from finally. A request-bound Wine wait also follows command error.
+    for (;;) {
+      const errors: unknown[] = [];
+      try {
+        owner.phase("Waiting for Wine before restoring launch files");
+        await waitWine();
+        if (!registryDone) {
+          if (hdr)
+            try {
+              await revertHDRRegistry({ wine, server });
+              hdr = false;
+            } catch (error) {
+              errors.push(error);
+            }
+          if (resolution)
+            try {
+              await revertResolutionRegistry(wine, server);
+              resolution = false;
+            } catch (error) {
+              errors.push(error);
+            }
+          await waitWine();
+          registryDone = !hdr && !resolution;
+        }
+        if (!filesDone) {
+          const restored = await journal.restore();
+          errors.push(...restored);
+          if (!restored.length) {
+            if (patchedStateOwned)
+              await setKey(
+                "patched",
+                originalPatched === "NOTFOUND" ? null : originalPatched
+              );
+            filesDone = true;
+          }
+        }
+        if (!errors.length) {
+          if (!journalDone) {
+            await journal.dispose();
+            journalDone = true;
+          }
+          await exec(["/bin/rmdir", "--", directory]);
+          break;
+        }
+      } catch (error) {
+        errors.push(error);
+      }
+      secondary.push(...errors);
+      await owner.waitForRetry(
+        `Launch cleanup failed; retained ${directory}. ${errors
+          .map(String)
+          .join("; ")}`
+      );
     }
-    if (config.resolutionCustom) {
-      await revertResolutionRegistry(wine, server);
-    }
-  } catch (e: unknown) {
-    // it seems game crashed?
-    await log(String(e));
   }
-
-  // await removeFile(resolve("bWh5cHJvdDJfcnVubmluZy5yZWcK.reg"));
-  await removeFile(resolve("config.bat"));
-  yield ["setStateText", "REVERT_PATCHING"];
-  yield* patchRevertProgram(gameDir, wine, server, config);
+  if (primary !== undefined || secondary.length)
+    throw new LaunchFailure(
+      String(primary ?? secondary[0]),
+      primary,
+      secondary
+    );
 }
 
 async function revertHDRRegistry({
@@ -235,13 +341,9 @@ async function revertHDRRegistry({
 
   const path = resolve("./hk4e_revert_hdr.reg");
   await writeBinary(path, utf16le(reg.join("\r\n")));
-  try {
-    await wine.exec("regedit", [wine.toWinePath(path)], {}, "/dev/null");
-  } catch (e) {
-    // ignore
-  } finally {
-    await removeFile(path);
-  }
+  await withRegistryTemporary(path, () =>
+    wine.exec("regedit", [wine.toWinePath(path)], {}, "/dev/null")
+  );
 }
 
 async function revertResolutionRegistry(wine: Wine, server: Server) {
@@ -265,11 +367,139 @@ async function revertResolutionRegistry(wine: Wine, server: Server) {
 
   const path = resolve("./hk4e_revert_resolution.reg");
   await writeBinary(path, utf16le(lines.join("\r\n")));
+  await withRegistryTemporary(path, () =>
+    wine.exec("regedit", [wine.toWinePath(path)], {}, "/dev/null")
+  );
+}
+
+export function gameEnvironment(
+  wine: Wine,
+  config: Config
+): Record<string, string> {
+  const yaaglDir = resolve("./");
+  return {
+    MTL_HUD_ENABLED: config.metalHud ? "1" : "",
+    WINEDLLOVERRIDES: "",
+    WINE_ENABLE_TIMEOUT_FIX: config.timeoutFix ? "1" : "0",
+    ...(wine.attributes.renderBackend == "dxmt"
+      ? {
+          WINEESYNC: "1",
+          DXMT_LOG_PATH: yaaglDir,
+          DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
+          DXMT_CONFIG_FILE: join(yaaglDir, "dxmt.conf"),
+          GST_PLUGIN_FEATURE_RANK: "atdec:MAX,avdec_h264:MAX",
+        }
+      : {
+          WINEESYNC: "1",
+        }),
+    ...(config.proxyEnabled
+      ? {
+          HTTP_PROXY: config.proxyHost,
+          HTTPS_PROXY: config.proxyHost,
+        }
+      : {}),
+  };
+}
+
+export async function* launchGameProgram(
+  input: {
+    gameDir: string;
+    gameExecutable: string;
+    wine: Wine;
+    config: Config;
+    server: Server;
+  },
+  resources: (
+    enabledFps?: boolean
+  ) => CommonUpdateProgram = async function* () {
+    /* Caller may have no resources to prepare. */
+  }
+): CommonUpdateProgram {
+  const owner = launchOwnership.claim();
+  input = { ...input, config: { ...input.config } };
+  let delegated = false;
   try {
-    await wine.exec("regedit", [wine.toWinePath(path)], {}, "/dev/null");
-  } catch (e) {
-    // ignore
+    const admitted = await admitFpsLaunch({
+      ...input,
+      server: input.server.id,
+    });
+    if (!admitted) {
+      yield* resources();
+      yield* launchGameDisabledProgram(input, owner);
+      return;
+    }
+    const { gameDir, gameExecutable, wine, config, server } = input;
+    const transaction = launchFpsGame(
+      {
+        admitted,
+        wine,
+        config,
+        server,
+        resources,
+        environment: gameEnvironment(wine, config),
+        registryResolution:
+          config.resolutionCustom && !!resolutionDimensions(config),
+        async setup(capture, progress) {
+          progress(["setUndeterminedProgress"]);
+          progress(["setStateText", "PATCHING"]);
+          await capture(resolve("winedrv_config.bat"));
+          await wine.setProps(config);
+          if (config.hk4eEnableHDR) {
+            await capture(resolve("hk4e_enable_hdr.reg"));
+            await applyHDRRegistry({ wine, server });
+          }
+          if (config.resolutionCustom) {
+            await capture(resolve("hk4e_resolution.reg"));
+            await applyResolutionRegistry(wine, server, config);
+          }
+          await wine.waitUntilServerOff();
+          if (config.reshade) {
+            await capture(join(gameDir, "ReShade.ini"));
+            await prepareReshadeConfiguration(wine, gameDir);
+          }
+          await capture(resolve("config.bat"));
+          const protection = atob("SG9Zb0tQcm90ZWN0LnN5cw==");
+          await capture(
+            join(wine.prefix, "drive_c/windows/system32", protection)
+          );
+          // Preparation retains the upstream protection-file copy. The bridge
+          // creates the selected game itself, retaining its HANDLE before resume.
+          await writeFile(
+            resolve("config.bat"),
+            `@echo off
+cd "%~dp0"
+copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
+          );
+          for await (const command of patchProgram(
+            gameDir,
+            wine,
+            server,
+            config,
+            capture
+          ))
+            progress(command);
+          await wine.exec(
+            "cmd",
+            ["/c", wine.toWinePath(resolve("config.bat"))],
+            {},
+            "/dev/null"
+          );
+          await wine.waitUntilServerOff();
+          await log(
+            `Direct FPS launch selected ${gameExecutable}; game creation belongs to the request bridge`
+          );
+        },
+      },
+      owner
+    );
+    delegated = true;
+    yield* transaction.program();
+  } catch (error) {
+    if (!delegated) owner.problem(String(error));
+    throw error instanceof LaunchFailure
+      ? error
+      : new LaunchFailure(String(error), error);
   } finally {
-    await removeFile(path);
+    if (!delegated) owner.finish();
   }
 }

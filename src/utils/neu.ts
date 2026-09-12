@@ -1,3 +1,4 @@
+import { launchOwnership } from "../launcher/launch-ownership";
 import { join } from "path-browserify";
 import { build, CommandSegments, rawString } from "./command-builder";
 
@@ -360,17 +361,28 @@ export function addTerminationHook(fn: (forced: boolean) => Promise<boolean>) {
 
 // ??
 export async function GLOBAL_onClose(forced: boolean) {
-  for (const hook of hooks.reverse()) {
-    if (!(await hook(forced)) && !forced) {
-      return false; // aborted
+  if (!launchOwnership.beginClose()) return false;
+  try {
+    for (const hook of [...hooks].reverse()) {
+      if (!(await hook(forced)) && !forced) {
+        launchOwnership.cancelClose();
+        return false;
+      }
     }
+    return true;
+  } catch (error) {
+    launchOwnership.cancelClose();
+    throw error;
   }
-  return true;
 }
 
 export async function shutdown() {
-  for (const hook of hooks.reverse()) {
-    await hook(true);
+  await launchOwnership.beginShutdown();
+  try {
+    for (const hook of [...hooks].reverse()) await hook(true);
+  } catch (error) {
+    launchOwnership.cancelClose();
+    throw error;
   }
 }
 

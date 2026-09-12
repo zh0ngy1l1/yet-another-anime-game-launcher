@@ -26,6 +26,7 @@ import { createGameInstallationDirectorySanitizer } from "../accidental-complexi
 import { ChannelClient } from "../channel-client";
 import { createTaskQueueState } from "./task-queue";
 import { Wine } from "@wine";
+import { launchOwnership } from "./launch-ownership";
 
 const IconSetting = createIcon({
   viewBox: "0 0 1024 1024",
@@ -113,17 +114,19 @@ export async function createLauncher({
     const [videoLoaded, setVideoLoaded] = createSignal(false);
 
     async function onButtonClick() {
-      if (programBusy()) return; // ignore
-      if (installState() == "INSTALLED") {
-        if (updateRequired() == true) {
-          taskQueue.next(update);
+      if (programBusy()) return;
+      const admission = launchOwnership.reserve();
+      if (!admission) return;
+      try {
+        if (installState() == "INSTALLED") {
+          if (updateRequired()) await taskQueue.next(update);
+          else await taskQueue.next(() => launch(config));
         } else {
-          taskQueue.next(() => launch(config));
+          const selection = await selectPath();
+          if (selection) await taskQueue.next(() => install(selection));
         }
-      } else {
-        const selection = await selectPath();
-        if (!selection) return;
-        taskQueue.next(() => install(selection));
+      } finally {
+        admission.release();
       }
     }
 
@@ -134,6 +137,26 @@ export async function createLauncher({
           "background-image": background ? `url(${background})` : undefined,
         }}
       >
+        <Show when={launchOwnership.state().failed}>
+          <Box
+            role="alert"
+            position="absolute"
+            top={16}
+            left={16}
+            right={16}
+            zIndex={10}
+            p={12}
+            bg="$danger3"
+            color="$danger12"
+          >
+            {launchOwnership.state().detail}
+            <Show when={launchOwnership.state().canRetry}>
+              <Button onClick={() => launchOwnership.retry()}>
+                Retry safe cleanup
+              </Button>
+            </Show>
+          </Box>
+        </Show>
         <Show when={background_video}>
           <video
             class="background-video"
@@ -211,17 +234,21 @@ export async function createLauncher({
                   ></ProgressIndicator>
                 </Progress>
               </Show>
-              <Show when={programBusy()}>
+              <Show when={programBusy() || launchOwnership.state().held}>
                 <h3
                   style={
                     "text-shadow: 1px 1px 2px #333;color:white;margin-bottom:5px;margin-top:8px;"
                   }
                 >
-                  {statusText()}
+                  {launchOwnership.state().held
+                    ? launchOwnership.state().detail
+                    : statusText()}
                 </h3>
                 <Progress
                   value={progress()}
-                  indeterminate={progress() == 0}
+                  indeterminate={
+                    progress() == 0 && !launchOwnership.state().failed
+                  }
                   size="sm"
                   borderRadius={8}
                 >
@@ -247,7 +274,7 @@ export async function createLauncher({
                 >
                   <Button
                     mr="-1px"
-                    disabled={programBusy()}
+                    disabled={programBusy() || launchOwnership.state().held}
                     onClick={() => onButtonClick().catch(fatal)}
                   >
                     {installState() == "INSTALLED"
@@ -259,7 +286,7 @@ export async function createLauncher({
                   <Show when={installState() == "INSTALLED"}>
                     <IconButton
                       onClick={onOpen}
-                      disabled={programBusy()}
+                      disabled={programBusy() || launchOwnership.state().held}
                       fontSize={30}
                       aria-label="Settings"
                       icon={<IconSetting />}

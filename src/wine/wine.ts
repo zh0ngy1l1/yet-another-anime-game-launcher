@@ -13,6 +13,7 @@ import {
   writeFile,
 } from "@utils";
 import { dirname, join } from "path-browserify";
+import type { OwnedWineContext } from "./owned-execution";
 import { WineDistribution } from "./distro";
 
 export async function createWine(options: {
@@ -48,9 +49,10 @@ export async function createWine(options: {
     program: string,
     args: string[],
     env?: { [key: string]: string },
-    log_file: string | undefined = undefined
+    log_file: string | undefined = undefined,
+    requestBound = false
   ) {
-    return await unixExec2(
+    return await (requestBound ? unixExec : unixExec2)(
       program == "copy"
         ? [loaderBin, "cmd", "/c", program, ...args]
         : [loaderBin, program, ...args],
@@ -160,6 +162,16 @@ reg add "HKEY_LOCAL_MACHINE\\SOFTWARE\\NVIDIA Corporation\\Global\\NGXCore" /v F
     cmd,
     toWinePath,
     prefix: options.prefix,
+    get executionContext(): OwnedWineContext {
+      return Object.freeze({
+        loader: loaderBin,
+        prefix: options.prefix,
+        environment: Object.freeze(getEnvironmentVariables()),
+      });
+    },
+    get distributionId() {
+      return options.distro.id;
+    },
     openCmdWindow,
     setProps,
     setNVExtension,

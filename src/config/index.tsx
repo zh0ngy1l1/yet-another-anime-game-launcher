@@ -221,7 +221,7 @@ export async function createConfiguration({
                   </VStack>
                 </HStack>
               </TabPanel>
-              <TabPanel flex={1} pt={0} pb={0} h="100%">
+              <TabPanel flex={1} pt={0} pb={0} h="100%" overflowY="auto">
                 <VStack spacing={"$4"} w="40%" alignItems="start">
                   <ChannelClientConfig />
                 </VStack>

@@ -56,7 +56,7 @@ const cancelled = Symbol("companion cancelled");
 const gameExited = Symbol("game exited");
 
 /**
- * Single-use, standalone controller. No live launcher consumes it.
+ * Single-use controller; Step 7 supplies its target-bound worker adapter.
  * start() starts once and returns the terminal outcome (not spawn acknowledgement).
  * stop() prevents new work and returns that SAME promise, after a bounded cleanup
  * observation. Stop before start is terminal. Neither public promise rejects.

@@ -1,3 +1,4 @@
+import { en } from "./en";
 import { zh_CN } from "./zh_CN";
 
 export const ja_JP: typeof zh_CN = {
@@ -90,6 +91,7 @@ export const ja_JP: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "FPS制限解除",
   SETTING_FPS_UNLOCK_DEFAULT: "無効",
+  SETTING_HK4E_FPS_ENABLE: en.SETTING_HK4E_FPS_ENABLE,
   SETTING_HK4E_FPS_TARGET: "目標FPS（1–360）",
   SETTING_HK4E_FPS_TARGET_ERROR:
     "1から360までの整数を、空白を含めずに半角数字のみで入力してください。",

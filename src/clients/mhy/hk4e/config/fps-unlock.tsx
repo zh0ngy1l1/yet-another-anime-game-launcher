@@ -47,7 +47,7 @@ export async function createFpsUnlockConfig({
                 }
                 size="md"
               >
-                {locale.get("SETTING_ENABLED")}
+                {locale.get("SETTING_HK4E_FPS_ENABLE")}
               </Checkbox>
             </Box>
           </FormControl>

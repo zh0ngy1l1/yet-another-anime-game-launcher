@@ -92,6 +92,7 @@ export const es_ES: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: en.SETTING_FPS_UNLOCK,
   SETTING_FPS_UNLOCK_DEFAULT: en.SETTING_FPS_UNLOCK_DEFAULT,
+  SETTING_HK4E_FPS_ENABLE: en.SETTING_HK4E_FPS_ENABLE,
   SETTING_HK4E_FPS_TARGET: "FPS objetivo (1–360)",
   SETTING_HK4E_FPS_TARGET_ERROR:
     "Introduce un número entero del 1 al 360 usando solo dígitos decimales, sin espacios.",
