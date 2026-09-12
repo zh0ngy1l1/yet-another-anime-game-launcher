@@ -64,7 +64,7 @@ export async function createWine(options: {
   }
 
   async function waitUntilServerOff() {
-    return await unixExec2([join(dirname(loaderBin), "wineserver"), "-w"], {
+    return await unixExec([join(dirname(loaderBin), "wineserver"), "-w"], {
       ...getEnvironmentVariables(),
     });
   }
