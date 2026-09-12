@@ -65,6 +65,92 @@ async function companion(rig: ReturnType<typeof boundary>, fps = "120") {
   return { bridge, controller };
 }
 
+it.each(["boot", "launch", "restart"])(
+  "Steam artifact replacement before %s cannot execute changed bytes",
+  async phase => {
+    const rig = boundary(true),
+      bridge = await rig.prepare();
+    if (phase === "boot") {
+      rig.replace();
+      await expect(bridge.boot()).rejects.toThrow("replaced artifact");
+      expect(rig.io.start).not.toHaveBeenCalled();
+    } else {
+      await bridge.boot();
+      if (phase === "launch") {
+        rig.replace();
+        await expect(bridge.launch()).rejects.toThrow("replaced artifact");
+        expect(rig.events).not.toContain("launch");
+      } else {
+        await bridge.launch();
+        const worker = await bridge.spawnWorker(120);
+        await tick();
+        rig.stopped();
+        await tick();
+        await worker.completion;
+        rig.replace();
+        await expect(bridge.spawnWorker(120)).rejects.toThrow(
+          "replaced artifact"
+        );
+        expect(rig.events.filter(event => event === "start")).toHaveLength(1);
+        rig.exit();
+      }
+      rig.direct.resolve({ confirmed: true, status: 0 });
+      await bridge.release();
+    }
+    await bridge.dispose();
+  }
+);
+
+it("stale Steam incarnation and unknown Steam job state retain the same observation", async () => {
+  const rig = boundary(true),
+    bridge = await rig.prepare();
+  await bridge.boot();
+  await bridge.launch();
+  rig.status.shimPid = 99;
+  let observed = false;
+  const probe = bridge.probe().then(value => {
+    observed = true;
+    return value;
+  });
+  await tick(40);
+  expect(observed).toBe(false);
+  expect(rig.diagnostic).toHaveBeenCalledWith(
+    expect.stringMatching(/incarnation\/lifecycle changed/)
+  );
+  rig.status.shimPid = 40;
+  await tick(20);
+  await probe;
+  rig.status.primaryExited = 1;
+  rig.status.active = 0;
+  rig.status.steamActive = 0xffffffff;
+  let ended = false;
+  const ending = bridge.waitForGameExit().then(() => {
+    ended = true;
+  });
+  await tick(50);
+  expect(ended).toBe(false);
+  rig.exit();
+  await tick(30);
+  await ending;
+  rig.direct.resolve({ confirmed: true, status: 0 });
+  await bridge.release();
+  await bridge.dispose();
+});
+
+it.each([
+  { version: 1 },
+  { steamReady: 2 },
+  { shimExited: -1 },
+  { steamActive: 1.5 },
+  { shimPid: 42, pid: 42 },
+  { steamReady: 1, shimPid: 0 },
+])("rejects malformed Steam protocol %j", patch => {
+  const rig = boundary(true);
+  expect(() =>
+    parseBridgeStatus(JSON.stringify({ ...rig.status, ...patch }), rig.token)
+  ).toThrow();
+});
+
 describe("real controller and request bridge protocol", () => {
   it.each(["1", "60", "61", "120", "360"])(
     "binds target %s through the runtime contract and execution boundary",
@@ -200,71 +286,74 @@ describe("real controller and request bridge protocol", () => {
 });
 
 describe("transaction admission, queue lifetime and normal close", () => {
-  it("holds admission after game exit through worker, direct child, Wine wait and restoration", async () => {
-    const rig = boundary();
-    const { bridge, controller } = await companion(rig);
-    rig.delayStop();
-    const wineWait = deferred<void>(),
-      registry = deferred<void>(),
-      restoration = deferred<void>();
-    const owner = launchOwnership.claim();
-    const transaction = createLaunchTransaction(
-      {
-        prepare: async () => undefined,
-        launch: async () => undefined,
-        gameExit: () => bridge.waitForGameExit(),
-        companion: () => controller,
-        async cleanup(phase) {
-          phase("bridge");
-          await bridge.release();
-          phase("wine");
-          await wineWait.promise;
-          phase("registry");
-          await registry.promise;
-          phase("restore");
-          await restoration.promise;
-          await bridge.dispose();
-          return [];
+  it.each([false, true])(
+    "holds global close/admission after game exit through worker, child, Wine and restoration (Steam=%s)",
+    async steam => {
+      const rig = boundary(steam);
+      const { bridge, controller } = await companion(rig);
+      rig.delayStop();
+      const wineWait = deferred<void>(),
+        registry = deferred<void>(),
+        restoration = deferred<void>();
+      const owner = launchOwnership.claim();
+      const transaction = createLaunchTransaction(
+        {
+          prepare: async () => undefined,
+          launch: async () => undefined,
+          gameExit: () => bridge.waitForGameExit(),
+          companion: () => controller,
+          async cleanup(phase) {
+            phase("bridge");
+            await bridge.release();
+            phase("wine");
+            await wineWait.promise;
+            phase("registry");
+            await registry.promise;
+            phase("restore");
+            await restoration.promise;
+            await bridge.dispose();
+            return [];
+          },
         },
-      },
-      owner
-    );
-    await tick(40);
-    const guarded = async () => {
-      expect(launchOwnership.reserve()).toBeUndefined();
-      expect(await GLOBAL_onClose(false)).toBe(false);
-    };
-    await guarded();
-    rig.exit();
-    await tick(40);
-    await guarded();
-    expect(rig.events).toContain("stop");
-    await tick(150);
-    expect(launchOwnership.state().failed).toBe(true);
-    await guarded();
-    rig.stopped();
-    await tick(30);
-    await guarded();
-    expect(rig.events).toContain("release");
-    rig.direct.resolve({ confirmed: true });
-    await tick();
-    await guarded();
-    wineWait.resolve();
-    await tick();
-    await guarded();
-    registry.resolve();
-    await tick();
-    await guarded();
-    restoration.resolve();
-    await tick();
-    await transaction.completion;
-    expect(await GLOBAL_onClose(false)).toBe(true);
-    launchOwnership.cancelClose();
-    const next = launchOwnership.reserve();
-    expect(next).toBeDefined();
-    if (!next) throw Error("Missing fresh admission");
-    next.release();
-  });
+        owner
+      );
+      await tick(40);
+      const guarded = async () => {
+        expect(launchOwnership.reserve()).toBeUndefined();
+        expect(await GLOBAL_onClose(false)).toBe(false);
+      };
+      await guarded();
+      rig.exit();
+      await tick(40);
+      await guarded();
+      expect(rig.events).toContain("stop");
+      await tick(150);
+      expect(launchOwnership.state().failed).toBe(true);
+      await guarded();
+      rig.stopped();
+      await tick(30);
+      await guarded();
+      expect(rig.events).toContain("release");
+      rig.direct.resolve({ confirmed: true });
+      await tick();
+      await guarded();
+      wineWait.resolve();
+      await tick();
+      await guarded();
+      registry.resolve();
+      await tick();
+      await guarded();
+      restoration.resolve();
+      await tick();
+      await transaction.completion;
+      expect(await GLOBAL_onClose(false)).toBe(true);
+      launchOwnership.cancelClose();
+      const next = launchOwnership.reserve();
+      expect(next).toBeDefined();
+      if (!next) throw Error("Missing fresh admission");
+      next.release();
+    }
+  );
   it("attempts safe cleanup, preserves primary/secondary errors and retries while guarded", async () => {
     const own = createLaunchOwnership();
     let attempts = 0;

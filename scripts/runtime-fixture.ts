@@ -3,6 +3,8 @@
 import { join, dirname } from "path-browserify";
 import { launchFpsGame } from "../src/clients/mhy/hk4e/launch-fps-game";
 import { admitFpsLaunch } from "../src/clients/mhy/hk4e/fps-admission";
+import { prepareFpsBridge } from "../src/clients/mhy/hk4e/fps-bridge";
+import { createLaunchJournal } from "../src/clients/mhy/hk4e/launch-journal";
 import { createFpsUnlockSettings } from "../src/clients/mhy/hk4e/config/fps-unlock-settings";
 import { launchOwnership } from "../src/launcher/launch-ownership";
 import {
@@ -57,7 +59,11 @@ async function main() {
     waitUntilServerOff: () =>
       exec([join(dirname(loader), "wineserver"), "-w"], { WINEPREFIX: prefix }),
   } as unknown as Wine;
-  const config = { hk4eEnableHDR: false, resolutionCustom: false } as Config;
+  const config = {
+    hk4eEnableHDR: false,
+    resolutionCustom: false,
+    steamPatch: Reflect.get(window, "NL_FIXTURE_STEAM") === true,
+  } as Config;
   const settings = await createFpsUnlockSettings(config);
   await settings.change({ enabled: true, target: "61" });
   const admitted = await admitFpsLaunch({
@@ -86,7 +92,24 @@ async function main() {
         await writeFile(join(root, "original-file"), "changed");
       },
     },
-    launchOwnership.claim()
+    launchOwnership.claim(),
+    {
+      async bridge(input) {
+        const bridge = await prepareFpsBridge(input);
+        if (Reflect.get(window, "NL_FIXTURE_TAMPER_STEAM") === true) {
+          // Alter only the exact private test artifact before any execution.
+          const path = join(bridge.directory, "steam.exe");
+          await exec(["/bin/chmod", "600", path]);
+          await writeFile(
+            path,
+            "fixture replacement after verified acquisition"
+          );
+        }
+        return bridge;
+      },
+      journal: createLaunchJournal,
+      companion: {},
+    }
   );
   let completed = false;
   const observer = setInterval(async () => {

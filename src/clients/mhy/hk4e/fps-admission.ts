@@ -5,6 +5,7 @@ import type { Wine } from "../../../wine";
 import { readFpsUnlockDraft } from "./config/fps-unlock-settings";
 import { validateFpsUnlockDraft } from "./config/fps-unlock-state";
 import { buildFpsRuntimePlan } from "./fps-runtime";
+import { hasSteamGameId } from "./fps-steam";
 
 export async function admitFpsLaunch(
   input: {
@@ -17,7 +18,8 @@ export async function admitFpsLaunch(
   native = { os: window.NL_OS, version: window.NL_VERSION },
   inspect: (
     path: string
-  ) => Promise<{ isFile: boolean; isDirectory: boolean }> = stats
+  ) => Promise<{ isFile: boolean; isDirectory: boolean }> = stats,
+  steamEnvironment = hasSteamGameId
 ) {
   await input.config.flushHk4eFpsSettings?.();
   if (input.config.hk4eFpsUnlock && !input.config.hk4eFpsUnlock.ok)
@@ -42,10 +44,6 @@ export async function admitFpsLaunch(
     )
   )
     throw new Error("FPS unlocking supports direct global or China HK4E only");
-  if (config.steamPatch)
-    throw new Error(
-      "FPS unlocking cannot attribute Steam handoff; disable Steam patch for this launch"
-    );
   if (config.blockNet)
     throw new Error(
       "FPS unlocking does not support the background privileged network-blocking script; disable network blocking for this launch"
@@ -81,6 +79,16 @@ export async function admitFpsLaunch(
   );
   if (!plan.ok || !plan.value.companion || !plan.value.gameDxmtConfig)
     throw new Error("FPS unlocking requires a valid DXMT runtime plan");
+  if (
+    config.steamPatch &&
+    (Object.keys(context.environment ?? {}).some(
+      key => key.toLowerCase() === "steamgameid"
+    ) ||
+      (await steamEnvironment()))
+  )
+    throw new Error(
+      "FPS Steam Patch does not support inherited SteamGameId/Proton service mode. Start the launcher outside Steam; keep Enable Steam Patch on."
+    );
   const executable = join(gameDir, gameExecutable);
   for (const [path, directory] of [
     [executable, false],
@@ -95,6 +103,7 @@ export async function admitFpsLaunch(
   }
   return Object.freeze({
     executable,
+    steamPatch: config.steamPatch === true,
     gameDirectory: gameDir,
     wine: context,
     plan: Object.freeze({

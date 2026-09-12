@@ -29,8 +29,8 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
-function launch(target = "120") {
-  const native = boundary(),
+function launch(target = "120", steamPatch = false) {
+  const native = boundary(steamPatch),
     ownership = createLaunchOwnership();
   const value = validateFpsUnlockDraft({ enabled: true, target });
   if (!value.ok) throw Error("fixture target");
@@ -62,6 +62,7 @@ function launch(target = "120") {
   const config = { hk4eEnableHDR: true, resolutionCustom: true } as Config;
   const input = {
     admitted: {
+      steamPatch,
       executable: "/game/GenshinImpact.exe",
       gameDirectory: "/game",
       wine: native.wine,
@@ -150,6 +151,163 @@ it.each(["1", "60", "61", "120", "360"])(
     expect(rig.ownership.state().held).toBe(false);
   }
 );
+it.each(["60", "61", "120"])(
+  "Steam target %s propagates signed route, context and plan through the real controller",
+  async target => {
+    const rig = launch(target, true),
+      transaction = rig.start();
+    await tick(11000);
+    expect(rig.native.io.stage).toHaveBeenCalledWith("/tmp/request", true);
+    expect(rig.native.io.verify).toHaveBeenCalledWith(
+      "/tmp/request/fps-bridge.exe",
+      true
+    );
+    const request = rig.native.io.start.mock.calls.find(
+      ([request]) => request.args[0] !== "--registry"
+    )?.[0];
+    expect(request?.args).toEqual([
+      "Z:\\tmp\\request",
+      rig.native.token,
+      "Z:\\game\\GenshinImpact.exe",
+      "Z:\\game",
+      `other=kept;d3d11.preferredMaxFrameRate=${
+        Number(target) <= 60 ? target : 0
+      };`,
+      expect.stringMatching(/^Z:\\app\\logs\\game_/),
+      "Z:\\tmp\\request\\steam.exe",
+    ]);
+    expect(request?.wine.environment).toMatchObject({
+      KEEP: "kept",
+      HTTP_PROXY: "localhost:8080",
+      DXMT_CONFIG: `other=kept;d3d11.preferredMaxFrameRate=${target};`,
+    });
+    expect(rig.native.status.pid).not.toBe(rig.native.status.shimPid);
+    expect(rig.native.events).toContain(`fps:${target}`);
+    expect(await rig.finish(transaction)).toBeUndefined();
+  }
+);
+
+it("Steam game exit retains close/admission through relay, worker, supervisor, Wine, registry and files", async () => {
+  const rig = launch("61", true),
+    transaction = rig.start();
+  await tick(11000);
+  const guarded = () => {
+    expect(rig.ownership.state().held).toBe(true);
+    expect(rig.ownership.reserve()).toBeUndefined();
+    expect(rig.ownership.beginClose()).toBe(false);
+  };
+  guarded();
+  rig.native.delayStop();
+  rig.native.status.primaryExited = 1;
+  rig.native.status.active = 0;
+  await tick(2000);
+  guarded();
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  // A living relay/shim cannot be mistaken for a game descendant or exit.
+  expect(rig.ownership.state().failed).toBe(false);
+  rig.native.status.shimExited = 1;
+  rig.native.status.steamActive = 0;
+  await tick(30);
+  guarded();
+  rig.native.stopped();
+  await tick(2000);
+  guarded();
+  expect(rig.native.events).toContain("release");
+  const wine = deferred<Awaited<ReturnType<typeof rig.wait>>>();
+  rig.wait.mockReturnValueOnce(wine.promise);
+  const registry = deferred<{ confirmed: boolean; status: number }>();
+  rig.native.io.start.mockImplementation(request =>
+    request.args[0] === "--registry" && request.args[1] === "restore"
+      ? {
+          started: Promise.resolve(),
+          completion: registry.promise,
+          stop: () => registry.promise,
+        }
+      : rig.native.start(request)
+  );
+  const files = deferred<unknown[]>();
+  rig.journal.restore.mockReturnValueOnce(files.promise);
+  rig.native.direct.resolve({ confirmed: true, status: 0 });
+  await tick(30);
+  guarded();
+  wine.resolve({ exitCode: 0, stdOut: "", stdErr: "", pid: 1 });
+  await tick(30);
+  guarded();
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  registry.resolve({ confirmed: true, status: 0 });
+  await tick(30);
+  guarded();
+  expect(rig.journal.restore).toHaveBeenCalledOnce();
+  files.resolve([]);
+  await tick(30);
+  expect(await transaction.completion).toBeUndefined();
+  expect(rig.ownership.beginClose()).toBe(true);
+  rig.ownership.cancelClose();
+  const next = rig.ownership.reserve();
+  expect(next).toBeDefined();
+  next?.release();
+});
+
+it("unconfirmed Steam cleanup remains visibly failed and guarded until later confirmed completion", async () => {
+  const rig = launch("60", true),
+    transaction = rig.start();
+  await tick(11000);
+  rig.native.status.primaryExited = 1;
+  rig.native.status.active = 0;
+  await tick(32000);
+  expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
+  expect(rig.ownership.state().detail).toMatch(
+    /Steam shim\/relay job completion remains pending/
+  );
+  expect(rig.ownership.beginClose()).toBe(false);
+  expect(rig.ownership.reserve()).toBeUndefined();
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  const result = await rig.finish(transaction);
+  expect(
+    result?.cleanupErrors.some(error =>
+      String(error).includes("Steam shim/relay")
+    )
+  ).toBe(true);
+  expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
+});
+
+it("early Steam exit fails observation without retargeting or restoring a living game", async () => {
+  const rig = launch("120", true),
+    transaction = rig.start();
+  await tick(11000);
+  rig.native.status.shimExited = 1;
+  rig.native.status.steamActive = 1;
+  await tick(2000);
+  expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
+  expect(rig.native.status.pid).toBe(42);
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  expect(await rig.finish(transaction)).toBeInstanceOf(Error);
+});
+
+it("cancellation during a pending Steam rendezvous accounts for late game creation", async () => {
+  const rig = launch("60", true),
+    handoff = deferred<void>();
+  rig.native.io.command.mockImplementation(async (directory, text) => {
+    if (text.includes(" launch ")) await handoff.promise;
+    await rig.native.command(directory, text);
+  });
+  const transaction = rig.start();
+  await tick(30);
+  transaction.cancel();
+  await tick(30);
+  expect(rig.ownership.beginClose()).toBe(false);
+  expect(rig.ownership.reserve()).toBeUndefined();
+  expect(rig.native.status.launched).toBe(0);
+  handoff.resolve();
+  await tick(2000);
+  expect(rig.native.status.launched).toBe(1);
+  expect(rig.native.status.steamReady).toBe(1);
+  expect(rig.native.events).not.toContain("start");
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  expect(rig.ownership.beginClose()).toBe(false);
+  await rig.finish(transaction);
+  expect(rig.ownership.state().held).toBe(false);
+});
 it("a nonzero native registry snapshot exit prevents preparation and game launch", async () => {
   const rig = launch();
   rig.native.failRegistry("save");

@@ -1,10 +1,10 @@
 import { vi, expect } from "vitest";
 import { deferred } from "../../../utils/operation";
 import { prepareFpsBridge, BridgeStatus } from "./fps-bridge";
-export function boundary() {
+export function boundary(steamPatch = false) {
   const token = "b".repeat(64);
   const status: BridgeStatus = {
-    version: 1,
+    version: 2,
     token,
     sequence: 0,
     launched: 0,
@@ -18,6 +18,11 @@ export function boundary() {
     launchError: 0,
     error: 0,
     released: 0,
+    shimPid: 0,
+    shimExited: 0,
+    steamReady: 0,
+    steamError: 0,
+    steamActive: 0,
   };
   const direct = deferred<{ confirmed: boolean; status?: number }>();
   const events: string[] = [];
@@ -36,6 +41,11 @@ export function boundary() {
       status.launched = 1;
       status.pid = 42;
       status.active = 1;
+      if (steamPatch) {
+        status.shimPid = 40;
+        status.steamReady = 1;
+        status.steamActive = 3;
+      }
     }
     if (operation === "start") {
       status.generation = Number(generation);
@@ -48,7 +58,8 @@ export function boundary() {
       status.workerState = 3;
     }
     if (operation === "release") {
-      if (status.active || !status.workerDone) status.error = 170;
+      if (status.active || status.steamActive || !status.workerDone)
+        status.error = 170;
       else status.released = 1;
     }
   };
@@ -76,8 +87,11 @@ export function boundary() {
   const io = {
     directory: async () => "/tmp/request",
     token: () => token,
-    stage: vi.fn(async () => "/tmp/request/fps-bridge.exe"),
-    verify: vi.fn(async (path: string) => {
+    stage: vi.fn(
+      async (_directory: string, _steamPatch = false) =>
+        "/tmp/request/fps-bridge.exe"
+    ),
+    verify: vi.fn(async (path: string, _steamPatch = false) => {
       expect(path).toBe("/tmp/request/fps-bridge.exe");
       if (badArtifact) throw new Error("replaced artifact");
     }),
@@ -105,6 +119,7 @@ export function boundary() {
       {
         wine,
         executable: "/game/GenshinImpact.exe",
+        steamPatch,
         gameDirectory: "/game",
         gameDxmtConfig: "other=kept;d3d11.preferredMaxFrameRate=0;",
         log: "/logs/game.log",
@@ -138,6 +153,10 @@ export function boundary() {
     exit: () => {
       status.primaryExited = 1;
       status.active = 0;
+      if (steamPatch) {
+        status.shimExited = 1;
+        status.steamActive = 0;
+      }
     },
     stopped: () => {
       status.workerDone = 1;

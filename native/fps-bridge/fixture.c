@@ -1,6 +1,7 @@
 /* Harmless test executable. Only its own integer is a writable FPS fixture.
  * It never enumerates, attaches to, or modifies another process. */
 #include <windows.h>
+#include <winternl.h>
 #include <stdio.h>
 #include <wchar.h>
 volatile int fixture_fps = 60;
@@ -27,6 +28,23 @@ int wmain(int argc, wchar_t **argv) {
     wchar_t directory[32768], stop[32768], output[32768];
     if (!GetEnvironmentVariableW(L"FPS_FIXTURE_DIRECTORY", directory, 32768)) return 2;
     int child = argc == 2 && !wcscmp(argv[1], L"child");
+    wchar_t startup_path[32768], startup_tmp[32768];
+    swprintf(startup_path, 32768, L"%ls\\%ls-startup", directory, child ? L"child" : L"root");
+    swprintf(startup_tmp, 32768, L"%ls.tmp", startup_path);
+    FILE *startup = _wfopen(startup_tmp, L"w");
+    if (!startup) return 4;
+    typedef NTSTATUS (WINAPI *Query)(HANDLE, PROCESSINFOCLASS, void *, ULONG, ULONG *);
+    Query query = (Query)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationProcess");
+    PROCESS_BASIC_INFORMATION info;
+    if (!query || query(GetCurrentProcess(), ProcessBasicInformation, &info, sizeof(info), NULL)) return 5;
+    wchar_t cwd[32768], keep[128] = {0}, dxmt[32768] = {0};
+    GetCurrentDirectoryW(32768, cwd); GetEnvironmentVariableW(L"KEEP", keep, 128);
+    GetEnvironmentVariableW(L"DXMT_CONFIG", dxmt, 32768);
+    fwprintf(startup, L"pid=%lu\nparent=%llu\nargc=%d\ncommand=%ls\ncwd=%ls\nKEEP=%ls\nDXMT_CONFIG=%ls\n",
+        GetCurrentProcessId(), (unsigned long long)info.InheritedFromUniqueProcessId, argc, GetCommandLineW(), cwd, keep, dxmt);
+    fclose(startup);
+    if (!MoveFileExW(startup_tmp, startup_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return 6;
+    puts("harmless fixture stdout"); fflush(stdout);
     swprintf(stop, 32768, L"%ls\\%ls-stop", directory, child ? L"child" : L"root");
     swprintf(output, 32768, L"%ls\\%ls-observed", directory, child ? L"child" : L"root");
     wchar_t detach[2];
@@ -39,11 +57,13 @@ int wmain(int argc, wchar_t **argv) {
         CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
     }
     while (GetFileAttributesW(stop) == INVALID_FILE_ATTRIBUTES) {
-        FILE *f = _wfopen(output, L"w");
+        wchar_t temporary[32768]; swprintf(temporary, 32768, L"%ls.tmp", output);
+        FILE *f = _wfopen(temporary, L"w");
         if (f) {
             wchar_t dxmt[32768]; GetEnvironmentVariableW(L"DXMT_CONFIG", dxmt, 32768);
             fwprintf(f, L"%lu %d %ls\n", GetCurrentProcessId(), fixture_fps, dxmt);
             fclose(f);
+            if (!MoveFileExW(temporary, output, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return 7;
         }
         Sleep(50);
     }

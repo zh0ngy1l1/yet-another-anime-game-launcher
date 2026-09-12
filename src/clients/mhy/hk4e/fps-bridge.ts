@@ -1,4 +1,4 @@
-import { join } from "path-browserify";
+import { dirname, join } from "path-browserify";
 import { exec, readFile, resolve, writeFile } from "../../../utils/neu";
 import { deferred, delay, operationClock } from "../../../utils/operation";
 import {
@@ -10,9 +10,10 @@ import { acquireFpsUnlocker } from "./fps-unlocker";
 import { fpsUnlockerIO } from "./fps-unlocker-io";
 import { FPS_BRIDGE_MANIFEST } from "./fps-bridge-manifest";
 import type { FpsGameObserver } from "./fps-companion";
+import { FPS_STEAM_ARTIFACTS } from "./fps-steam";
 
 export interface BridgeStatus {
-  version: 1;
+  version: 2;
   token: string;
   sequence: number;
   launched: number;
@@ -26,6 +27,11 @@ export interface BridgeStatus {
   launchError: number;
   error: number;
   released: number;
+  shimPid: number;
+  shimExited: number;
+  steamReady: number;
+  steamError: number;
+  steamActive: number;
 }
 
 export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
@@ -33,7 +39,7 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
   if (
     typeof data !== "object" ||
     data === null ||
-    Reflect.get(data, "version") !== 1 ||
+    Reflect.get(data, "version") !== 2 ||
     Reflect.get(data, "token") !== token
   )
     throw new Error("FPS bridge protocol identity mismatch");
@@ -50,6 +56,11 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
     "launchError",
     "error",
     "released",
+    "shimPid",
+    "shimExited",
+    "steamReady",
+    "steamError",
+    "steamActive",
   ]) {
     const value: unknown = Reflect.get(data, key);
     if (
@@ -60,12 +71,23 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
     )
       throw new Error(`Invalid FPS bridge field: ${key}`);
   }
-  for (const key of ["launched", "primaryExited", "workerDone", "released"])
+  for (const key of [
+    "launched",
+    "primaryExited",
+    "workerDone",
+    "released",
+    "shimExited",
+    "steamReady",
+  ])
     if (![0, 1].includes(Reflect.get(data, key)))
       throw new Error(`Invalid FPS bridge flag: ${key}`);
   if (
     Reflect.get(data, "workerState") > 4 ||
-    (Reflect.get(data, "launched") && !Reflect.get(data, "pid"))
+    (Reflect.get(data, "launched") && !Reflect.get(data, "pid")) ||
+    (Reflect.get(data, "steamReady") && !Reflect.get(data, "shimPid")) ||
+    (Reflect.get(data, "shimExited") && !Reflect.get(data, "shimPid")) ||
+    (Reflect.get(data, "shimPid") &&
+      Reflect.get(data, "pid") === Reflect.get(data, "shimPid"))
   )
     throw new Error("Invalid FPS bridge lifecycle");
   return data as BridgeStatus;
@@ -95,9 +117,9 @@ const bridgeIO = {
       join(directory, "command")
     );
   },
-  async stage(directory: string) {
+  async stage(directory: string, steamPatch = false) {
     const source = resolve("./sidecar/fps-bridge/fps-bridge.exe");
-    const artifact = { ...FPS_BRIDGE_MANIFEST, tag: "bridge-1", url: source };
+    const artifact = { ...FPS_BRIDGE_MANIFEST, tag: "bridge-2", url: source };
     const path = await acquireFpsUnlocker(
       {
         ...fpsUnlockerIO,
@@ -109,14 +131,51 @@ const bridgeIO = {
       artifact
     );
     await exec(["/bin/chmod", "400", path]);
+    if (steamPatch)
+      for (const artifact of FPS_STEAM_ARTIFACTS) {
+        const staged = await acquireFpsUnlocker(
+          {
+            ...fpsUnlockerIO,
+            cacheDirectory: () => directory,
+            download: async (from, to) => {
+              await exec(["/bin/cp", "--", from, to]);
+            },
+          },
+          {
+            ...artifact,
+            url: resolve(`./sidecar/protonextras/${artifact.resource}`),
+          }
+        );
+        await exec(["/bin/chmod", "400", staged]);
+      }
     return path;
   },
-  async verify(path: string) {
+  async verify(path: string, steamPatch = false) {
     if (
       (await fpsUnlockerIO.sha256(path, FPS_BRIDGE_MANIFEST.size)) !==
       FPS_BRIDGE_MANIFEST.sha256
     )
       throw new Error("FPS bridge execution artifact changed");
+    if (steamPatch)
+      for (const artifact of FPS_STEAM_ARTIFACTS) {
+        const selected = join(dirname(path), artifact.filename);
+        try {
+          if (
+            (await fpsUnlockerIO.sha256(selected, artifact.size)) !==
+            artifact.sha256
+          )
+            throw new Error("SHA-256 mismatch");
+        } catch (cause) {
+          throw Object.assign(
+            new Error(
+              `FPS Steam execution artifact changed or unverifiable: ${selected}: ${String(
+                cause
+              )}`
+            ),
+            { cause }
+          );
+        }
+      }
   },
   start: startOwnedWineExecution,
   async remove(directory: string) {
@@ -130,6 +189,7 @@ const bridgeIO = {
         "response",
         "response.tmp",
         "fps-bridge.exe",
+        ...FPS_STEAM_ARTIFACTS.map(artifact => artifact.filename),
         ...Array.from({ length: 6 }, (_, i) => `registry-${i}`),
       ].map(name => join(directory, name)),
     ]);
@@ -161,6 +221,7 @@ export async function prepareFpsBridge(
   input: {
     wine: OwnedWineContext;
     executable: string;
+    steamPatch?: boolean;
     gameDirectory: string;
     gameDxmtConfig: string;
     log: string;
@@ -173,7 +234,7 @@ export async function prepareFpsBridge(
   const token = io.token();
   let path: string;
   try {
-    path = await io.stage(directory);
+    path = await io.stage(directory, input.steamPatch);
   } catch (error) {
     const cleanup = async () => {
       if (typeof error === "object" && error !== null) {
@@ -248,6 +309,9 @@ export async function prepareFpsBridge(
           if (
             last &&
             ((value.pid !== last.pid && last.pid !== 0) ||
+              (value.shimPid !== last.shimPid && last.shimPid !== 0) ||
+              value.shimExited < last.shimExited ||
+              value.steamReady < last.steamReady ||
               value.primaryExited < last.primaryExited ||
               value.generation < last.generation ||
               value.launched < last.launched)
@@ -265,6 +329,11 @@ export async function prepareFpsBridge(
               "workerState",
               "workerDone",
               "released",
+              "shimPid",
+              "shimExited",
+              "steamReady",
+              "steamError",
+              "steamActive",
             ].some(
               key => Reflect.get(previous, key) !== Reflect.get(value, key)
             )
@@ -307,7 +376,8 @@ export async function prepareFpsBridge(
         }
       }
       const value = await read(next);
-      if (value.active === 0xffffffff) report("Job lifetime query failed");
+      if (value.active === 0xffffffff || value.steamActive === 0xffffffff)
+        report("Job lifetime query failed");
       return value;
     });
     queue = result.catch(() => undefined);
@@ -315,7 +385,7 @@ export async function prepareFpsBridge(
   }
 
   async function boot() {
-    await io.verify(path);
+    await io.verify(path, input.steamPatch);
     execution = io.start({
       wine: input.wine,
       executable: path,
@@ -326,6 +396,7 @@ export async function prepareFpsBridge(
         winePath(input.gameDirectory),
         input.gameDxmtConfig,
         winePath(input.log),
+        ...(input.steamPatch ? [winePath(join(directory, "steam.exe"))] : []),
       ],
       environment: {},
     });
@@ -359,7 +430,12 @@ export async function prepareFpsBridge(
       initial.workerError ||
       initial.launchError ||
       initial.error ||
-      initial.released
+      initial.released ||
+      initial.shimPid ||
+      initial.shimExited ||
+      initial.steamReady ||
+      initial.steamError ||
+      initial.steamActive
     )
       throw new Error(
         "FPS bridge initial capability/lifecycle handshake failed"
@@ -400,14 +476,28 @@ export async function prepareFpsBridge(
   const game: FpsGameObserver = {
     async discover() {
       const value = await probe();
-      if (value.active === 0xffffffff)
+      if (value.active === 0xffffffff || value.steamActive === 0xffffffff)
         throw new Error("FPS game/job lifetime query failed");
+      if (
+        value.steamError ||
+        (value.shimExited && !value.primaryExited && value.launched)
+      )
+        throw new Error(
+          "FPS Steam shim failed or exited while the attributed game remains alive"
+        );
       if (!value.launched) return undefined;
       return {
         async isAlive() {
           const value = await probe();
-          if (value.active === 0xffffffff)
+          if (value.active === 0xffffffff || value.steamActive === 0xffffffff)
             throw new Error("FPS game/job lifetime query failed");
+          if (
+            value.steamError ||
+            (value.shimExited && !value.primaryExited && value.launched)
+          )
+            throw new Error(
+              "FPS Steam shim failed or exited while the attributed game remains alive"
+            );
           return value.primaryExited === 0;
         },
       };
@@ -421,11 +511,18 @@ export async function prepareFpsBridge(
     boot,
     probe,
     async launch() {
+      await io.verify(path, input.steamPatch);
       launchIssued = true;
       const value = await request("launch");
-      if (value.error || !value.launched)
+      if (
+        value.error ||
+        !value.launched ||
+        (input.steamPatch && !value.steamReady)
+      )
         throw new Error(
-          `FPS game CreateProcess not acknowledged: ${value.error}`
+          input.steamPatch
+            ? `FPS Steam rendezvous/game creation not acknowledged: ${value.error}; Steam error: ${value.steamError}`
+            : `FPS game CreateProcess not acknowledged: ${value.error}`
         );
       return value;
     },
@@ -482,9 +579,31 @@ export async function prepareFpsBridge(
       };
     },
     async waitForGameExit() {
+      let steamPendingSince: number | undefined;
       for (;;) {
         const value = await probe();
-        if (value.active === 0 && (!value.pid || value.primaryExited)) return;
+        if (value.launched && value.steamError)
+          report(
+            `Steam shim/rendezvous failed: ${value.steamError}; retaining game/job observation`
+          );
+        if (
+          value.active === 0 &&
+          value.steamActive === 0 &&
+          (!value.pid || value.primaryExited) &&
+          (!value.shimPid || value.shimExited)
+        )
+          return;
+        if (value.shimExited && !value.primaryExited && value.launched)
+          report(
+            "Steam shim exited while the attributed game remains alive; continuing owned observation"
+          );
+        if (value.primaryExited && !value.active && value.steamActive) {
+          steamPendingSince ??= Date.now();
+          if (Date.now() - steamPendingSince >= 30000)
+            report(
+              "Game ended; Steam shim/relay job completion remains pending. Close and new launch stay blocked"
+            );
+        }
         if (value.primaryExited && value.active)
           report(
             "Game entry process exited; observing its remaining job descendants. FPS will not retarget them."
@@ -496,7 +615,14 @@ export async function prepareFpsBridge(
       if (!execution) return;
       if (!sealed) {
         const value = await request("release");
-        if (value.error || !value.released || value.active || !value.workerDone)
+        if (
+          value.error ||
+          !value.released ||
+          value.active ||
+          value.steamActive ||
+          (value.shimPid && !value.shimExited) ||
+          !value.workerDone
+        )
           throw new Error(
             `FPS bridge release not confirmed; retained ${directory}`
           );
@@ -530,6 +656,9 @@ export async function prepareFpsBridge(
         environment: {},
       });
       registryExecutions.add(running);
+      input.event?.(
+        `FPS request ${token}: registry ${operation} issued; snapshots ${directory}`
+      );
       const result = await running.completion;
       if (
         !result.confirmed ||
@@ -545,6 +674,9 @@ export async function prepareFpsBridge(
           ),
           { result }
         );
+      input.event?.(
+        `FPS request ${token}: registry ${operation} and owned execution confirmed`
+      );
     },
     async discardBeforeLaunch() {
       if (launchIssued)

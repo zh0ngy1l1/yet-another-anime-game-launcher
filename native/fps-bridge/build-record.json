@@ -1,8 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "filename": "fps-bridge.exe",
-  "size": 28160,
-  "sha256": "28507fe29697ec4cde50c7bc9cb88a2a2d155cd9589c80bf65c81f248f090977",
+  "size": 34304,
+  "sha256": "3dac6250497a7265e0a62126125d3e850e67e7b7dabb9f0d34264fb5c08ddd8f",
   "compiler": "x86_64-w64-mingw32-gcc (GCC) 16.2.0",
   "command": [
     "x86_64-w64-mingw32-gcc",
@@ -21,8 +21,28 @@
     "-o",
     ".tmp/fps-bridge.exe"
   ],
-  "sourceSha256": "01bb3043a4c3521b42a5ed1941a4e853c75b9f69a30961c63ff8063dce35988e",
+  "sourceSha256": "97d9e40dc45af772f66496fe5595e214063ea4473e60543f36d901b879ebd0f7",
   "registrySourceSha256": "7f212da010cbfdddb9eb1b6a0c730f4ef225dffa59a06565cb85ecb997132a46",
+  "steamSourceSha256": "22708e8631c1be2451739c58a60c019ce4de03a385078d5ee5de3c9183e58f04",
+  "steamArtifacts": [
+    {
+      "filename": "steam.exe",
+      "resource": "steam64.exe",
+      "tag": "yaagl-steam-347fbd2",
+      "size": 111304,
+      "sha256": "0424339444c54bf1f9fdbadf12e4e2c90ceef41d987fe573b93f5f2ebfd8a657"
+    },
+    {
+      "filename": "lsteamclient.dll",
+      "resource": "lsteamclient64.dll",
+      "tag": "yaagl-steam-347fbd2",
+      "size": 5560872,
+      "sha256": "af50ed0d952ef98d99d4d3ff67b4836b545c9403894430fca31969f9f630637b"
+    }
+  ],
+  "steamUpstreamRepository": "ValveSoftware/Proton",
+  "steamReferenceRevision": "8c0fbeb0503d2fc9ba7736b37e383279e45062bc",
+  "steamBinaryCommit": "347fbd2cc89f30a5780a42d6889076b731edefed",
   "upstreamRepository": "rishabhroyy/genshin-fps-unlock-universal",
   "upstreamSource": "Fork/unlockfps/FpsPatterns.cs",
   "upstreamRevision": "56b9c64381ef9fd59e916dc9bf547d3210ab5db1"

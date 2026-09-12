@@ -74,7 +74,13 @@ export function launchFpsGame(
   }
   async function waitWine(phase: (text: string) => void) {
     phase("Waiting for this request's wineserver -w; close remains blocked");
+    void log(
+      `FPS request ${bridge?.token}: request-owned Wine wait started`
+    ).catch(() => undefined);
     await wine.waitUntilServerOff();
+    void log(
+      `FPS request ${bridge?.token}: request-owned Wine wait completed`
+    ).catch(() => undefined);
   }
   return createLaunchTransaction(
     {
@@ -89,6 +95,7 @@ export function launchFpsGame(
           bridge = await dependencies.bridge({
             wine: context,
             executable: admitted.executable,
+            steamPatch: admitted.steamPatch,
             gameDirectory: admitted.gameDirectory,
             gameDxmtConfig: admitted.plan.gameDxmtConfig,
             log: resolve(`./logs/game_${Date.now()}.log`),
@@ -105,7 +112,13 @@ export function launchFpsGame(
         const launchJournal = dependencies.journal(bridge.directory);
         journal = launchJournal;
         await log(
-          `FPS request ${bridge.token}: artifact=${bridge.path}; loader=${context.loader}; prefix=${context.prefix}; target=${companion.fpsArgument}; game DXMT_CONFIG=${admitted.plan.gameDxmtConfig}; companion DXMT_CONFIG=${companion.dxmtConfig}`
+          `FPS request ${bridge.token}: artifact=${bridge.path}; route=${
+            admitted.steamPatch ? "steam-patch" : "direct"
+          }; loader=${context.loader}; prefix=${context.prefix}; target=${
+            companion.fpsArgument
+          }; game DXMT_CONFIG=${
+            admitted.plan.gameDxmtConfig
+          }; companion DXMT_CONFIG=${companion.dxmtConfig}`
         );
         check();
         for await (const command of input.resources(true)) {
@@ -254,6 +267,9 @@ export function launchFpsGame(
           journalDisposed = true;
         }
         await bridge.dispose();
+        void log(
+          `FPS request ${bridge.token}: registry/file restoration and private resource cleanup completed`
+        ).catch(() => undefined);
         return [];
       },
     },

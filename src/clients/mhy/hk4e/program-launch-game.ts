@@ -459,10 +459,11 @@ export async function* launchGameProgram(
           }
           await capture(resolve("config.bat"));
           const protection = atob("SG9Zb0tQcm90ZWN0LnN5cw==");
-          await capture(
-            join(wine.prefix, "drive_c/windows/system32", protection)
-          );
-          // Preparation retains the upstream protection-file copy. The bridge
+          if (!admitted.steamPatch)
+            await capture(
+              join(wine.prefix, "drive_c/windows/system32", protection)
+            );
+          // Preparation retains the upstream route's protection-file copy. The bridge
           // creates the selected game itself, retaining its HANDLE before resume.
           await writeFile(
             resolve("config.bat"),
@@ -478,15 +479,17 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
             capture
           ))
             progress(command);
-          await wine.exec(
-            "cmd",
-            ["/c", wine.toWinePath(resolve("config.bat"))],
-            {},
-            "/dev/null"
-          );
+          // The upstream Steam route writes but does not execute config.bat.
+          if (!admitted.steamPatch)
+            await wine.exec(
+              "cmd",
+              ["/c", wine.toWinePath(resolve("config.bat"))],
+              {},
+              "/dev/null"
+            );
           await wine.waitUntilServerOff();
           await log(
-            `Direct FPS launch selected ${gameExecutable}; game creation belongs to the request bridge`
+            `FPS launch selected ${gameExecutable}; Steam Patch=${admitted.steamPatch}; game creation belongs to the request bridge`
           );
         },
       },

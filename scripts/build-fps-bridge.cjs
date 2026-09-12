@@ -5,6 +5,17 @@ const crypto = require("crypto");
 const path = require("path");
 process.chdir(path.resolve(__dirname, ".."));
 const cc = process.env.FPS_BRIDGE_CC || "x86_64-w64-mingw32-gcc";
+const steamArtifacts = require("../native/fps-bridge/steam-artifacts.json");
+for (const artifact of steamArtifacts) {
+  const bytes = fs.readFileSync(`sidecar/protonextras/${artifact.resource}`);
+  if (
+    bytes.length !== artifact.size ||
+    crypto.createHash("sha256").update(bytes).digest("hex") !== artifact.sha256
+  )
+    throw Error(
+      `Signed Steam resource differs from the inspected artifact: ${artifact.resource}`
+    );
+}
 const args = [
   "-std=c11",
   "-O2",
@@ -26,7 +37,7 @@ cp.execFileSync(cc, args, { stdio: "inherit" });
 const bytes = fs.readFileSync(".tmp/fps-bridge.exe");
 const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
 const manifest = {
-  version: 1,
+  version: 2,
   filename: "fps-bridge.exe",
   size: bytes.length,
   sha256,
@@ -39,6 +50,9 @@ if (process.argv.includes("--record")) {
       JSON.stringify(manifest, null, 2)
         .replace(/"([A-Za-z0-9_]+)":/g, "$1:")
         .replace(/\n}/, ",\n}") +
+      ");\n" +
+      "export const FPS_STEAM_ARTIFACTS = Object.freeze(" +
+      JSON.stringify(steamArtifacts, null, 2) +
       ");\n"
   );
   fs.writeFileSync(
@@ -58,6 +72,14 @@ if (process.argv.includes("--record")) {
           .createHash("sha256")
           .update(fs.readFileSync("native/fps-bridge/registry.c"))
           .digest("hex"),
+        steamSourceSha256: crypto
+          .createHash("sha256")
+          .update(fs.readFileSync("native/fps-bridge/steam.c"))
+          .digest("hex"),
+        steamArtifacts,
+        steamUpstreamRepository: "ValveSoftware/Proton",
+        steamReferenceRevision: "8c0fbeb0503d2fc9ba7736b37e383279e45062bc",
+        steamBinaryCommit: "347fbd2cc89f30a5780a42d6889076b731edefed",
         upstreamRepository: "rishabhroyy/genshin-fps-unlock-universal",
         upstreamSource: "Fork/unlockfps/FpsPatterns.cs",
         upstreamRevision: "56b9c64381ef9fd59e916dc9bf547d3210ab5db1",
@@ -72,11 +94,18 @@ if (process.argv.includes("--record")) {
     throw Error(
       "Bridge build differs from recorded artifact. Review toolchain/source; use --record only for an intentional source change."
     );
+  for (const artifact of steamArtifacts)
+    if (!expected.includes(artifact.sha256))
+      throw Error("Steam manifest differs from recorded resources");
 }
 fs.mkdirSync("sidecar/fps-bridge", { recursive: true });
 fs.copyFileSync(".tmp/fps-bridge.exe", "sidecar/fps-bridge/fps-bridge.exe");
 fs.copyFileSync(
   "native/fps-bridge/LICENSE.upstream",
   "sidecar/fps-bridge/LICENSE.upstream"
+);
+fs.copyFileSync(
+  "native/fps-bridge/LICENSE.steam",
+  "sidecar/fps-bridge/LICENSE.steam"
 );
 console.log(JSON.stringify(manifest));

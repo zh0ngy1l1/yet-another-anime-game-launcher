@@ -11,6 +11,9 @@ process.chdir(path.resolve(__dirname, ".."));
 // replaced; this is OS/Wine integration evidence, never rendered UI evidence.
 const rpc = process.argv.includes("--rpc");
 const handoff = !process.argv.includes("--no-handoff");
+const steam = process.argv.includes("--steam");
+const tamperSteam = process.argv.includes("--tamper-steam");
+if (tamperSteam && !steam) throw Error("--tamper-steam requires --steam");
 if (
   !rpc &&
   /"IOConsoleLocked" = Yes/.test(
@@ -25,15 +28,6 @@ if (
 const wine = process.env.FPS_TEST_WINE;
 if (!wine || !path.isAbsolute(wine))
   throw Error("FPS_TEST_WINE must be an existing absolute loader");
-cp.execFileSync(process.env.FPS_BRIDGE_CC || "x86_64-w64-mingw32-gcc", [
-  "-std=c11",
-  "-O2",
-  "-municode",
-  "-static",
-  "native/fps-bridge/fixture.c",
-  "-o",
-  ".tmp/fps-fixture.exe",
-]);
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "yaagl-runtime-fixture-"));
 fs.cpSync(".tmp/runtime-fixture-build", path.join(root, "dist"), {
   recursive: true,
@@ -44,12 +38,25 @@ fs.copyFileSync(
   "sidecar/fps-bridge/fps-bridge.exe",
   path.join(root, "sidecar/fps-bridge/fps-bridge.exe")
 );
+if (steam) {
+  fs.mkdirSync(path.join(root, "sidecar/protonextras"));
+  for (const artifact of require("../native/fps-bridge/steam-artifacts.json"))
+    fs.copyFileSync(
+      `sidecar/protonextras/${artifact.resource}`,
+      path.join(root, "sidecar/protonextras", artifact.resource)
+    );
+}
 fs.mkdirSync(path.join(root, "prefix"));
 fs.mkdirSync(path.join(root, "game"));
-fs.copyFileSync(
-  ".tmp/fps-fixture.exe",
-  path.join(root, "game/GenshinImpact.exe")
-);
+cp.execFileSync(process.env.FPS_BRIDGE_CC || "x86_64-w64-mingw32-gcc", [
+  "-std=c11",
+  "-O2",
+  "-municode",
+  "-static",
+  "native/fps-bridge/fixture.c",
+  "-o",
+  path.join(root, "game/GenshinImpact.exe"),
+]);
 const token = crypto.randomBytes(32).toString("hex");
 fs.writeFileSync(path.join(root, "fixture-authorization"), token);
 const config = JSON.parse(fs.readFileSync("neutralino.config.json"));
@@ -60,6 +67,8 @@ config.globalVariables = {
   FPS_TEST_WINE: wine,
   FIXTURE_TOKEN: token,
   FIXTURE_HANDOFF: handoff,
+  FIXTURE_STEAM: steam,
+  FIXTURE_TAMPER_STEAM: tamperSteam,
 };
 config.modes.window.hidden = false;
 config.modes.window.title = "YAAGL harmless lifecycle fixture (no game)";
@@ -187,39 +196,47 @@ async function until(predicate, label, ms = 150000) {
       context
     );
   }
-  await until(
-    () => read("game/root-observed")?.split(" ")[1] === "61",
-    "target-bound worker"
-  );
-  assert.match(read("game/root-observed"), /d3d11.preferredMaxFrameRate=0;/);
-  assert.equal(read("original-file"), "changed");
-  assert.equal(JSON.parse(read("state.json")).held, true);
-  cp.execFileSync("osascript", [
-    "-l",
-    "JavaScript",
-    "-e",
-    `ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${child.pid}).terminate`,
-  ]);
-  await until(() => read("close-veto") === "veto", "normal quit veto");
-  fs.writeFileSync(path.join(root, "game/root-stop"), "stop");
-  if (handoff) {
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    assert.equal(JSON.parse(read("state.json")).held, true);
+  if (!tamperSteam) {
+    await until(
+      () => read("game/root-observed")?.split(" ")[1] === "61",
+      "target-bound worker"
+    );
+    assert.match(read("game/root-observed"), /d3d11.preferredMaxFrameRate=0;/);
     assert.equal(read("original-file"), "changed");
-    fs.writeFileSync(path.join(root, "game/child-stop"), "stop");
+    assert.equal(JSON.parse(read("state.json")).held, true);
+    cp.execFileSync("osascript", [
+      "-l",
+      "JavaScript",
+      "-e",
+      `ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${child.pid}).terminate`,
+    ]);
+    await until(() => read("close-veto") === "veto", "normal quit veto");
+    fs.writeFileSync(path.join(root, "game/root-stop"), "stop");
+    if (handoff) {
+      await new Promise(resolve => setTimeout(resolve, 1200));
+      assert.equal(JSON.parse(read("state.json")).held, true);
+      assert.equal(read("original-file"), "changed");
+      fs.writeFileSync(path.join(root, "game/child-stop"), "stop");
+    }
   }
   await until(() => read("result.json"), "full cleanup");
   const result = JSON.parse(read("result.json"));
-  if (handoff) assert.match(result.error, /remaining job descendants/);
+  if (tamperSteam) {
+    assert.match(result.error, /Steam execution artifact changed/);
+    assert.equal(read("game/root-startup"), undefined);
+    assert.equal(read("game/root-observed"), undefined);
+  } else if (handoff) assert.match(result.error, /remaining job descendants/);
   else assert.equal(result.error, null);
-  assert.equal(result.state.failed, handoff);
+  assert.equal(result.state.failed, handoff || tamperSteam);
   assert.equal(result.state.held, false);
   assert.equal(result.file, "original");
   fs.writeFileSync(path.join(root, "finish"), "exit");
   await until(() => child.exitCode !== null, "approved native exit");
   assert.equal(child.exitCode, 0);
   console.log(
-    "PASS actual Native IO/acquisition/hash staging, supervisor, bridge target/job/worker, controller, normal quit veto, duplicate admission, Wine waits, registry and file restoration. Evidence:",
+    tamperSteam
+      ? "PASS actual private Steam artifact replacement rejected before game/relay/worker creation; registry/file cleanup completed. Evidence:"
+      : "PASS actual Native IO/acquisition/hash staging, supervisor, bridge target/job/worker, controller, normal quit veto, duplicate admission, Wine waits, registry and file restoration. Evidence:",
     root
   );
 })().catch(async error => {

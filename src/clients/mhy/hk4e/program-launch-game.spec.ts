@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { launchGameProgram } from "./program-launch-game";
 import { launchOwnership } from "../../../launcher/launch-ownership";
 import { GLOBAL_onClose } from "../../../utils/neu";
-import { deferred } from "../../../utils/operation";
+import { deferred, operationClock } from "../../../utils/operation";
 import {
   FPS_UNLOCK_ENABLED_KEY,
   FPS_UNLOCK_TARGET_KEY,
@@ -11,6 +11,7 @@ import type { Config } from "../../../config";
 import type { Wine } from "../../../wine";
 import type { Server } from "../../../constants";
 import { prepareFpsBridge } from "./fps-bridge";
+import { boundary } from "./fps-integration-fixture";
 
 vi.mock("./fps-bridge", () => ({
   prepareFpsBridge: vi.fn(() => {
@@ -19,7 +20,9 @@ vi.mock("./fps-bridge", () => ({
 }));
 vi.mock("./launch-journal", () => ({
   createLaunchJournal: () => ({
-    capture: async () => undefined,
+    capture: async (path: string) => {
+      captured.push(path);
+    },
     restore: async () => {
       files.delete("/app/config.bat");
       return [];
@@ -28,7 +31,8 @@ vi.mock("./launch-journal", () => ({
   }),
 }));
 vi.mock("../patch", () => ({
-  async *patchProgram() {
+  async *patchProgram(...args: unknown[]) {
+    patchCalls.push(args);
     /* File effects injected at this boundary. */
   },
   async *patchRevertProgram() {
@@ -37,9 +41,13 @@ vi.mock("../patch", () => ({
 }));
 const stored = new Map<string, string>();
 const files = new Map<string, string>();
+const captured: string[] = [];
+const patchCalls: unknown[][] = [];
 beforeEach(() => {
   stored.clear();
   files.clear();
+  captured.length = 0;
+  patchCalls.length = 0;
   vi.clearAllMocks();
   vi.stubGlobal("window", {
     NL_OS: "Darwin",
@@ -61,6 +69,8 @@ beforeEach(() => {
         exitCode: 0,
         stdOut: command.startsWith("/usr/bin/mktemp")
           ? "/tmp/yaagl-launch.0123456789\n"
+          : command.includes("steamgameid")
+          ? "absent"
           : "",
         stdErr: "",
         pid: 1,
@@ -151,6 +161,72 @@ it("rejects invalid enabled settings before resource acquisition or setup", asyn
   expect(request.wine.setProps).not.toHaveBeenCalled();
   expect(prepareFpsBridge).not.toHaveBeenCalled();
 });
+it.each([false, true])(
+  "enabled Steam=%s preserves route-specific preparation through the real transaction and bridge adapter",
+  async steam => {
+    vi.useFakeTimers();
+    const clock = vi
+      .spyOn(operationClock, "now")
+      .mockImplementation(() => Date.now());
+    try {
+      stored.set(FPS_UNLOCK_ENABLED_KEY, "true");
+      stored.set(FPS_UNLOCK_TARGET_KEY, "60");
+      const request = input(),
+        native = boundary(steam);
+      request.config.steamPatch = steam;
+      Object.assign(request.wine, {
+        distributionId: "11.0-dxmt-signed-with-patches",
+        executionContext: { loader: "/wine/bin/wine", prefix: "/prefix" },
+        attributes: { renderBackend: "dxmt", winePath: "wine" },
+      });
+      vi.spyOn(Neutralino.filesystem, "getStats").mockImplementation(
+        async path =>
+          ({
+            isFile: path !== "/prefix",
+            isDirectory: path === "/prefix",
+          } as never)
+      );
+      const actual = await vi.importActual<typeof import("./fps-bridge")>(
+        "./fps-bridge"
+      );
+      vi.mocked(prepareFpsBridge).mockImplementationOnce(input =>
+        actual.prepareFpsBridge(input, native.io)
+      );
+      const running = drain(launchGameProgram(request));
+      await vi.advanceTimersByTimeAsync(11000);
+      expect(native.events).toContain("fps:60");
+      expect(patchCalls).toHaveLength(1);
+      expect(patchCalls[0][3]).toMatchObject({ steamPatch: steam });
+      expect(captured).toContain("/app/config.bat");
+      expect(
+        captured.includes("/prefix/drive_c/windows/system32/HoYoKProtect.sys")
+      ).toBe(!steam);
+      expect(files.get("/app/config.bat")).toContain(
+        'copy "Z:\\game\\HoYoKProtect.sys"'
+      );
+      if (steam) expect(request.wine.exec).not.toHaveBeenCalled();
+      else
+        expect(request.wine.exec).toHaveBeenCalledWith(
+          "cmd",
+          ["/c", "Z:\\app\\config.bat"],
+          {},
+          "/dev/null"
+        );
+      expect(request.wine.exec2).not.toHaveBeenCalled();
+      expect(launchOwnership.state().held).toBe(true);
+      native.exit();
+      native.stopped();
+      native.direct.resolve({ confirmed: true, status: 0 });
+      await vi.advanceTimersByTimeAsync(2000);
+      await running;
+      expect(files.has("/app/config.bat")).toBe(false);
+      expect(launchOwnership.state().held).toBe(false);
+    } finally {
+      clock.mockRestore();
+      vi.useRealTimers();
+    }
+  }
+);
 it("disabled command completion cannot release admission before its request-owned Wine wait", async () => {
   stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
   const request = input(),

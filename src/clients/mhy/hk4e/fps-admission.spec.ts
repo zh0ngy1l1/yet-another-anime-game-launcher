@@ -12,6 +12,70 @@ const stored = new Map<string, string>();
 const setData = vi.fn(async (key: string, value: string) => {
   stored.set(key, value);
 });
+
+it.each(["60", "61", "120"])(
+  "admits persisted Steam Patch with target %s without changing settings",
+  async target => {
+    stored.set(FPS_UNLOCK_ENABLED_KEY, "true");
+    stored.set(FPS_UNLOCK_TARGET_KEY, target);
+    const request = input();
+    request.config.steamPatch = true;
+    const environment = vi.fn(async () => false);
+    const result = await admitFpsLaunch(
+      request,
+      native,
+      undefined,
+      environment
+    );
+    expect(result?.steamPatch).toBe(true);
+    expect(result?.plan.companion.fpsArgument).toBe(Number(target));
+    expect(result?.plan.gameDxmtConfig).toBe(
+      `d3d11.preferredMaxFrameRate=${Number(target) <= 60 ? target : 0};`
+    );
+    expect(result?.wine).toBe(request.wine.executionContext);
+    expect(request.config.steamPatch).toBe(true);
+    expect(environment).toHaveBeenCalledOnce();
+    expect(setData).not.toHaveBeenCalled();
+  }
+);
+
+it.each(["inherited", "empty-explicit", "unconfirmed"])(
+  "rejects unsupported Steam environment %s before preparation",
+  async mode => {
+    stored.set(FPS_UNLOCK_ENABLED_KEY, "true");
+    stored.set(FPS_UNLOCK_TARGET_KEY, "120");
+    const request = input();
+    request.config.steamPatch = true;
+    if (mode === "empty-explicit")
+      Object.assign(request.wine.executionContext.environment, {
+        steamgameid: "",
+      });
+    await expect(
+      admitFpsLaunch(request, native, undefined, async () => {
+        if (mode === "unconfirmed")
+          throw Error("Cannot validate Steam Patch environment");
+        return true;
+      })
+    ).rejects.toThrow(
+      mode === "unconfirmed" ? "Cannot validate" : "SteamGameId"
+    );
+    expect(setData).not.toHaveBeenCalled();
+  }
+);
+
+it("disabled Steam does not inspect FPS-specific environment/capabilities", async () => {
+  stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
+  stored.set(FPS_UNLOCK_TARGET_KEY, "garbage");
+  const request = input();
+  request.config.steamPatch = true;
+  const environment = vi.fn(async () => {
+    throw Error("must not inspect");
+  });
+  expect(
+    await admitFpsLaunch(request, native, undefined, environment)
+  ).toBeUndefined();
+  expect(environment).not.toHaveBeenCalled();
+});
 const native = { os: "Darwin", version: "4.11.0-yaagl-owned1" } as const;
 function input() {
   return {
@@ -104,7 +168,6 @@ describe("persisted settings to FPS admission", () => {
     "backend",
     "distribution",
     "capability",
-    "steam",
     "network",
     "region",
     "executable",
@@ -120,7 +183,6 @@ describe("persisted settings to FPS admission", () => {
     if (field === "distribution")
       request.wine = { ...request.wine, distributionId: "unverified" };
     if (field === "capability") request.wine.attributes.winePath = undefined;
-    if (field === "steam") request.config.steamPatch = true;
     if (field === "network") request.config.blockNet = true;
     if (field === "region") request.server = "hoyoplay";
     if (field === "executable") request.gameExecutable = "another.exe";
