@@ -86,6 +86,10 @@ export const zh_CN = {
 
   SETTING_FPS_UNLOCK: "帧率限制解锁",
   SETTING_FPS_UNLOCK_DEFAULT: "不解锁",
+  SETTING_HK4E_FPS_TARGET: "目标帧率（1–360）",
+  SETTING_HK4E_FPS_TARGET_ERROR:
+    "请输入 1 至 360 之间的整数，仅使用十进制数字，不含空格。",
+  SETTING_HK4E_FPS_SAVE_ERROR: "无法保存帧率设置。请更改设置后重试。",
 
   SETTING_ADVANCED: "高级设置",
   SETTING_ADVANCED_ALERT: "在不清楚作用的情况下，请不要改动任何设置。",

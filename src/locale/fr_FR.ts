@@ -93,6 +93,11 @@ export const fr_FR: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "Déverrouiller la limite de FPS",
   SETTING_FPS_UNLOCK_DEFAULT: "Désactivée",
+  SETTING_HK4E_FPS_TARGET: "FPS cible (1–360)",
+  SETTING_HK4E_FPS_TARGET_ERROR:
+    "Saisissez un nombre entier de 1 à 360 avec uniquement des chiffres décimaux, sans espaces.",
+  SETTING_HK4E_FPS_SAVE_ERROR:
+    "Impossible d’enregistrer les paramètres de FPS. Modifiez le paramètre pour réessayer.",
 
   SETTING_ADVANCED: "Avancé",
   SETTING_ADVANCED_ALERT:

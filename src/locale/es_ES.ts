@@ -92,6 +92,11 @@ export const es_ES: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: en.SETTING_FPS_UNLOCK,
   SETTING_FPS_UNLOCK_DEFAULT: en.SETTING_FPS_UNLOCK_DEFAULT,
+  SETTING_HK4E_FPS_TARGET: "FPS objetivo (1–360)",
+  SETTING_HK4E_FPS_TARGET_ERROR:
+    "Introduce un número entero del 1 al 360 usando solo dígitos decimales, sin espacios.",
+  SETTING_HK4E_FPS_SAVE_ERROR:
+    "No se pudieron guardar los ajustes de FPS. Cambia el ajuste para volver a intentarlo.",
 
   SETTING_ADVANCED: en.SETTING_ADVANCED,
   SETTING_ADVANCED_ALERT: en.SETTING_ADVANCED_ALERT,

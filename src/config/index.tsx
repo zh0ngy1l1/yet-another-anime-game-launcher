@@ -30,7 +30,6 @@ import { createRetinaConfig } from "./retina";
 import { createLeftCmdConfig } from "./left-cmd";
 import { createWineDistroConfig } from "./wine-distribution";
 import createLocaleConfig from "./ui-locale";
-import createFPSUnlock from "./fps-unlock";
 import { exec2, getKeyOrDefault, resolve, setKey } from "../utils";
 import { createSignal, JSXElement, Show } from "solid-js";
 import createReShade from "./reshade";
@@ -68,7 +67,6 @@ export async function createConfiguration({
   });
 
   const [UL] = await createLocaleConfig({ locale, config });
-  const [FO] = await createFPSUnlock({ locale, config });
   const [RS] = await createReShade({ locale, config });
 
   const [PRE] = await createProxyEnabledConfig({ locale, config });
@@ -240,7 +238,6 @@ export async function createConfiguration({
                       <AlertIcon mr="$2_5" />
                       {locale.get("SETTING_ADVANCED_ALERT")}
                     </Alert>
-                    <FO />
                     <RS />
                   </VStack>
                 </TabPanel>

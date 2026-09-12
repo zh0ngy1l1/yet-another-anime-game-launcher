@@ -91,6 +91,11 @@ export const de_DE: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "FPS-Limit aufheben",
   SETTING_FPS_UNLOCK_DEFAULT: "Deaktiviert",
+  SETTING_HK4E_FPS_TARGET: "Ziel-FPS (1–360)",
+  SETTING_HK4E_FPS_TARGET_ERROR:
+    "Gib eine ganze Zahl von 1 bis 360 ein, nur mit Dezimalziffern und ohne Leerzeichen.",
+  SETTING_HK4E_FPS_SAVE_ERROR:
+    "FPS-Einstellungen konnten nicht gespeichert werden. Ändere die Einstellung, um es erneut zu versuchen.",
 
   SETTING_ADVANCED: "Erweitert",
   SETTING_ADVANCED_ALERT:

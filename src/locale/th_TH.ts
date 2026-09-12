@@ -89,6 +89,11 @@ export const th_TH: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "ปลดล็อกจำกัด FPS",
   SETTING_FPS_UNLOCK_DEFAULT: "ปิดใช้งาน",
+  SETTING_HK4E_FPS_TARGET: "FPS เป้าหมาย (1–360)",
+  SETTING_HK4E_FPS_TARGET_ERROR:
+    "ป้อนจำนวนเต็มตั้งแต่ 1 ถึง 360 โดยใช้เฉพาะตัวเลขฐานสิบและไม่มีช่องว่าง",
+  SETTING_HK4E_FPS_SAVE_ERROR:
+    "บันทึกการตั้งค่า FPS ไม่สำเร็จ โปรดเปลี่ยนการตั้งค่าเพื่อลองอีกครั้ง",
 
   SETTING_ADVANCED: "ขั้นสูง",
   SETTING_ADVANCED_ALERT:

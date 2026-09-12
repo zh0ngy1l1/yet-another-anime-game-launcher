@@ -90,6 +90,11 @@ export const ko_KR: typeof zh_CN = {
 
   SETTING_FPS_UNLOCK: "FPS 제한 해제",
   SETTING_FPS_UNLOCK_DEFAULT: "비활성화",
+  SETTING_HK4E_FPS_TARGET: "목표 FPS (1–360)",
+  SETTING_HK4E_FPS_TARGET_ERROR:
+    "공백 없이 십진수 숫자만 사용하여 1부터 360까지의 정수를 입력하세요.",
+  SETTING_HK4E_FPS_SAVE_ERROR:
+    "FPS 설정을 저장하지 못했습니다. 설정을 변경하여 다시 시도하세요.",
 
   SETTING_ADVANCED: "고급",
   SETTING_ADVANCED_ALERT:

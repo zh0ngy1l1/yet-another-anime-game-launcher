@@ -46,6 +46,7 @@ import createBlockNet from "./config/block-net";
 import createResolution from "./config/resolution";
 import createTimeoutFix from "./config/timeout-fix";
 import { createEnableHDRConfig } from "./config/enable-hdr";
+import { createFpsUnlockConfig } from "./config/fps-unlock";
 import { getGameVersion } from "../unity";
 import {
   VoicePackNames,
@@ -303,6 +304,7 @@ export async function createHK4EChannelClient({
       const [HDR] = await createEnableHDRConfig({ locale, config });
       const [RES] = await createResolution({ locale, config });
       const [TF] = await createTimeoutFix({ locale, config });
+      const [FPS] = await createFpsUnlockConfig({ locale, config });
 
       return function () {
         return [
@@ -315,6 +317,7 @@ export async function createHK4EChannelClient({
           <BN />,
           <RES />,
           <TF />,
+          <FPS />,
         ];
       };
     },
