@@ -17,6 +17,7 @@
     "build-hk4eos": "YAAGL_CHANNEL_CLIENT=hk4eos vite build",
     "build-bh3glb": "YAAGL_CHANNEL_CLIENT=bh3glb vite build",
     "build-dev": "vite build --mode=\"development\"",
+    "test": "vitest run",
     "lint": "eslint ./src --ext .ts --ext .tsx",
     "format": "prettier -w ./src",
     "format-check": "prettier -c ./src",
