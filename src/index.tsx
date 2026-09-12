@@ -27,8 +27,17 @@ if (typeof Neutralino == "undefined") {
   if (import.meta.env.PROD) {
     document.addEventListener("contextmenu", event => event.preventDefault());
   }
-  createApp()
+  const root = document.getElementById("root") as HTMLElement;
+  root.textContent = "Starting launcher…";
+  root.setAttribute("role", "status");
+  // Hidden macOS WebViews can suspend the retry/deadline timers used during
+  // service startup. Show the window before starting asynchronous bootstrap.
+  Neutralino.window
+    .show()
+    .then(createApp)
     .then(UI => {
+      root.textContent = "";
+      root.removeAttribute("role");
       render(
         () => (
           <HopeProvider
@@ -45,9 +54,12 @@ if (typeof Neutralino == "undefined") {
             </NotificationsProvider>
           </HopeProvider>
         ),
-        document.getElementById("root") as HTMLElement
+        root
       );
-      Neutralino.window.show();
     })
-    .catch(fatal);
+    .catch(error => {
+      root.textContent = `Launcher startup failed.\n${String(error)}`;
+      root.setAttribute("role", "alert");
+      return fatal(error);
+    });
 }
