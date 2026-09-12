@@ -37,4 +37,5 @@ server_secret.ts
 /napos
 
 /sidecar/sophon_server
+/sidecar/fps-bridge
 **/__pycache__

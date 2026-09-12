@@ -1,11 +1,12 @@
 # Opt-in Wine execution for the HK4E FPS companion
 
-This API is intentionally unused by the live launcher. Existing `Wine.exec`,
-`Wine.exec2`, `utils.spawn`, termination hooks and request-owned wineserver waits
-retain their behavior. Step 7 must supply the launch-specific game observer and
-resolved Wine loader/prefix/environment, and connect the controller's outcomes to
-launch ownership. A verified executable path is a caller precondition, not a
-property proved by TypeScript's `string` type.
+Step 7 now consumes this adapter for its request-private bridge and registry
+utility. See [the bridge boundary and evidence](../../native/fps-bridge/README.md)
+and [the operator checklist](../../docs/step-7.5.md). The selected loader and prefix
+remain explicit. A verified executable path is a caller precondition, not a
+property proved by TypeScript's `string` type. The live adapter uses a local
+same-revision native build that permits concurrent foreground RPCs and normal
+macOS quit veto; this does not strengthen the Perl supervisor's child ownership.
 
 ## Native evidence and the ownership boundary
 
@@ -65,7 +66,7 @@ It is not a bounded or cancellable native request. A rejected/malformed native
 response leaves termination unconfirmed, requests cooperative stop, and retains
 the mailbox path in the outcome. This deliberately leaves diagnostic resources
 rather than asserting cleanup succeeded. A stop-write or file-removal failure is
-also reported. There is no automatic removal of retained directories.
+also reported. Step 7 exposes a retry for known mailbox removal only after confirmed direct-child completion; it cannot confirm an unknown process or signal after reaping.
 The controller forwards these paths in `retainedDirectories` for diagnosis.
 
 The controller's `start()` and `stop()` share a terminal-outcome promise.
@@ -91,7 +92,7 @@ original error.
 The game observer must bind discovery to this launch and retain the same process
 incarnation. PID reuse must mean the original game is dead, never a new game to
 adopt. Abort must release its subscriptions. Observation grants no authority to
-terminate the game. This binding belongs to Step 7.
+terminate the game. The Step 7 bridge supplies this binding using the handle returned by CreateProcessW, with job accounting for Win32 descendants.
 
 Ownership covers the direct Wine execution and its supervising request only.
 Shared wineserver processes and detached descendants are not claimed or killed.
@@ -99,7 +100,7 @@ The supplied loader must run the helper directly, not daemonize it or use
 `wine start`. Wine 11.0's upstream loader/preloader uses exec/SETEXEC, which is
 consistent with this design; that upstream source is not proof of every custom
 packaged engine. Real selected-engine/unlocker process behavior, especially any
-detached child behavior, remains a manual gate before integration. Native crashes,
+detached child behavior, remains a separate real-game manual gate. Harmless Wine fixtures now exercise the bridge, worker and descendant accounting without real game attachment. Native crashes,
 OS stalls and loss of the launcher/RPC connection cannot be promised successful
 cleanup. This mechanism reports uncertainty instead of signaling another process.
 
@@ -108,12 +109,10 @@ cleanup. This mechanism reports uncertainty instead of signaling another process
 Vitest exercises the actual TypeScript controller, command construction and
 Neutralino adapter with controlled promises, mocked native IO and fake clocks.
 It covers request association, identical native PIDs, stop/exit races, late
-results, retained resources and propagation. It does not launch Perl, Wine or
-other processes. The Perl resource is separately syntax-checked with the system
+results, retained resources and propagation. These controller/adapter tests do not launch Perl or Wine. The broader suite includes real filesystem journal tests and existing shell-command builder tests. The Perl resource is separately syntax-checked with the system
 interpreter. Run `/usr/bin/perl src/wine/owned-execution.t` for eight deterministic
 supervisor cases: the actual script runs with stubbed fork/wait/signal/clock
 operations and memory-backed output, without creating or signaling a child or
 sleeping. Its parent/reaping rules are also reviewed against matching native source
 and macOS system-call documentation. These simulations do not establish kernel or
-real Wine behavior. Step 3 UI appearance and Step 4 external provenance approval
-also remain unresolved manual gates.
+real Wine behavior. The actual settings controls were rendered in an isolated native launcher/settings fixture, with real storage and no Wine/game operations. Step 4 external provenance acceptance and real-game compatibility remain manual gates. New real OS supervisor fixtures complement these eight simulated Perl cases; neither kind of test proves a custom engine or actual game compatible.

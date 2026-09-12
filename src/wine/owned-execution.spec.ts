@@ -586,3 +586,41 @@ describe("owned Wine finalization races", () => {
     });
   });
 });
+
+describe("confirmed mailbox cleanup recovery", () => {
+  it("retries only filesystem cleanup, preserving the original public completion", async () => {
+    const h = nativeHarness();
+    const execution = startOwnedWineExecution(request, undefined, clock);
+    await tick();
+    h.execCommand.mockRejectedValueOnce(new Error("directory permission"));
+    h.launched[0].exit.resolve(nativeResult());
+    const first = await execution.completion;
+    expect(first.confirmed).toBe(true);
+    expect(first.cleanupError).toBeDefined();
+    const writes = h.writeFile.mock.calls.length;
+    if (!execution.retryCleanup)
+      throw Error("Production adapter must expose confirmed cleanup retry");
+    expect(await execution.retryCleanup()).toEqual({
+      confirmed: true,
+      status: 0,
+    });
+    expect(await execution.completion).toBe(first);
+    expect(h.launched).toHaveLength(1);
+    expect(h.writeFile).toHaveBeenCalledTimes(writes);
+  });
+  it("cannot remove an unconfirmed execution mailbox or signal after settlement", async () => {
+    const h = nativeHarness();
+    h.holdStop();
+    const execution = startOwnedWineExecution(request, undefined, clock);
+    await tick();
+    h.launched[0].exit.resolve(
+      nativeResult({ spawned: 1, confirmed: 0, status: 0, error: "wait error" })
+    );
+    const first = await execution.completion;
+    const calls = h.execCommand.mock.calls.length;
+    if (!execution.retryCleanup)
+      throw Error("Production adapter must expose confirmed cleanup retry");
+    expect(await execution.retryCleanup()).toBe(first);
+    expect(h.execCommand).toHaveBeenCalledTimes(calls);
+  });
+});

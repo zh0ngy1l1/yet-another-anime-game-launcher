@@ -38,6 +38,8 @@ export interface OwnedWineExecution {
   readonly completion: Promise<OwnedExecutionOutcome>;
   /** Cooperative request; may remain pending if native IO/wait never settles. */
   stop(): Promise<OwnedExecutionOutcome>;
+  /** Retry only mailbox removal AFTER confirmed direct-child completion. */
+  retryCleanup?(): Promise<OwnedExecutionOutcome>;
 }
 
 export const OWNED_WINE_TIMING = Object.freeze({
@@ -289,6 +291,21 @@ export function startOwnedWineExecution(
   return {
     started,
     completion,
+    async retryCleanup() {
+      const result = await completion;
+      if (!result.confirmed || !result.retainedDirectory) return result;
+      try {
+        await io.remove(result.retainedDirectory);
+        const {
+          cleanupError: _cleanup,
+          retainedDirectory: _directory,
+          ...clean
+        } = result;
+        return clean;
+      } catch (cleanupError) {
+        return { ...result, cleanupError };
+      }
+    },
     stop() {
       if (!finished) requestStop();
       return completion;

@@ -1,0 +1,72 @@
+# Direct HK4E launch boundary (Step 7)
+
+This development resource replaces the target-agnostic unlocker **only for enabled direct HK4E launches**. It is a single Windows x64 program: the process-creation/observation bridge and FPS worker live in the same executable. The worker is a thread, not another Wine process. There is no foreground-window lookup, executable-name process search, PID reopening, DLL injection, rediscovery of another target, or fallback to the old download.
+
+## Attribution, lifetime and support
+
+`fps-admission.ts` reads the persisted Step 3 settings after pending edits settle. Before acquisition or preparation, it checks the selected route, complete distribution/backend metadata, local native version, existing executable/loader/prefix, and the Step 5 runtime plan. It snapshots the explicit selected Wine context. `launch-ownership.ts` reserves the primary action synchronously, before asynchronous selection/admission. That reservation identifies a transaction; it is **not** an OS process identity.
+
+After staging, `fps-bridge.ts` gives each bridge a fresh private directory and 256-bit token. `bridge.c` creates an unnamed job without breakaway or kill-on-close flags. On the single `launch` command it calls `CreateProcessW` for the exact executable and upstream arguments, suspended. It retains the returned process handle, assigns the process to the job, and resumes its initial thread. It can terminate only that exact **never-resumed** process if assignment/resumption fails. Normal close, cancellation, discovery failure and cleanup never terminate a running game.
+
+The retained process handle is the FPS target and lifetime reference. The Win32 PID in logs is informational. A pre-existing game, another prefix, a reused number or a later foreground window cannot replace that handle. The worker reads the retained process's main module and writes its resolved FPS variable through that same handle. No process handle is reopened by PID. Invalid memory signatures fail explicitly. Multiple distinct candidate addresses are rejected.
+
+Fresh, serialized probe requests query `WaitForSingleObject(game)` and `QueryInformationJobObject`. A Win32 child created through `CreateProcess`, including `DETACHED_PROCESS`, inherits this job when breakaway is disabled. The fixture demonstrates that macOS parentage can change to PID 1 while the Wine job continues accounting for it. Root exit stops FPS application; job descendants keep restoration blocked until the job has zero active processes. A handoff to a descendant is reported as unsupported, observed to completion, and never retargeted. A handoff through a pre-existing service, native Unix fork or another prefix is outside this support boundary. Do not use an alternate launcher executable as the target.
+
+Enabled routes currently admit `hk4e_global`/`GenshinImpact.exe` and `hk4e_cn`/`YuanShen.exe`, with `11.0-dxmt-signed-with-patches` or `11.0-dxmt-signed` and DXMT capability metadata. Enabled Steam handoff and the background privileged network-blocking script are rejected before acquisition/mutation. Disabled routes preserve the original executable/Steam choice and environment, including the upstream DXMT maximum 60, and do no FPS acquisition, verification or execution. Their `wine.exec2` call uses the new optional request-bound foreground mode; other consumers retain the existing default.
+
+The job design follows [Microsoft's job inheritance contract](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects) and the inspected [Wine 11 server process implementation](https://github.com/wine-mirror/wine/blob/wine-11.0/server/process.c). These sources and the harmless fixtures do not establish current Genshin launch compatibility. The direct entry executable must remain the actual game; a real-game smoke test is a separate gate. Other launchers must not concurrently mutate/use the same game or launcher Wine files. This transaction's in-app guard is not a machine-wide file lease.
+
+## Protocol and completion
+
+The private command is exactly `token sequence operation generation argument\n`. Commands are atomically renamed. The bridge accepts only canonical framing, the same token, and the next nonzero uint32 sequence; it rejects invalid operations, ranges and generations. Native side effects are issued once. The JSON response carries protocol version, token, sequence, original PID, root/job state, worker generation/state/completion/error, launch error and release acknowledgement. The adapter rejects mismatched identities, malformed values, advanced/stale responses, changing PID and backwards lifecycle transitions. Unknown job/process state stays unknown. Transport/read failures keep the same request observed and retain ownership; no deadline fabricates exit.
+
+These are separate events:
+
+1. The foreground Wine request acknowledges exec and eventually returns a result for its own Perl supervisor. This alone says nothing about game exit, and may precede it if a loader detaches.
+2. The game handle signals; the original process has exited. The job must additionally report zero active processes before files can be restored.
+3. Companion stop sets the native thread's event. `WaitForSingleObject(worker)` proves that worker thread ended, including scanning/writing work.
+4. `release` is acknowledged only after root/job/worker completion. The bridge then exits. The foreground supervisor must separately confirm and reap its direct Wine child.
+5. A request-owned `wineserver -w` completes after bridge release/worker stop. It is a cleanup prerequisite, never game attribution. An unrelated user of the same prefix can keep it waiting.
+6. Registry restoration runs, its owned execution settles, another request-owned Wine wait completes, and the file journal restores this transaction's mutations. Only then can admission and normal close proceed.
+
+Step 6's controller remains single-use with 90-second discovery, 10-second initialization, 5-second restart backoff, and no session timeout. Its public cleanup timeout remains 10 seconds and is not process-exit evidence. The transaction awaits eventual `completion`, the bridge's handle checks, and the supervisor outcome. Late spawns remain registered. A thread scan/write error is a launch failure; ordinary worker completion follows the controller's existing restart policy, with verification before each restart.
+
+`launch-transaction.ts` runs independently of generator consumption. Generator return cancels preparation and waits for its transaction; it cannot skip cleanup with a yield from `finally`. `launch-fps-game.ts` retains registry execution handles, including failed/unconfirmed ones. `launch-journal.ts` snapshots exact file bytes/permissions/symlinks and tracks new directories. Enabled ReShade acquisition defers its game-directory configuration write into journaled setup; resource caches remain available between launches. Independent safe restoration is attempted even after another restoration error. Original error and secondary failures remain visible. Cleanup failures offer **Retry safe cleanup**; pending lifetime/termination continues observation with the request/directory in diagnostics. The guard remains held after a timeout. Retry cannot turn an unconfirmed native outcome into proof of exit.
+
+The Perl supervisor's guarantee remains limited to its unreaped direct child. It owns no detached descendant and uses neither virtual Neutralino IDs nor shared wineserver termination. The bridge supplies game/job/worker handles separately. A destroyed mailbox or broken native connection can leave lifetime unconfirmable; preserve the diagnostics and stop testing. Force quit, native crashes, power loss and external mutation are not recoverable guarantees.
+
+## Why the local native build is necessary
+
+The configured upstream native release is 3Shain Neutralino v4.11.0-1, revision `a925feb6b2a89740762e40ed673b435c1c74d466`; the configured client remains neutralino.js 3.9.0. Inspection and actual native fixtures found two capabilities unavailable through its existing frontend APIs:
+
+- Cocoa's default application-quit path exits without delivering `windowClose`, despite a JavaScript window-close veto. `exitProcessOnClose: false` protects the window path only. The stock native probe exited with no veto event on `NSRunningApplication.terminate`.
+- `server/neuserver.cpp` executes `handleMessage` inline on its sole asio thread. A foreground `os.execCommand` therefore blocks mailbox/stop RPCs. The first full fixture reached native bridge response sequence 0 but could not consume it while the foreground request was alive. A launch token or another frontend polling loop cannot make this RPC concurrent.
+
+`scripts/build-hk4e-native.py` builds that exact source locally, with three small patches: normal Cocoa quit dispatches `windowClose` and returns `NSTerminateCancel`; approved `app.exit` closes on the AppKit main thread without re-entering the veto; only `os.execCommand` requests run on individual worker threads with the original message and response ID. Other native methods retain their dispatch path. Authentication/permission checks still run in the original router. No reusable spawn IDs are introduced. Native fixture tests demonstrate two concurrent command results, live mailbox access, quit veto while pending, and approved exit 0.
+
+The supplied `.tmp/crash-report-2.txt` recorded the AppKit main-thread violation in the earlier local close probe. The dispatch fix addresses that stack; the subsequent real native fixture exited without the violation. The first report concerned the earlier probe's absent icon resource. Neither report was deleted or edited. No installed application, Neutralino installation or Wine distribution was replaced.
+
+## Source, build and artifact provenance
+
+The FPS signature/branch-resolution adaptation comes from `Fork/unlockfps/FpsPatterns.cs` at [v3.0.7 revision 56b9c64381ef9fd59e916dc9bf547d3210ab5db1](https://github.com/rishabhroyy/genshin-fps-unlock-universal/blob/56b9c64381ef9fd59e916dc9bf547d3210ab5db1/Fork/unlockfps/FpsPatterns.cs). Its MIT notice is retained in `LICENSE.upstream`. The local C implementation uses the retained handle, bounds image/section/branch reads, requires the final RIP-relative write instruction, rejects ambiguity, and has no discovery/retargeting service. Registry snapshots and the request bridge are local source. The native build uses the upstream Neutralino MIT source and its bundled libraries/licenses; the isolated source tree contains those notices.
+
+`build-record.json` records source hashes, exact compiler command, upstream revision and the built artifact:
+
+- Bridge protocol/artifact version: **1**; `fps-bridge.exe`, **28160 bytes**.
+- SHA-256: **28507fe29697ec4cde50c7bc9cb88a2a2d155cd9589c80bf65c81f248f090977**.
+- Local compiler: `x86_64-w64-mingw32-gcc (GCC) 16.2.0`; existing `/opt/homebrew/bin/x86_64-w64-mingw32-gcc`.
+- Native compiler: Apple clang 21.0.0 (`clang-2100.1.1.101`); Python 3.13.14. Native recipe/source/binary hashes are written to `bin/hk4e-neutralino-arm64.json` (or `x86_64.json`). Version: `4.11.0-yaagl-owned1`.
+
+From the repository root:
+
+```sh
+npm exec --yes --package=node@16.20.2 --package=pnpm@7.33.7 --call 'node scripts/prepare-hk4e-dev.cjs'
+```
+
+This compiles the bridge, verifies the recorded hash, copies it and its license to ignored `sidecar/fps-bridge/`, and builds the local native executable if its recipe/artifact record is stale. `start` and `start-hk4eos` invoke this preparation and include the sidecar in their development directories. Existing MinGW/Xcode/Python tooling sufficed; no dependency or lockfile change was needed. Native source download is SHA-256 checked before extraction; no canonical repository fetch occurs. Use `node scripts/build-fps-bridge.cjs --record` only for an intentional, reviewed bridge source/toolchain change; it updates the manifest and build record together.
+
+A repeated local bridge build matched the recorded bytes. This is a same-toolchain check, **not** a claim of reproducibility across hosts or of reproducible provenance for the old third-party release. The old Step 4 manifest (v3.0.7, 39661090 bytes, SHA-256 `8543f45a4edced854ab8c5466ce2dc2e511fb4f89361bc4dfb474b68d998cc17`) and its warning remain intact. Its pinned hash identifies bytes, not a source-to-binary proof; it is not the new artifact's identity and is not used by enabled Step 7.
+
+Each enabled launch copies the local resource into a fresh mode-700 `/tmp/yaagl-fps.<nonce>` directory using the existing acquisition/verification implementation and the new manifest. The staged regular file is size/SHA-256 checked, atomically promoted, checked again and made mode 400. That exact private path is checked before bridge execution, registry execution and each worker start/restart. Execution never returns to a mutable shared cache path. A same-user/administrator attacker can still replace files between verification and Wine loading or alter the running process. The implementation does not claim protection against that privilege level.
+
+No real game or production unlocker/game attachment was executed during implementation. Only locally compiled harmless fixtures were run through the existing Wine 11.0 distribution, in disposable prefixes. The combined production fixture can run the same transaction/client bundle through native RPC with `--rpc` when WebKit timers are suspended; this replaces only the fixture's text display and is not UI rendering evidence. See [the verification record](../../docs/step7-verification.md) and [exact Step 7.5 commands](../../docs/step-7.5.md). Real-game compatibility, actual frame rates and provenance acceptance remain Step 7.5 gates; packaged-app verification remains after Step 8.

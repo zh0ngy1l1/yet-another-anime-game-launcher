@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "filename": "fps-bridge.exe",
+  "size": 28160,
+  "sha256": "28507fe29697ec4cde50c7bc9cb88a2a2d155cd9589c80bf65c81f248f090977",
+  "compiler": "x86_64-w64-mingw32-gcc (GCC) 16.2.0",
+  "command": [
+    "x86_64-w64-mingw32-gcc",
+    "-std=c11",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-municode",
+    "-static",
+    "-s",
+    "-Wl,--no-insert-timestamp",
+    "native/fps-bridge/bridge.c",
+    "-lpsapi",
+    "-ladvapi32",
+    "-o",
+    ".tmp/fps-bridge.exe"
+  ],
+  "sourceSha256": "01bb3043a4c3521b42a5ed1941a4e853c75b9f69a30961c63ff8063dce35988e",
+  "registrySourceSha256": "7f212da010cbfdddb9eb1b6a0c730f4ef225dffa59a06565cb85ecb997132a46",
+  "upstreamRepository": "rishabhroyy/genshin-fps-unlock-universal",
+  "upstreamSource": "Fork/unlockfps/FpsPatterns.cs",
+  "upstreamRevision": "56b9c64381ef9fd59e916dc9bf547d3210ab5db1"
+}

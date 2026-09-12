@@ -2,8 +2,18 @@ import { join } from "path-browserify";
 import { FPS_UNLOCKER_MANIFEST as manifest } from "./fps-unlocker-manifest";
 import { fpsUnlockerIO } from "./fps-unlocker-io";
 
-/** Materialize verified bytes only. Intentionally unused by launch code. */
-export async function acquireFpsUnlocker(io = fpsUnlockerIO): Promise<string> {
+/** Materialize verified bytes; launch staging also supplies its local manifest. */
+export async function acquireFpsUnlocker(
+  io = fpsUnlockerIO,
+  artifact: {
+    readonly tag: string;
+    readonly filename: string;
+    readonly url: string;
+    readonly size: number;
+    readonly sha256: string;
+  } = manifest
+): Promise<string> {
+  const manifest = artifact;
   const directory = io.cacheDirectory(manifest.tag, manifest.sha256);
   const finalPath = join(directory, manifest.filename);
   let temporary: string | undefined;
@@ -65,7 +75,12 @@ export async function acquireFpsUnlocker(io = fpsUnlockerIO): Promise<string> {
       try {
         await io.cleanup(temporary);
       } catch (cleanupError) {
-        Object.assign(failure, { cleanupError });
+        const retainedTemporary = temporary;
+        Object.assign(failure, {
+          cleanupError,
+          retainedTemporary,
+          retryCleanup: () => io.cleanup(retainedTemporary),
+        });
         try {
           await io.warn(
             `FPS unlocker cleanup failed for ${temporary}: ${String(
