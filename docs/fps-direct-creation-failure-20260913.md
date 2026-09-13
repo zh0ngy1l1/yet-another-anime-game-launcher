@@ -16,13 +16,19 @@ Steam launch otherwise gives a console bridge its own Wine console and removes
 its diagnostics from the Unix Wine log. Logging failures remain observable and
 prevent further worker writes.
 
-A real enabled-60 GUI candidate reached the start screen and displayed 60 FPS
-with generation 1 applying across a 30-second observation. Normal game exit was
-zero. That run exposed a separate cleanup cycle: a late Wine desktop process
-remained in the game job. The guard retained ownership correctly; this run is
-**not an automatic-cleanup pass**, and target 120 has not advanced past that
-failure. The desktop initialization correction and its regression are recorded
-below as they are validated.
+The final fix is commit `648b4d227101d11a30e71888c3bf541c7d830c36`. After the
+desktop was unlocked, autonomous enabled-60 and enabled-120 runs both reached
+rendering with generation 1 applying, successful writes/readbacks, normal game
+exit 0 and automatic cleanup. The 120 run entered the world for a recorded
+60-second observation. Independent comparison matched all 25 journaled file
+states and both captured registry values after each run. These runs use the
+production launch transaction and matching native RPC runtime with the existing
+development profile; the complete rendered launcher UI and separate packaged
+profile still need their manual checkpoints.
+
+An earlier GUI candidate exposed a desktop cleanup cycle and required a
+documented recovery. That result remains a recovered failure. The final fix
+prepares the desktop before game creation; neither final run needed recovery.
 
 The original selected Wine still has the historical post-write protection
 hazard. One captured successful 60 write actually reached its temporary
@@ -32,11 +38,13 @@ replaced by this implementation.
 
 Only the root investigator coordinates the operator-authorized autonomous game
 runs. Fixtures use isolated prefixes and locally compiled harmless executables.
-Packaged gameplay, above-60 gameplay and enabled 61 are not accepted results.
+Packaged gameplay and enabled 61 remain unrun. The final autonomous gameplay
+measurements and their limits are recorded below.
 
 ## Preserved current evidence
 
-The tested candidate is `1daea26a66afa01633df1ed7adb9328cf7977578`, with protocol-3
+The operator-reported failing candidate was
+`1daea26a66afa01633df1ed7adb9328cf7977578`, with protocol-3
 bridge SHA-256
 `12db0203a736f56b51c424c3ad26d2efbbdae4b5b870b8f62df639b024e182ba`
 (36,864 bytes). Selected development Wine retains the original `ntdll.so`
@@ -135,11 +143,11 @@ production ownership/restoration code. Their launcher logs are in the external
 run directories; game logs remain in `yaaglwdos/logs`. This exercises the actual
 transaction but does not establish a rendered-launcher UI pass.
 
-| Run under `autonomous/` | Result | Cleanup |
-| --- | --- | --- |
-| `diagnostic-enabled60-1` | Unchanged bridge-first path; PID 208 exits `c0000005`, generation 0 | Completed 21:54:15.489; independently restored 25 file states and 2 registry values |
-| `outer-steam-enabled60-1` | Canonical outer Steam PID 32; game PID 288; generation 1 writes -1 to 60, then reads 60; rendering reached | Ordinary game close; exit 0; completed 22:06:36.368; independently restored 25 file states and 2 registry values |
-| `gui-enabled60-1` | Console-free bridge; game PID 216; worker generation 1 writes -1 to 60, reads 60; start screen and 60 FPS observed for 30 seconds | Game exit 0 at 22:35:41.163; worker done and shim exited; one descendant retained, so automatic restoration correctly blocked |
+| Run under `autonomous/`   | Result                                                                                                                            | Cleanup                                                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `diagnostic-enabled60-1`  | Unchanged bridge-first path; PID 208 exits `c0000005`, generation 0                                                               | Completed 21:54:15.489; independently restored 25 file states and 2 registry values                                           |
+| `outer-steam-enabled60-1` | Canonical outer Steam PID 32; game PID 288; generation 1 writes -1 to 60, then reads 60; rendering reached                        | Ordinary game close; exit 0; completed 22:06:36.368; independently restored 25 file states and 2 registry values              |
+| `gui-enabled60-1`         | Console-free bridge; game PID 216; worker generation 1 writes -1 to 60, reads 60; start screen and 60 FPS observed for 30 seconds | Game exit 0 at 22:35:41.163; worker done and shim exited; one descendant retained, so automatic restoration correctly blocked |
 
 The first run's `game_1789336431740.log.wine.log` is 10,246,382 bytes, SHA-256
 `a313a79918095d89087af6de19ab9ae484c93851ed5ccc98d5a1e1edbe08b4cc`.
@@ -311,10 +319,107 @@ case finished at 22:59:01 UTC; all fixture Wine/native processes were confirmed
 absent at 22:59:36. `native-rpc-final/README.md` and `FINAL-MANIFEST.json` preserve
 the full results and preliminary fixture failures.
 
-The final candidate's enabled-60 real-game preflight was then rejected because
-macOS reported a locked console again. This happened before Wine, native owner or
-game creation. It is **not a game attempt or an enabled-60 pass**. The operator
-was asked to unlock again while commit and packaging work continued. Unless a
-later result is appended below, the exact next game checkpoint remains final
-candidate enabled 60 with automatic cleanup, followed only on success by 120 in
-the world. No final-candidate above-60 gameplay or packaged-game pass is claimed.
+An initial final-candidate preflight rejected a locked macOS console before
+Wine, native owner or game creation. That rejection was not a game attempt.
+After the operator confirmed the desktop was unlocked, the two final runs below
+completed. The earlier lock rejection remains preserved in the evidence.
+
+## Final autonomous validation after unlocking the desktop
+
+The source was clean at fix commit
+`648b4d227101d11a30e71888c3bf541c7d830c36` for both runs. The harness compiled the
+production `launchGameProgram` transaction, used the matching native RPC runtime,
+and selected the existing development profile. No updater was instantiated and
+no Wine/game installation or security metadata changed. Ordinary game-window
+close requests followed the observations; no desktop recovery, forced process
+termination or manual protocol command was needed. Steam Patch stayed on and
+Launch Fix stayed off. Only the target changed from 60 to 120 between stages;
+the saved target was restored to 60 after final cleanup.
+
+Run directories below are under the preserved evidence root's `autonomous/`:
+
+| Result                                                                     | Enabled 60                                                         | Enabled 120                                                        |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Directory                                                                  | `desktop-enabled60-648b-1`                                         | `desktop-enabled120-648b-1`                                        |
+| Log base                                                                   | `game_1789341823009.log`                                           | `game_1789341989262.log`                                           |
+| Request                                                                    | `c705f8ef0283f03c1bd9bc07c98ca2af2bb3d57017b74e0123508c068da9d670` | `bde652fe11973fec2b80226f5f50f8a30e6856f486e07e78e3ec69ee41bbaead` |
+| Canonical outer Steam / bridge / desktop / inner Steam / game Windows PIDs | 32 / 200 / 208 / 272 / 280                                         | 32 / 200 / 208 / 272 / 280                                         |
+| Desktop prepared UTC                                                       | 23:23:49.727                                                       | 23:26:36.079                                                       |
+| Actual game adopted UTC                                                    | 23:23:49.917                                                       | 23:26:36.271                                                       |
+| Worker generation 1 starts UTC                                             | 23:24:00.959                                                       | 23:26:47.167                                                       |
+| Worker applying UTC                                                        | 23:24:02.267                                                       | 23:26:47.707                                                       |
+| Successful four-byte writes / recorded equal readbacks                     | 1 / 1                                                              | 5 / 3                                                              |
+| Game DXMT maximum                                                          | 60                                                                 | 0                                                                  |
+| Normal retained game exit 0 UTC                                            | 23:25:06.876                                                       | 23:30:44.570                                                       |
+| Release acknowledgement UTC                                                | 23:25:07.422                                                       | 23:30:44.982                                                       |
+| Automatic restoration complete UTC                                         | 23:25:16.411                                                       | 23:30:53.663                                                       |
+| Independent restoration comparison                                         | 25/25 file states; 2/2 registry values                             | 25/25 file states; 2/2 registry values                             |
+
+The repeated numeric PIDs belong to separate fresh Wine sessions and distinct
+creation times/tokens. Both workers resolved the current game signature to
+`0x1452b4244`, main-image RVA `0x52b4244`, and recorded allocation protection
+`0x80` versus current `0x8`. The 120 worker rewrote observed values of 60 after
+its initial successful write from -1; the logs do not identify the component
+that reset the value. Each write ended with `ok=1 written=4 error=0`. All captured
+launcher status error fields remained zero. Worker completion, both jobs empty,
+shim exit, release, foreground completion, both Wine waits and registry/file
+restoration are separately acknowledged.
+
+The per-run `verified-observation/samples.json` pairs each screenshot with its
+request status. The 60 observation spans 30.799 seconds with seven samples. Its first three
+frames show the cloud/start-screen approach (35.82, 26.62 and 16.40 FPS); three
+later doorway frames show 59.75 FPS, and one frame is white with no readable
+HUD. That blank frame remains unexplained. This establishes neither in-world
+60 FPS nor an uninterrupted 30-second stable login observation. Startup, worker
+and automatic cleanup are separately confirmed; the manual 60 stability gate
+remains necessary.
+
+All thirteen 120 screenshots show the same stationary Mondstadt world scene
+across 61.987 seconds, with sampled HUD minimum/median/maximum
+**103.99 / 105.25 / 107.53 FPS**. The accompanying 60.008-second recording,
+`world-60-seconds.mov`, supplies 61 one-second samples at actual video times
+0 through 59.993 seconds: **91.72 / 104.64 / 106.78 FPS**. Every sampled value is
+above 60; all paired launcher statuses show generation 1 applying with zero
+errors. This supports sustained above-60 gameplay over the recorded interval.
+These are sampled HUD values, not a per-frame minimum or a claim of maintaining
+120 FPS. Loading and login readings are excluded. Numerical OCR results, exact
+sample times, media hashes and visual cross-checks are under
+`autonomous/fps-metrics` (Vision confidence 1 for all 120 samples).
+
+Full final captures are the sibling `-final-native` and `-final-game`
+directories; each run also has a `-live-native` capture and retained
+`request-snapshots` containing response changes, journal preimages and registry
+snapshots. The harness's native log is in its run directory; the older
+`yaaglwdos/neutralinojs.log` is preserved but must not be mistaken for that new
+launcher log. Full game Wine/bridge/Steam outputs remain in `yaaglwdos/logs` and
+are copied into final evidence. The absent ordinary GUI game log and empty Steam
+log do not replace the durable bridge and Wine records. Missing sources and old
+crash-report timestamps remain explicit in collector manifests.
+
+Post-exit full scans preserved these Wine traces:
+
+- 60: 1,307,741,717 bytes, SHA-256
+  `ef718b596a0aaf17ca785c022146cd23c5ac0b47269116a46d5929f0aa253c1b`.
+- 120: 4,233,756,258 bytes, SHA-256
+  `4d7ccf46aa8a8e89d0c633e52602c65c096c7a9fa5d51939a666a38861b57696`.
+
+Neither complete trace contains the earlier fatal dispatch, `initDriver`,
+`WDFLDR` or `HoYoProtect` markers. This supports correction of the enabled
+pre-worker failure, not a claim that Wine emitted no errors. In particular,
+the 120 trace ends with a nested signal-stack exception on thread `065c` at
+approximately 23:30:43.690 UTC, before main-game exit 0. The exact original Wine
+binary calls `abort_thread(1)` for that diagnostic; it exits the thread or aborts
+its process if that is the last thread. The owning PID, host module mapping for
+`0x7ff809e0f3a0`, exception code, accessed address and full stack were not captured.
+The last FPS write was roughly 86 seconds earlier. Attribution to the game,
+a browser or the historical protection hazard would be speculative. This
+shutdown-thread failure remains unresolved despite confirmed main-game exit and
+restoration. See each run's `analysis/FINDINGS.md`, `timeline.json` and full-trace
+audit for the primary records.
+
+These two runs establish enabled startup, an active owned worker and automatic
+restoration on this development setup. They do not establish indefinite runtime
+reliability, eliminate the original Wine protection race, validate enabled 61,
+or test the separate packaged profile. The next manual checkpoint repeats 60
+then 120 through the rendered development launcher UI, with the same evidence
+and cleanup gates. No additional disabled control is presently required.

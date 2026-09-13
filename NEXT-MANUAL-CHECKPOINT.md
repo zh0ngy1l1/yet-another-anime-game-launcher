@@ -1,4 +1,4 @@
-# Manual checkpoint: Steam bootstrap and desktop lifetime candidate
+# Manual checkpoint: validated Steam bootstrap and desktop cleanup
 
 Use the **development launcher with the existing `yaaglwdos` profile** below.
 This candidate keeps genuine canonical Steam as Wine's initial process, validates
@@ -8,14 +8,28 @@ now flushed to **`.bridge.log`**, separately from `.wine.log`.
 
 The investigation and autonomous results are in
 [docs/fps-direct-creation-failure-20260913.md](docs/fps-direct-creation-failure-20260913.md).
-The intermediate candidate reached the start screen with an active worker; its
-cleanup needed a documented desktop recovery. The final desktop correction passed
-fixtures. Its game preflight stopped because the desktop locked again, before any
-game launch. Follow the stages below; neither that intermediate result nor fixtures
-verify the final rendered development launcher or packaged app.
+The final implementation, `648b4d227101d11a30e71888c3bf541c7d830c36`, has now
+completed autonomous enabled-60 startup and enabled-120 in-world observation.
+Both runs had generation 1 applying, successful target writes/readbacks, normal
+game exit 0 and automatic cleanup; all 25 file states and both captured registry
+values matched their preimages. The 120 world recording measured
+**91.72–106.78 FPS, median 104.64**, in 61 one-second HUD samples. The saved
+target has been restored to **60**.
+
+Those runs exercised the production launch transaction through the matching
+native RPC runtime. The 60 screenshot sequence included a startup transition
+and one unexplained white frame, so it does not establish an uninterrupted
+30-second stable login observation. **Your next checkpoint verifies that
+stability and the rendered development launcher UI**, first at 60 and then at
+120 after cleanup passes. The packaged
+profile remains separate and untested. A Wine thread abort was recorded during
+the 120 shutdown despite normal game exit and completed cleanup; retain full
+shutdown evidence in your tests. The original Wine post-write protection hazard
+also remains independently documented; it is not repaired by this launcher fix.
 
 Keep **Steam Patch ON**, **Launch Fix/block hosts OFF**, the same Global 7.0.0
 game, selected Wine, DXMT 0.80.0, timeout fix, Metal HUD and other settings.
+Keep the desktop unlocked through the test and cleanup.
 No Native Fullscreen or Game Mode changes. Do not install the offline Wine
 candidate, update/repair the game, run historical or diagnostic recovery helpers,
 or alter security metadata. Existing provenance acceptance remains recorded.
@@ -50,7 +64,7 @@ from pathlib import Path
 assert subprocess.check_output(['node','--version'], text=True).strip() == 'v16.20.2'
 assert subprocess.check_output(['pnpm','--version'], text=True).strip() == '7.33.7'
 assert not subprocess.check_output(['git','status','--porcelain'], text=True).strip(), 'Preserve changes and stop for review'
-p = Path('/Users/david/Library/Application Support/YAAGL Local Builds/fps-direct-failure-20260913T204809Z/package/Yaagl OS.app/Contents/Resources/manifests/build.json')
+p = Path('/Users/david/Library/Application Support/YAAGL Local Builds/fps-validated-delivery-20260913T233733Z/package/Yaagl OS.app/Contents/Resources/manifests/build.json')
 record = json.loads(p.read_text())
 head = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
 assert head == record['sourceCommit'], (head, record['sourceCommit'])
@@ -103,8 +117,9 @@ with logged restoration. Another disabled run is not required for this checkpoin
 Set **FPS unlocking ON, target 60**, verify Steam Patch ON / Launch Fix OFF,
 record wall-clock time and press **Launch once**.
 
-Reach the login/start screen and keep it stable for **30 seconds**. Record the
-numerical Metal HUD FPS. While it is stable, collect live evidence with step 4.
+Reach the login/start screen. Start the **30-second** observation after loading
+and transitions finish; do not count a loading, blank or white screen as stable
+login. Record the numerical Metal HUD FPS. While it is stable, collect live evidence with step 4.
 This run's `.bridge.log` must show:
 
 - `Steam bootstrap retained parent=32 image=C:\windows\system32\steam.exe`;
@@ -209,7 +224,7 @@ paths, login and worker result, HUD range, full visible error and cleanup result
 
 ## Actual packaged deliverable: separate profile, separate checkpoint
 
-`/Users/david/Library/Application Support/YAAGL Local Builds/fps-direct-failure-20260913T204809Z/package/Yaagl OS.app`
+`/Users/david/Library/Application Support/YAAGL Local Builds/fps-validated-delivery-20260913T233733Z/package/Yaagl OS.app`
 
 This Global bundle contains the matching ARM64 native runtime, x64 bridge,
 unchanged signed Steam pair, all Sophon resources, manifests and licenses. The
