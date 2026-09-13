@@ -396,6 +396,62 @@ async function main() {
       `PASS ${mode}: explicit failure, no pre-existing target adoption or unconfirmed release`
     );
   }
+  {
+    const dir = path.join(root, "exit-before-worker");
+    fs.mkdirSync(dir);
+    const token = crypto.randomBytes(32).toString("hex");
+    let sequence = 0;
+    const bridge = spawn(
+      bridgePath,
+      [
+        win(dir),
+        token,
+        win(fixturePath),
+        win(dir),
+        "d3d11.preferredMaxFrameRate=0;",
+        win(path.join(dir, "game.log")),
+        ...(steam ? [win(path.join(steamDir, "steam.exe"))] : []),
+      ],
+      {
+        FPS_FIXTURE_DIRECTORY: win(dir),
+        FPS_FIXTURE_EXIT_CODE: "0xc0000005",
+      }
+    );
+    await until(() => status(dir), "early-exit bridge ready");
+    async function request(operation) {
+      fs.writeFileSync(
+        path.join(dir, "command.tmp"),
+        `${token} ${++sequence} ${operation} 0 0\n`
+      );
+      fs.renameSync(path.join(dir, "command.tmp"), path.join(dir, "command"));
+      return until(
+        () => status(dir)?.sequence === sequence && status(dir),
+        operation
+      );
+    }
+    let s = await request("launch");
+    assert.equal(s.launched, 1);
+    for (let i = 0; i < 300; i++) {
+      s = await request("probe");
+      if (s.primaryExited && !s.active && !s.steamActive) break;
+      await sleep(20);
+    }
+    assert.equal(s.primaryExited, 1);
+    assert.equal(s.exitCodeKnown, 1);
+    assert.equal(s.exitCode, 0xc0000005);
+    assert.equal(s.exitCodeError, 0);
+    assert.equal(s.generation, 0);
+    assert.equal(s.workerState, 0);
+    assert.equal(s.workerDone, 1);
+    const gameLog = read(path.join(dir, "game.log"));
+    assert.match(gameLog, /harmless fixture stdout/);
+    assert.match(gameLog, /harmless fixture stderr/);
+    assert.equal((await request("release")).released, 1);
+    assert.equal(await bridge.completion, 0);
+    console.log(
+      "PASS simulated game failure before worker start: exact game exit code independent of successful bridge exit, retained output, guarded release"
+    );
+  }
   if (steam) {
     const faultDir = path.join(root, "fault-shim");
     fs.mkdirSync(faultDir);

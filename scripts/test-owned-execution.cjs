@@ -16,7 +16,7 @@ async function exists(file) {
   }
   throw Error("fixture timed out: " + file);
 }
-function supervised(name, code, prestop = false) {
+function supervised(name, code, prestop = false, outputLog) {
   const dir = path.join(root, name);
   fs.mkdirSync(dir);
   if (prestop) fs.writeFileSync(path.join(dir, "stop"), "stop");
@@ -24,6 +24,7 @@ function supervised(name, code, prestop = false) {
     path.resolve("src/wine/owned-execution.pl"),
     dir,
     "100",
+    ...(outputLog === undefined ? [] : ["--output-log", outputLog, "--"]),
     "/usr/bin/perl",
     "-e",
     code,
@@ -60,6 +61,46 @@ function supervised(name, code, prestop = false) {
     error: "",
   });
   assert.equal(fs.readFileSync(path.join(normal.dir, "ran"), "utf8"), "ran");
+  const outputLog = path.join(root, "child's $output `literal`.log");
+  const logged = supervised(
+    "logged",
+    `print STDOUT 'child stdout'; print STDERR 'child stderr'; exit 17;`,
+    false,
+    outputLog
+  );
+  assert.deepEqual(await logged.completion, {
+    spawned: 1,
+    confirmed: 1,
+    status: 17 << 8,
+    error: "",
+  });
+  assert.equal(fs.readFileSync(outputLog, "utf8"), "child stderrchild stdout");
+  assert.equal(fs.statSync(outputLog).mode & 0o777, 0o600);
+  for (const kind of ["existing", "symlink", "missing-parent"]) {
+    const target =
+      kind === "existing"
+        ? outputLog
+        : path.join(root, kind === "symlink" ? "link.log" : "absent/out.log");
+    if (kind === "symlink") fs.symlinkSync(outputLog, target);
+    const rejected = supervised(
+      kind,
+      `open(my $f,'>',"$ARGV[0]/must-not-run");`,
+      false,
+      target
+    );
+    const result = await rejected.completion;
+    assert.equal(result.confirmed, 1);
+    assert.equal(result.spawned, 0);
+    assert.match(result.error, /exec:/);
+    assert.equal(fs.existsSync(path.join(rejected.dir, "must-not-run")), false);
+    assert.equal(
+      fs.readFileSync(outputLog, "utf8"),
+      "child stderrchild stdout"
+    );
+  }
+  console.log(
+    "PASS retained Unix stdout/stderr, exact nonzero child status, exclusive log creation and no child execution on log failure"
+  );
   const cancelled = supervised(
     "prestop",
     `open(my $f,'>',"$ARGV[0]/must-not-run");`,

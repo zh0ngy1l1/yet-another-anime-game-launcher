@@ -20,7 +20,11 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-async function companion(rig: ReturnType<typeof boundary>, fps = "120") {
+async function companion(
+  rig: ReturnType<typeof boundary>,
+  fps = "120",
+  initializationMs = 0
+) {
   const validated = validateFpsUnlockDraft({ enabled: true, target: fps });
   if (!validated.ok) throw Error("invalid fixture");
   const plan = buildFpsRuntimePlan(
@@ -54,7 +58,7 @@ async function companion(rig: ReturnType<typeof boundary>, fps = "120") {
         clearTimeout: id => clearTimeout(id as ReturnType<typeof setTimeout>),
       },
       timing: {
-        initializationMs: 0,
+        initializationMs,
         pollMs: 10,
         restartBackoffMs: 50,
         operationTimeoutMs: 100,
@@ -139,6 +143,12 @@ it("stale Steam incarnation and unknown Steam job state retain the same observat
 
 it.each([
   { version: 1 },
+  { version: 2 },
+  { exitCodeKnown: 2 },
+  { exitCode: -1 },
+  { exitCodeKnown: 1, primaryExited: 0, pid: 42 },
+  { exitCodeKnown: 1, primaryExited: 1, pid: 42, exitCodeError: 5 },
+  { exitCodeKnown: 0, exitCode: 1 },
   { steamReady: 2 },
   { shimExited: -1 },
   { steamActive: 1.5 },
@@ -149,6 +159,80 @@ it.each([
   expect(() =>
     parseBridgeStatus(JSON.stringify({ ...rig.status, ...patch }), rig.token)
   ).toThrow();
+});
+
+it("reports nonzero game exit before worker initialization while retaining descendant lifetime", async () => {
+  const rig = boundary(true);
+  const { bridge, controller } = await companion(rig, "120", 10000);
+  const terminal = controller.start();
+  let ended = false;
+  const lifetime = bridge.waitForGameExit().then(() => {
+    ended = true;
+  });
+  await tick(100);
+  expect(rig.io.start.mock.calls[0][0].outputLog).toBe(
+    "/logs/game.log.wine.log"
+  );
+  rig.exit();
+  rig.status.exitCode = 0xc0000005;
+  rig.status.active = 1;
+  rig.status.steamActive = 1;
+  await tick(100);
+  expect(ended).toBe(false);
+  expect(rig.events).not.toContain("start");
+  expect(rig.status.generation).toBe(0);
+  expect(rig.diagnostic).toHaveBeenCalledWith(
+    expect.stringContaining("with code 0xc0000005; worker generation 0")
+  );
+  expect((await terminal).reason).toBe("game-exited");
+  rig.status.active = rig.status.steamActive = 0;
+  await tick(30);
+  await lifetime;
+  rig.direct.resolve({ confirmed: true, status: 0 });
+  await bridge.release();
+  await bridge.dispose();
+  expect(rig.diagnostic).toHaveBeenCalledTimes(2); // Exit and the still-active game job.
+});
+
+it("does not treat unavailable exit status as a successful game exit", async () => {
+  const rig = boundary(true),
+    bridge = await rig.prepare();
+  await bridge.boot();
+  await bridge.launch();
+  rig.exit();
+  rig.status.exitCodeKnown = 0;
+  rig.status.exitCodeError = 5;
+  await bridge.waitForGameExit();
+  expect(rig.diagnostic).toHaveBeenCalledWith(
+    expect.stringContaining("unavailable exit status (error 5)")
+  );
+  rig.direct.resolve({ confirmed: true, status: 0 });
+  await bridge.release();
+});
+
+it("rejects a changed exit code from the same retained game", async () => {
+  const rig = boundary(),
+    bridge = await rig.prepare();
+  await bridge.boot();
+  await bridge.launch();
+  rig.exit();
+  rig.status.exitCode = 7;
+  await bridge.probe();
+  rig.status.exitCode = 0;
+  let settled = false;
+  const probe = bridge.probe().then(() => {
+    settled = true;
+  });
+  await tick(50);
+  expect(settled).toBe(false);
+  expect(rig.diagnostic).toHaveBeenCalledWith(
+    expect.stringContaining("incarnation/lifecycle changed")
+  );
+  rig.status.exitCode = 7;
+  await tick(30);
+  await probe;
+  rig.direct.resolve({ confirmed: true, status: 0 });
+  await bridge.release();
 });
 
 describe("real controller and request bridge protocol", () => {

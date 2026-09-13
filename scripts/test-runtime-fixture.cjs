@@ -90,7 +90,7 @@ const child = cp.spawn(
   path.resolve(
     `bin/hk4e-neutralino-${process.arch === "arm64" ? "arm64" : "x86_64"}`
   ),
-  ["--load-dir-res", "--path=" + path.relative(process.cwd(), root)],
+  ["--load-dir-res", "--path=" + root],
   { stdio: ["ignore", log, log] }
 );
 fs.closeSync(log);
@@ -230,6 +230,31 @@ async function until(predicate, label, ms = 150000) {
   assert.equal(result.state.failed, handoff || tamperSteam);
   assert.equal(result.state.held, false);
   assert.equal(result.file, "original");
+  if (!tamperSteam) {
+    const logs = fs
+      .readdirSync(path.join(root, "logs"))
+      .filter(name => name.endsWith(".wine.log"));
+    assert.equal(logs.length, 1);
+    const output = read(path.join("logs", logs[0]));
+    for (const event of [
+      "bridge version=3",
+      "game created suspended",
+      "game resumed",
+      "worker start requested",
+      "write begin",
+      "write end",
+      "game exit",
+    ])
+      assert.ok(
+        output.includes(event),
+        "missing persistent bridge/Wine diagnostic: " + event
+      );
+    assert.match(output, /game exit game=\d+ code=0x00000000/);
+    assert.equal(
+      fs.statSync(path.join(root, "logs", logs[0])).mode & 0o777,
+      0o600
+    );
+  }
   fs.writeFileSync(path.join(root, "finish"), "exit");
   await until(() => child.exitCode !== null, "approved native exit");
   assert.equal(child.exitCode, 0);

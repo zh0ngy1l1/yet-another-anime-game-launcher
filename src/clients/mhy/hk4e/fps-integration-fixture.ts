@@ -4,12 +4,15 @@ import { prepareFpsBridge, BridgeStatus } from "./fps-bridge";
 export function boundary(steamPatch = false) {
   const token = "b".repeat(64);
   const status: BridgeStatus = {
-    version: 2,
+    version: 3,
     token,
     sequence: 0,
     launched: 0,
     pid: 0,
     primaryExited: 0,
+    exitCodeKnown: 0,
+    exitCode: 0,
+    exitCodeError: 0,
     active: 0,
     generation: 0,
     workerState: 0,
@@ -152,6 +155,7 @@ export function boundary(steamPatch = false) {
     },
     exit: () => {
       status.primaryExited = 1;
+      status.exitCodeKnown = 1;
       status.active = 0;
       if (steamPatch) {
         status.shimExited = 1;

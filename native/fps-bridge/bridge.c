@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <wchar.h>
 
 #include "registry.c"
@@ -21,6 +22,8 @@ static HANDLE game, job, worker, worker_stop;
 static LONG worker_state; /* 0 idle, 1 scanning, 2 applying, 3 ended, 4 failed */
 static LONG worker_error;
 static DWORD launch_error, game_pid;
+static DWORD game_exit_code, game_exit_error;
+static int game_exit_known;
 static unsigned generation, target;
 static wchar_t directory[32768], executable[32768], game_directory[32768];
 static wchar_t game_config[32768], log_path[32768];
@@ -28,10 +31,37 @@ static wchar_t steam_path[32768];
 static HANDLE image_files[3];
 static char token[65];
 static int launched, attempted, primary_exited, released;
+static CRITICAL_SECTION diagnostic_lock;
+
+/* Persistent child stderr is captured by the owned Unix supervisor. Keep the
+ * protocol independent, flush complete lines, and preserve API error state.
+ * These samples are observations, not fault-time page-protection evidence. */
+static void diagnostic(const char *format, ...) {
+    DWORD error = GetLastError();
+    SYSTEMTIME time;
+    GetSystemTime(&time);
+    EnterCriticalSection(&diagnostic_lock);
+    fprintf(stderr, "FPS %04u-%02u-%02uT%02u:%02u:%02u.%03uZ tick=%llu bridge=%lu thread=%lu request=%s ",
+        time.wYear, time.wMonth, time.wDay, time.wHour, time.wMinute, time.wSecond, time.wMilliseconds,
+        (unsigned long long)GetTickCount64(), GetCurrentProcessId(), GetCurrentThreadId(), token);
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputc('\n', stderr);
+    fflush(stderr);
+    LeaveCriticalSection(&diagnostic_lock);
+    SetLastError(error);
+}
 
 static int read_memory(uintptr_t address, void *buffer, SIZE_T length) {
     SIZE_T read = 0;
-    return ReadProcessMemory(game, (void *)address, buffer, length, &read) && read == length;
+    BOOL ok = ReadProcessMemory(game, (void *)address, buffer, length, &read);
+    if (!ok || read != length)
+        diagnostic("read failed game=%lu address=0x%llx requested=%llu read=%llu ok=%d error=%lu",
+            game_pid, (unsigned long long)address, (unsigned long long)length,
+            (unsigned long long)read, ok, GetLastError());
+    return ok && read == length;
 }
 
 /* Resolve only the documented E8 -> E9 chain ending in mov [rip+disp32],ecx.
@@ -57,6 +87,10 @@ static uintptr_t resolve_candidate(uintptr_t branch, uintptr_t base, DWORD size)
                 info.State != MEM_COMMIT || (info.Protect & PAGE_GUARD) ||
                 !(info.Protect & (PAGE_READWRITE | PAGE_WRITECOPY |
                                  PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY))) return 0;
+            diagnostic("candidate game=%lu address=0x%llx rva=0x%llx allocation=0x%lx current=0x%lx region=0x%llx size=%llu",
+                game_pid, (unsigned long long)address, (unsigned long long)(address - base),
+                info.AllocationProtect, info.Protect, (unsigned long long)(uintptr_t)info.BaseAddress,
+                (unsigned long long)info.RegionSize);
             return address;
         }
     }
@@ -82,6 +116,8 @@ static uintptr_t fps_address(void) {
         dos.e_lfanew < 0 || (DWORD)dos.e_lfanew > size - sizeof(pe) ||
         !read_memory(base + dos.e_lfanew, &pe, sizeof(pe)) || pe.Signature != IMAGE_NT_SIGNATURE ||
         pe.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC || pe.FileHeader.NumberOfSections > 96) return 0;
+    diagnostic("image game=%lu path=%ls base=0x%llx size=%lu timestamp=%lu machine=0x%x",
+        game_pid, image_path, (unsigned long long)base, size, pe.FileHeader.TimeDateStamp, pe.FileHeader.Machine);
     uintptr_t sections = base + dos.e_lfanew + 24 + pe.FileHeader.SizeOfOptionalHeader;
     uintptr_t found = 0;
     unsigned char buffer[65536 + 5];
@@ -100,7 +136,10 @@ static uintptr_t fps_address(void) {
                 static const unsigned char pattern[] = {0xb9, 0x3c, 0, 0, 0, 0xe8};
                 if (memcmp(buffer + i, pattern, sizeof(pattern))) continue;
                 uintptr_t address = resolve_candidate(base + section.VirtualAddress + offset + i + 5, base, size);
-                if (address && found && address != found) return 0;
+                if (address && found && address != found) {
+                    diagnostic("ambiguous FPS candidates; no target selected");
+                    return 0;
+                }
                 if (address) found = address;
             }
         }
@@ -110,23 +149,42 @@ static uintptr_t fps_address(void) {
 
 static DWORD WINAPI apply_fps(void *unused) {
     (void)unused;
+    diagnostic("worker scanning generation=%u game=%lu target=%u", generation, game_pid, target);
     uintptr_t address = fps_address();
     if (!address) {
+        diagnostic("worker resolution failed generation=%u game=%lu; no FPS write issued", generation, game_pid);
         InterlockedExchange(&worker_error, ERROR_NOT_FOUND);
         InterlockedExchange(&worker_state, 4);
         return 1;
     }
     InterlockedExchange(&worker_state, 2);
+    diagnostic("worker applying generation=%u game=%lu address=0x%llx target=%u", generation, game_pid,
+        (unsigned long long)address, target);
     HANDLE waits[] = {worker_stop, game};
     DWORD wait;
+    int observed = 0, previous = 0;
     while ((wait = WaitForMultipleObjects(2, waits, FALSE, 0)) == WAIT_TIMEOUT) {
         int current;
-        SIZE_T written;
-        if (!read_memory(address, &current, sizeof(current)) ||
-            (current != (int)target && (!WriteProcessMemory(game, (void *)address, &target, sizeof(target), &written) || written != sizeof(target)))) {
+        SIZE_T written = 0;
+        int ok = read_memory(address, &current, sizeof(current));
+        if (ok && (!observed || previous != current)) {
+            diagnostic("read generation=%u game=%lu address=0x%llx value=%d target=%u action=%s", generation,
+                game_pid, (unsigned long long)address, current, target, current == (int)target ? "equal" : "write");
+            observed = 1; previous = current;
+        }
+        if (ok && current != (int)target) {
+            diagnostic("write begin generation=%u game=%lu address=0x%llx read=%d target=%u bytes=%llu", generation,
+                game_pid, (unsigned long long)address, current, target, (unsigned long long)sizeof(target));
+            BOOL result = WriteProcessMemory(game, (void *)address, &target, sizeof(target), &written);
+            diagnostic("write end generation=%u game=%lu ok=%d written=%llu error=%lu", generation,
+                game_pid, result, (unsigned long long)written, result ? 0 : GetLastError());
+            ok = result && written == sizeof(target);
+        }
+        if (!ok) {
             DWORD error = GetLastError();
             InterlockedExchange(&worker_error, error ? (LONG)error : ERROR_WRITE_FAULT);
             InterlockedExchange(&worker_state, 4);
+            diagnostic("worker read/write failed generation=%u error=%lu", generation, error);
             return 1;
         }
         wait = WaitForMultipleObjects(2, waits, FALSE, 200);
@@ -136,6 +194,7 @@ static DWORD WINAPI apply_fps(void *unused) {
         InterlockedExchange(&worker_error, (LONG)GetLastError());
         InterlockedExchange(&worker_state, 4);
     } else InterlockedExchange(&worker_state, 3);
+    diagnostic("worker ended generation=%u state=%ld", generation, InterlockedCompareExchange(&worker_state, 0, 0));
     return 0;
 }
 
@@ -155,7 +214,15 @@ static int write_status(unsigned sequence, DWORD error) {
     DWORD active = active_processes();
     if (game) {
         DWORD wait = WaitForSingleObject(game, 0);
-        if (wait == WAIT_OBJECT_0) primary_exited = 1;
+        if (wait == WAIT_OBJECT_0) {
+            primary_exited = 1;
+            if (!game_exit_known) {
+                if (GetExitCodeProcess(game, &game_exit_code)) {
+                    game_exit_known = 1; game_exit_error = 0;
+                    diagnostic("game exit game=%lu code=0x%08lx generation=%u", game_pid, game_exit_code, generation);
+                } else game_exit_error = GetLastError();
+            }
+        }
         else if (wait != WAIT_TIMEOUT) active = MAXDWORD;
     }
     int worker_done = !worker || WaitForSingleObject(worker, 0) == WAIT_OBJECT_0;
@@ -173,10 +240,11 @@ static int write_status(unsigned sequence, DWORD error) {
     }
     char data[1024];
     int length = snprintf(data, sizeof(data),
-        "{\"version\":2,\"token\":\"%s\",\"sequence\":%u,\"launched\":%d,\"pid\":%lu,\"primaryExited\":%d,\"active\":%lu,\"generation\":%u,\"workerState\":%ld,\"workerDone\":%d,\"workerError\":%lu,\"launchError\":%lu,\"error\":%lu,\"released\":%d,\"shimPid\":%lu,\"shimExited\":%d,\"steamReady\":%d,\"steamError\":%lu,\"steamActive\":%lu}\n",
+        "{\"version\":3,\"token\":\"%s\",\"sequence\":%u,\"launched\":%d,\"pid\":%lu,\"primaryExited\":%d,\"active\":%lu,\"generation\":%u,\"workerState\":%ld,\"workerDone\":%d,\"workerError\":%lu,\"launchError\":%lu,\"error\":%lu,\"released\":%d,\"shimPid\":%lu,\"shimExited\":%d,\"steamReady\":%d,\"steamError\":%lu,\"steamActive\":%lu,\"exitCodeKnown\":%d,\"exitCode\":%lu,\"exitCodeError\":%lu}\n",
         token, sequence, launched, game_pid, primary_exited, active, generation,
         InterlockedCompareExchange(&worker_state, 0, 0), worker_done, (DWORD)InterlockedCompareExchange(&worker_error, 0, 0), launch_error, error, released,
-        shim_pid, shim_exited, steam_acknowledged, steam_error, job_processes(steam_job));
+        shim_pid, shim_exited, steam_acknowledged, steam_error, job_processes(steam_job),
+        game_exit_known, game_exit_code, game_exit_error);
     HANDLE file = CreateFileW(temporary, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (file == INVALID_HANDLE_VALUE) return 0;
     DWORD written;
@@ -234,6 +302,7 @@ static DWORD start_steam(void) {
         InterlockedCompareExchange(&steam_slot->state, 0, 0) != 1 || !steam_slot->relay_pid ||
         WaitForSingleObject(shim, 0) != WAIT_TIMEOUT) return ERROR_INVALID_STATE;
     steam_acknowledged = 1;
+    diagnostic("Steam ready shim=%lu relay=%ld", shim_pid, steam_slot->relay_pid);
     return 0;
 }
 
@@ -315,6 +384,7 @@ static DWORD launch(void) {
     if (!ok) { release_steam_relay(); return error; }
     game = process.hProcess;
     game_pid = process.dwProcessId;
+    diagnostic("game created suspended game=%lu parent=%lu shim=%lu", game_pid, parent_pid(game), shim_pid);
     /* Before ResumeThread, this is an owned, never-run failed launch. */
     BOOL in_job = FALSE;
     if (steam_error || (shim && (parent_pid(game) != shim_pid || !IsProcessInJob(game, steam_job, &in_job) || !in_job)) ||
@@ -324,7 +394,13 @@ static DWORD launch(void) {
     } else if (ResumeThread(process.hThread) == (DWORD)-1) {
         error = GetLastError();
         error = never_resumed_failure(&process, error);
-    } else launched = 1;
+    } else {
+        launched = 1;
+        wchar_t cwd[32768] = {0};
+        GetCurrentDirectoryW(32768, cwd);
+        diagnostic("game resumed game=%lu parent=%lu shim=%lu cwd=%ls gameDXMT=%ls command=%ls",
+            game_pid, parent_pid(game), shim_pid, shim ? cwd : game_directory, game_config, command);
+    }
     CloseHandle(process.hThread);
     return error;
 }
@@ -341,6 +417,8 @@ int wmain(int argc, wchar_t **argv) {
     wcscpy(directory, argv[1]); wcscpy(executable, argv[3]);
     wcscpy(game_directory, argv[4]); wcscpy(game_config, argv[5]); wcscpy(log_path, argv[6]);
     if (argc == 8) wcscpy(steam_path, argv[7]);
+    InitializeCriticalSection(&diagnostic_lock);
+    diagnostic("bridge version=3 game=%ls route=%s log=%ls", executable, *steam_path ? "steam-patch" : "direct", log_path);
     /* Deny cooperating Win32 writers/deleters for every selected image until
      * release. POSIX same-user/admin replacement remains a documented limit. */
     wchar_t self[32768], dll[32768];
@@ -394,6 +472,7 @@ int wmain(int argc, wchar_t **argv) {
                         if (worker) CloseHandle(worker);
                         ResetEvent(worker_stop);
                         generation = requested_generation; target = argument; InterlockedExchange(&worker_error, 0);
+                        diagnostic("worker start requested generation=%u game=%lu target=%u", generation, game_pid, target);
                         InterlockedExchange(&worker_state, 1);
                         worker = CreateThread(NULL, 0, apply_fps, NULL, 0, NULL);
                         if (!worker) { error = GetLastError(); InterlockedExchange(&worker_error, (LONG)error); InterlockedExchange(&worker_state, 4); }

@@ -18,7 +18,13 @@ The job design follows [Microsoft's job inheritance contract](https://learn.micr
 
 ## Protocol and completion
 
-The private command is exactly `token sequence operation generation argument\n`. Commands are atomically renamed. The bridge accepts only canonical framing, the same token, and the next nonzero uint32 sequence; it rejects invalid operations, ranges and generations. Native side effects are issued once. The version-2 JSON response carries protocol version, token, sequence, original game PID, root/game-job state, worker generation/state/completion/error, launch error and release acknowledgement, plus `shimPid`, `shimExited`, `steamReady`, `steamError` and `steamActive`. The two job counts and both process handles must confirm completion on the Steam route. The adapter rejects mismatched identities, malformed values, advanced/stale responses, changing PID and backwards lifecycle transitions. Unknown job/process state stays unknown. Transport/read failures keep the same request observed and retain ownership; no deadline fabricates exit.
+The private command is exactly `token sequence operation generation argument\n`. Commands are atomically renamed. The bridge accepts only canonical framing, the same token, and the next nonzero uint32 sequence; it rejects invalid operations, ranges and generations. Native side effects are issued once. The version-3 JSON response carries protocol version, token, sequence, original game PID, root/game-job state, worker generation/state/completion/error, launch error and release acknowledgement, plus `shimPid`, `shimExited`, `steamReady`, `steamError` and `steamActive`. The two job counts and both process handles must confirm completion on the Steam route. The adapter rejects mismatched identities, malformed values, advanced/stale responses, changing PID and backwards lifecycle transitions. Unknown job/process state stays unknown. Transport/read failures keep the same request observed and retain ownership; no deadline fabricates exit.
+
+Version 3 also records `exitCodeKnown`, `exitCode` and `exitCodeError` from the retained game handle after it signals. A nonzero or unavailable game exit status is reported independently of successful bridge/supervisor exit. It does not end job observation or block safe restoration after confirmed lifetime completion. The adapter rejects changing exit results and older protocol versions.
+
+Enabled bridge execution retains Unix stdout/stderr in the adjacent `game_<timestamp>.log.wine.log`. The supervisor exclusively creates that mode-600 file and keeps its JSON result on a separate stream. Existing files/symlinks and open errors refuse execution visibly. Windows game and shim output retain their existing `.log` and `.steam.log` destinations. Bridge diagnostics flush UTC/tick timestamps, creation/readiness/worker transitions, resolved image/target/page samples, changed read values, and write begin/result records. They preserve API error state and add no readiness rule. A page sample is not crash-time protection evidence, and diagnostic IO adds observation overhead.
+
+The [September 13 investigation](../../docs/fps-prelogin-investigation-20260913.md) distinguishes the current pre-worker failure from the historical Wine data-page hazard. This diagnostic correction does not claim a real-game crash fix.
 
 These are separate events:
 
@@ -52,8 +58,8 @@ The FPS signature/branch-resolution adaptation comes from `Fork/unlockfps/FpsPat
 
 `build-record.json` records source hashes, exact compiler command, upstream revision and the built artifact:
 
-- Bridge protocol/artifact version: **2**; `fps-bridge.exe`, **34304 bytes**.
-- SHA-256: **3dac6250497a7265e0a62126125d3e850e67e7b7dabb9f0d34264fb5c08ddd8f**.
+- Bridge protocol/artifact version: **3**; `fps-bridge.exe`, **37888 bytes**.
+- SHA-256: **68023d90842e92dda9bbbda72f6ec30a83f7589f6d3d957f334c7c29b786bded**.
 - Local compiler: `x86_64-w64-mingw32-gcc (GCC) 16.2.0`; existing `/opt/homebrew/bin/x86_64-w64-mingw32-gcc`.
 - Native compiler: Apple clang 21.0.0 (`clang-2100.1.1.101`); Python 3.13.14. Native recipe/source/binary hashes are written to `bin/hk4e-neutralino-arm64.json` (or `x86_64.json`). Version: `4.11.0-yaagl-owned1`.
 

@@ -20,6 +20,8 @@ export interface OwnedWineRequest {
   readonly executable: string;
   readonly args: readonly string[];
   readonly environment: Readonly<Record<string, string>>;
+  /** Fresh persistent file for the child's Unix stdout/stderr, not supervisor JSON. */
+  readonly outputLog?: string;
 }
 
 export type OwnedExecutionOutcome = {
@@ -59,6 +61,8 @@ export function buildOwnedWineCommand(
   directory: string,
   request: OwnedWineRequest
 ): string {
+  if (request.outputLog !== undefined && !request.outputLog.startsWith("/"))
+    throw new Error("Owned Wine output log must be an absolute path");
   const environment = {
     WINEDEBUG: "fixme-all,err-unwind,+timestamp",
     ...request.wine.environment,
@@ -78,6 +82,9 @@ export function buildOwnedWineCommand(
       `${directory}/supervisor.pl`,
       directory,
       String(OWNED_WINE_TIMING.terminateGraceMs),
+      ...(request.outputLog === undefined
+        ? []
+        : ["--output-log", request.outputLog, "--"]),
       request.wine.loader,
       request.executable,
       ...request.args,

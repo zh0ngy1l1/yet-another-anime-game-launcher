@@ -13,12 +13,15 @@ import type { FpsGameObserver } from "./fps-companion";
 import { FPS_STEAM_ARTIFACTS } from "./fps-steam";
 
 export interface BridgeStatus {
-  version: 2;
+  version: 3;
   token: string;
   sequence: number;
   launched: number;
   pid: number;
   primaryExited: number;
+  exitCodeKnown: number;
+  exitCode: number;
+  exitCodeError: number;
   active: number;
   generation: number;
   workerState: number;
@@ -39,7 +42,7 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
   if (
     typeof data !== "object" ||
     data === null ||
-    Reflect.get(data, "version") !== 2 ||
+    Reflect.get(data, "version") !== 3 ||
     Reflect.get(data, "token") !== token
   )
     throw new Error("FPS bridge protocol identity mismatch");
@@ -48,6 +51,9 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
     "launched",
     "pid",
     "primaryExited",
+    "exitCodeKnown",
+    "exitCode",
+    "exitCodeError",
     "active",
     "generation",
     "workerState",
@@ -74,6 +80,7 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
   for (const key of [
     "launched",
     "primaryExited",
+    "exitCodeKnown",
     "workerDone",
     "released",
     "shimExited",
@@ -83,6 +90,11 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
       throw new Error(`Invalid FPS bridge flag: ${key}`);
   if (
     Reflect.get(data, "workerState") > 4 ||
+    (Reflect.get(data, "exitCodeKnown") &&
+      (!Reflect.get(data, "pid") ||
+        !Reflect.get(data, "primaryExited") ||
+        Reflect.get(data, "exitCodeError"))) ||
+    (!Reflect.get(data, "exitCodeKnown") && Reflect.get(data, "exitCode")) ||
     (Reflect.get(data, "launched") && !Reflect.get(data, "pid")) ||
     (Reflect.get(data, "steamReady") && !Reflect.get(data, "shimPid")) ||
     (Reflect.get(data, "shimExited") && !Reflect.get(data, "shimPid")) ||
@@ -119,7 +131,7 @@ const bridgeIO = {
   },
   async stage(directory: string, steamPatch = false) {
     const source = resolve("./sidecar/fps-bridge/fps-bridge.exe");
-    const artifact = { ...FPS_BRIDGE_MANIFEST, tag: "bridge-2", url: source };
+    const artifact = { ...FPS_BRIDGE_MANIFEST, tag: "bridge-3", url: source };
     const path = await acquireFpsUnlocker(
       {
         ...fpsUnlockerIO,
@@ -280,6 +292,7 @@ export async function prepareFpsBridge(
   let commandCompleted = false;
   let commandFailed = false;
   let executionFailureReported = false;
+  let gameExitReported = false;
   let lastReport = "";
   let lastReportTime = 0;
   const winePath = (p: string) => "Z:" + p.replaceAll("/", "\\");
@@ -313,6 +326,8 @@ export async function prepareFpsBridge(
               value.shimExited < last.shimExited ||
               value.steamReady < last.steamReady ||
               value.primaryExited < last.primaryExited ||
+              value.exitCodeKnown < last.exitCodeKnown ||
+              (last.exitCodeKnown && value.exitCode !== last.exitCode) ||
               value.generation < last.generation ||
               value.launched < last.launched)
           )
@@ -324,6 +339,9 @@ export async function prepareFpsBridge(
               "launched",
               "pid",
               "primaryExited",
+              "exitCodeKnown",
+              "exitCode",
+              "exitCodeError",
               "active",
               "generation",
               "workerState",
@@ -340,6 +358,23 @@ export async function prepareFpsBridge(
           )
             input.event?.(`FPS request ${token}: ${JSON.stringify(value)}`);
           last = value;
+          if (value.primaryExited && !gameExitReported) {
+            gameExitReported = true;
+            if (!value.exitCodeKnown || value.exitCode !== 0)
+              input.diagnostic(
+                `FPS request ${token}: game PID ${value.pid} exited ${
+                  value.exitCodeKnown
+                    ? `with code 0x${value.exitCode
+                        .toString(16)
+                        .padStart(8, "0")}`
+                    : `with unavailable exit status (error ${value.exitCodeError})`
+                }; worker generation ${
+                  value.generation
+                }. Continuing job/worker cleanup; Wine output: ${
+                  input.log
+                }.wine.log`
+              );
+          }
           return value;
         }
       } catch (error) {
@@ -399,6 +434,7 @@ export async function prepareFpsBridge(
         ...(input.steamPatch ? [winePath(join(directory, "steam.exe"))] : []),
       ],
       environment: {},
+      outputLog: `${input.log}.wine.log`,
     });
     void execution.completion.then(outcome => {
       commandCompleted = true;
@@ -423,6 +459,9 @@ export async function prepareFpsBridge(
       initial.launched ||
       initial.pid ||
       initial.primaryExited ||
+      initial.exitCodeKnown ||
+      initial.exitCode ||
+      initial.exitCodeError ||
       initial.active ||
       initial.generation ||
       initial.workerState ||

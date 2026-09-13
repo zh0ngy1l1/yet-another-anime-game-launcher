@@ -426,6 +426,24 @@ describe("owned Wine native adapter", () => {
 });
 
 describe("owned Wine command and input propagation", () => {
+  it("quotes a persistent child log separately from supervisor output", () => {
+    const command = buildOwnedWineCommand("/private", {
+      ...request,
+      outputLog: "/logs/it's $output `literal`.log",
+    });
+    expect(command).toContain(
+      "'--output-log' '/logs/it'\\''s $output `literal`.log' '--' '/wine distro/bin/wine64'"
+    );
+    expect(command).not.toContain(" 2>&1");
+  });
+  it.each(["relative.log", "", "/logs/nul\0.log"])(
+    "rejects invalid output log %j",
+    outputLog => {
+      expect(() =>
+        buildOwnedWineCommand("/private", { ...request, outputLog })
+      ).toThrow();
+    }
+  );
   it.each([1, 60, 61, 150, 360])(
     "preserves target %i, path, Wine context and process environment",
     target => {

@@ -37,7 +37,7 @@ cp.execFileSync(cc, args, { stdio: "inherit" });
 const bytes = fs.readFileSync(".tmp/fps-bridge.exe");
 const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
 const manifest = {
-  version: 2,
+  version: 3,
   filename: "fps-bridge.exe",
   size: bytes.length,
   sha256,

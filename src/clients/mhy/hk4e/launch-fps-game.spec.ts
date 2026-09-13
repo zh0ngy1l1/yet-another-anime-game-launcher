@@ -199,6 +199,7 @@ it("Steam game exit retains close/admission through relay, worker, supervisor, W
   guarded();
   rig.native.delayStop();
   rig.native.status.primaryExited = 1;
+  rig.native.status.exitCodeKnown = 1;
   rig.native.status.active = 0;
   await tick(2000);
   guarded();
@@ -246,6 +247,23 @@ it("Steam game exit retains close/admission through relay, worker, supervisor, W
   const next = rig.ownership.reserve();
   expect(next).toBeDefined();
   next?.release();
+});
+
+it("retains a pre-worker game failure after otherwise successful Steam cleanup", async () => {
+  const rig = launch("120", true),
+    transaction = rig.start();
+  await tick(100);
+  expect(rig.native.events).toContain("launch");
+  expect(rig.native.events).not.toContain("start");
+  rig.native.status.exitCode = 0xc0000005;
+  const failure = await rig.finish(transaction);
+  expect(String(failure)).toContain(
+    "with code 0xc0000005; worker generation 0"
+  );
+  expect(rig.native.events).not.toContain("start");
+  expect(rig.native.events).toContain("registry:restore");
+  expect(rig.native.events).toContain("files-restored");
+  expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
 });
 
 it("unconfirmed Steam cleanup remains visibly failed and guarded until later confirmed completion", async () => {

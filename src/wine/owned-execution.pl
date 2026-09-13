@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 use POSIX qw(WNOHANG _exit);
-use Fcntl qw(F_SETFL O_NONBLOCK F_SETFD FD_CLOEXEC);
+use Fcntl qw(F_SETFL O_NONBLOCK F_SETFD FD_CLOEXEC O_WRONLY O_CREAT O_EXCL O_NOFOLLOW);
 use Errno qw(EAGAIN EINTR);
 use Time::HiRes qw(clock_gettime CLOCK_MONOTONIC sleep);
 use JSON::PP qw(encode_json);
@@ -10,6 +10,13 @@ use JSON::PP qw(encode_json);
 # waitpid consumes it. Never signal after reaping or after a waitpid error.
 # No process groups, image-name lookup, wineserver shutdown, or detached work.
 my ($directory, $grace_ms, @command) = @ARGV;
+my $output_log;
+if (@command && $command[0] eq '--output-log') {
+    shift @command;
+    $output_log = shift @command;
+    die "invalid output log arguments" unless defined($output_log) &&
+        $output_log =~ m{^/} && shift(@command) eq '--' && @command;
+}
 my ($pid, $status, $error, $spawned, $confirmed) = (0, 0, '', 0, 1);
 my ($stopping, $term_at, $killed) = (0, undef, 0);
 $SIG{CHLD} = 'DEFAULT';
@@ -27,9 +34,13 @@ eval {
         if ($pid == 0) {
             close($reader);
             $SIG{TERM} = $SIG{INT} = $SIG{HUP} = 'DEFAULT';
+            # Keep supervisor JSON on its original stdout. The child owns a
+            # fresh log; an existing file/symlink is an observable exec failure.
             my $ok = open(STDIN, '<', '/dev/null') &&
-                     open(STDOUT, '>', '/dev/null') &&
-                     open(STDERR, '>', '/dev/null');
+                (defined($output_log)
+                 ? sysopen(STDOUT, $output_log, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600)
+                 : open(STDOUT, '>', '/dev/null')) &&
+                open(STDERR, '>&', \*STDOUT);
             if ($ok) { exec { $command[0] } @command; }
             syswrite($writer, "exec: $!");
             _exit(127);

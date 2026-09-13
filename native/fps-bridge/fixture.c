@@ -45,6 +45,10 @@ int wmain(int argc, wchar_t **argv) {
     fclose(startup);
     if (!MoveFileExW(startup_tmp, startup_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return 6;
     puts("harmless fixture stdout"); fflush(stdout);
+    fputs("harmless fixture stderr\n", stderr); fflush(stderr);
+    wchar_t exit_code[32];
+    if (GetEnvironmentVariableW(L"FPS_FIXTURE_EXIT_CODE", exit_code, 32))
+        ExitProcess(wcstoul(exit_code, NULL, 0)); /* Simulated abnormal exit, no crash handler/debugger. */
     swprintf(stop, 32768, L"%ls\\%ls-stop", directory, child ? L"child" : L"root");
     swprintf(output, 32768, L"%ls\\%ls-observed", directory, child ? L"child" : L"root");
     wchar_t detach[2];
