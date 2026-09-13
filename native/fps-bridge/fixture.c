@@ -3,7 +3,59 @@
 #include <windows.h>
 #include <winternl.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <wchar.h>
+
+/* Test oracle only: a real direct Steam child is the process object retained
+ * by the unchanged signed shim. Inspect only that parent's handles, duplicate
+ * before querying, and never use a snapshot PID as a process identity. */
+typedef struct {
+    void *object;
+    ULONG_PTR pid, handle;
+    ULONG access;
+    USHORT backtrace, type;
+    ULONG attributes, reserved;
+} FixtureHandleEntry;
+typedef struct {
+    ULONG_PTR count, reserved;
+    FixtureHandleEntry entries[1];
+} FixtureHandleTable;
+
+static int parent_retains_self(DWORD parent_pid) {
+    typedef NTSTATUS (WINAPI *Query)(ULONG, void *, ULONG, ULONG *);
+    Query query = (Query)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQuerySystemInformation");
+    HANDLE parent = OpenProcess(PROCESS_DUP_HANDLE, FALSE, parent_pid);
+    if (!query || !parent) { if (parent) CloseHandle(parent); return -1; }
+    ULONG size = 65536, needed = 0;
+    FixtureHandleTable *table = NULL;
+    NTSTATUS status = (NTSTATUS)0xc0000004;
+    for (unsigned attempt = 0; attempt < 8 && status == (NTSTATUS)0xc0000004; attempt++) {
+        free(table);
+        table = malloc(size);
+        if (!table) break;
+        status = query(64, table, size, &needed);
+        if (status == (NTSTATUS)0xc0000004) {
+            if (needed > 16 * 1024 * 1024 || size > 8 * 1024 * 1024) break;
+            size = needed > size ? needed + 4096 : size * 2;
+        }
+    }
+    int found = -1;
+    if (!status && table && table->count <= (size - sizeof(ULONG_PTR) * 2) / sizeof(FixtureHandleEntry)) {
+        found = 0;
+        for (ULONG_PTR i = 0; i < table->count; i++) {
+            FixtureHandleEntry *entry = &table->entries[i];
+            if (entry->pid != parent_pid) continue;
+            HANDLE copied;
+            if (!DuplicateHandle(parent, (HANDLE)entry->handle, GetCurrentProcess(), &copied,
+                0, FALSE, DUPLICATE_SAME_ACCESS)) continue;
+            if (GetProcessId(copied) == GetCurrentProcessId()) found = 1;
+            CloseHandle(copied);
+        }
+    }
+    free(table);
+    CloseHandle(parent);
+    return found;
+}
 volatile int fixture_fps = 60;
 #ifdef FPS_FIXTURE_AMBIGUOUS
 volatile int fixture_second = 60;
@@ -49,6 +101,7 @@ int wmain(int argc, wchar_t **argv) {
     GetEnvironmentVariableW(L"DXMT_CONFIG", dxmt, 32768);
     fwprintf(startup, L"pid=%lu\nparent=%llu\nparentImage=%ls\nargc=%d\ncommand=%ls\ncwd=%ls\nKEEP=%ls\nDXMT_CONFIG=%ls\n",
         GetCurrentProcessId(), (unsigned long long)info.InheritedFromUniqueProcessId, parent_image, argc, GetCommandLineW(), cwd, keep, dxmt);
+    fwprintf(startup, L"parentRetainsSelfProcessHandle=%d\n", parent_retains_self((DWORD)info.InheritedFromUniqueProcessId));
     fclose(startup);
     if (!MoveFileExW(startup_tmp, startup_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return 6;
     puts("harmless fixture stdout"); fflush(stdout);
@@ -58,16 +111,23 @@ int wmain(int argc, wchar_t **argv) {
         ExitProcess(wcstoul(exit_code, NULL, 0)); /* Simulated abnormal exit, no crash handler/debugger. */
     swprintf(stop, 32768, L"%ls\\%ls-stop", directory, child ? L"child" : L"root");
     swprintf(output, 32768, L"%ls\\%ls-observed", directory, child ? L"child" : L"root");
-    wchar_t detach[2];
-    if (!child && GetEnvironmentVariableW(L"FPS_FIXTURE_DETACH", detach, 2) && detach[0] == L'1') {
-        wchar_t command[32768], own[32768];
-        GetModuleFileNameW(NULL, own, 32768);
-        swprintf(command, 32768, L"\"%ls\" child", own);
-        STARTUPINFOW si = {0}; PROCESS_INFORMATION pi = {0}; si.cb = sizeof(si);
-        if (!CreateProcessW(own, command, NULL, NULL, FALSE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) return 3;
-        CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
-    }
+    wchar_t detach[2], gate[2], create[32768];
+    int child_created = 0;
+    int want_child = !child && GetEnvironmentVariableW(L"FPS_FIXTURE_DETACH", detach, 2) && detach[0] == L'1';
+    int child_gate = GetEnvironmentVariableW(L"FPS_FIXTURE_CHILD_GATE", gate, 2) && gate[0] == L'1';
+    swprintf(create, 32768, L"%ls\\child-create", directory);
     while (GetFileAttributesW(stop) == INVALID_FILE_ATTRIBUTES) {
+        /* This gate controls only fixture descendants. The root keeps running
+         * and reporting FPS before the controller authorizes the child. */
+        if (want_child && !child_created && (!child_gate || GetFileAttributesW(create) != INVALID_FILE_ATTRIBUTES)) {
+            wchar_t command[32768], own[32768];
+            GetModuleFileNameW(NULL, own, 32768);
+            swprintf(command, 32768, L"\"%ls\" child", own);
+            STARTUPINFOW si = {0}; PROCESS_INFORMATION pi = {0}; si.cb = sizeof(si);
+            if (!CreateProcessW(own, command, NULL, NULL, FALSE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) return 3;
+            CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+            child_created = 1;
+        }
         wchar_t temporary[32768]; swprintf(temporary, 32768, L"%ls.tmp", output);
         FILE *f = _wfopen(temporary, L"w");
         if (f) {
@@ -80,3 +140,10 @@ int wmain(int argc, wchar_t **argv) {
     }
     return 0;
 }
+
+#ifdef FPS_FIXTURE_GUI
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, wchar_t *command, int show) {
+    (void)instance; (void)previous; (void)command; (void)show;
+    return wmain(__argc, __wargv);
+}
+#endif

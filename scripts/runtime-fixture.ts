@@ -50,6 +50,7 @@ async function main() {
       FPS_FIXTURE_DIRECTORY: winePath(game),
       FPS_FIXTURE_DETACH:
         Reflect.get(window, "NL_FIXTURE_HANDOFF") === true ? "1" : "0",
+      FPS_FIXTURE_CHILD_GATE: "1",
     },
   };
   const wine = {

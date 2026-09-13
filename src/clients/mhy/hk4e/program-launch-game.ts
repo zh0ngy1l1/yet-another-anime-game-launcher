@@ -471,8 +471,8 @@ export async function* launchGameProgram(
             await capture(
               join(wine.prefix, "drive_c/windows/system32", protection)
             );
-          // Preparation retains the upstream route's protection-file copy. The bridge
-          // creates the selected game itself, retaining its HANDLE before resume.
+          // Preparation retains the upstream route's protection-file copy. The
+          // Steam route delegates creation to the signed shim inside owned jobs.
           await writeFile(
             resolve("config.bat"),
             `@echo off
@@ -497,7 +497,13 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
             );
           await wine.waitUntilServerOff();
           await log(
-            `FPS launch selected ${gameExecutable}; Steam Patch=${admitted.steamPatch}; game creation belongs to the request bridge`
+            `FPS launch selected ${gameExecutable}; Steam Patch=${
+              admitted.steamPatch
+            }; ${
+              admitted.steamPatch
+                ? "signed Steam creates the game; the request bridge validates and retains its child handle"
+                : "the request bridge creates the game suspended"
+            }`
           );
         },
       },

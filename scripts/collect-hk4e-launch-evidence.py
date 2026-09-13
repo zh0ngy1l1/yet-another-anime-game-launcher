@@ -23,6 +23,12 @@ def request_paths(text):
     return sorted({p for p in REQUEST.findall(text) if set(p.rsplit('.', 1)[1]) != {'X'}})
 
 
+def game_log_epoch(path):
+    # Direct signed Steam may create only the Unix/Steam logs for a GUI child.
+    match = re.fullmatch(r'game_(\d+)\.log(?:\.(?:wine|steam)\.log)?', path.name)
+    return int(match.group(1)) / 1000 if match else None
+
+
 def digest(path):
     h = hashlib.sha256()
     with path.open('rb') as stream:
@@ -109,8 +115,10 @@ def collect(profile, output, consoles=()):
     for path in game_logs:
         capture.copy(path)
     # Millisecond epoch in the launcher filename anchors crash-report correlation.
-    epochs = [int(m.group(1)) / 1000 for p in game_logs
-              if (m := re.fullmatch(r'game_(\d+)\.log', p.name))]
+    epochs = [epoch for p in game_logs if (epoch := game_log_epoch(p)) is not None]
+    for epoch in set(epochs):
+        # Explicitly record an absent ordinary log instead of inventing output.
+        capture.copy(profile / 'logs' / f'game_{round(epoch * 1000)}.log')
     anchor = max(epochs) if epochs else datetime.datetime.now().timestamp()
     window = (anchor - 3600, anchor + 3600)
     for name in SETTINGS:

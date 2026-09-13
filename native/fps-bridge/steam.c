@@ -1,20 +1,10 @@
-/* MIT. Keep the existing signed Steam shim unchanged. It starts our relay;
- * only after that rendezvous do we create the game with the RETAINED shim
- * HANDLE as PROC_THREAD_ATTRIBUTE_PARENT_PROCESS. No PID is opened as a handle.
- * See steam-source.md for the inspected shim path and its support boundary. */
+/* MIT. The unchanged signed shim creates the actual game. The bridge duplicates
+ * its retained child HANDLE; it never opens a game by PID or image-name search.
+ * An unnamed Steam job owns the tree before the shim's first instruction.
+ * See steam-source.md for the cumulative-history proof and fail-closed limits. */
 #include <winternl.h>
 
-#define STEAM_PROTOCOL 2
-#define STEAM_MAGIC 0x59415332
-typedef struct {
-    DWORD magic, version, shim_pid;
-    char token[65];
-    LONG state; /* 0 awaiting relay, 1 ready, 2 released/cancelled */
-    LONG relay_pid; /* diagnostic only; a single relay may acknowledge */
-} SteamRendezvous;
-
-static HANDLE shim, steam_job, steam_mapping, steam_ready, steam_release;
-static SteamRendezvous *steam_slot;
+static HANDLE shim, steam_job;
 static DWORD shim_pid, steam_error;
 static int shim_exited, steam_acknowledged;
 
@@ -26,75 +16,117 @@ static DWORD parent_pid(HANDLE process) {
     return (DWORD)info.InheritedFromUniqueProcessId;
 }
 
-static int steam_name(wchar_t *name, const wchar_t *request, const wchar_t *suffix) {
-    if (wcslen(request) != 64) return 0;
-    for (unsigned i = 0; i < 64; i++)
-        if (!((request[i] >= L'0' && request[i] <= L'9') || (request[i] >= L'a' && request[i] <= L'f'))) return 0;
-    return swprintf(name, 128, L"Local\\YAAGL.FPS.%ls.%ls", request, suffix) > 0;
+static ULONGLONG process_creation(HANDLE process) {
+    FILETIME created, exited, kernel, user;
+    if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) return 0;
+    return ((ULONGLONG)created.dwHighDateTime << 32) | created.dwLowDateTime;
 }
 
-static int valid_steam_slot(const SteamRendezvous *slot, const wchar_t *request) {
-    if (slot->magic != STEAM_MAGIC || slot->version != STEAM_PROTOCOL || !slot->shim_pid || slot->token[64]) return 0;
-    for (unsigned i = 0; i < 64; i++) if (slot->token[i] != request[i]) return 0;
-    return 1;
+/* Native SystemExtendedHandleInformation layout, supported by the selected
+ * Wine. Other processes' entries are neither selected nor recorded. The type
+ * index is discovered from our own retained shim handle, never hard-coded. */
+typedef struct {
+    void *object;
+    ULONG_PTR owner, value;
+    ULONG access;
+    USHORT backtrace, type;
+    ULONG attributes, reserved;
+} SteamHandleEntry;
+typedef struct {
+    ULONG_PTR count, reserved;
+    SteamHandleEntry entries[1];
+} SteamHandleSnapshot;
+
+static DWORD steam_handle_snapshot(SteamHandleSnapshot **result) {
+    typedef NTSTATUS (WINAPI *Query)(ULONG, void *, ULONG, ULONG *);
+    Query query = (Query)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQuerySystemInformation");
+    if (!query) return ERROR_NOT_SUPPORTED;
+    ULONG size = 16384, needed = 0;
+    for (unsigned attempt = 0; attempt < 12; attempt++) {
+        SteamHandleSnapshot *snapshot = HeapAlloc(GetProcessHeap(), 0, size);
+        if (!snapshot) return ERROR_NOT_ENOUGH_MEMORY;
+        NTSTATUS status = query(64, snapshot, size, &needed);
+        if (!status) {
+            if (snapshot->count > (size - FIELD_OFFSET(SteamHandleSnapshot, entries)) / sizeof(SteamHandleEntry)) {
+                HeapFree(GetProcessHeap(), 0, snapshot);
+                return ERROR_INVALID_DATA;
+            }
+            *result = snapshot;
+            return 0;
+        }
+        HeapFree(GetProcessHeap(), 0, snapshot);
+        if ((ULONG)status != 0xc0000004) return ERROR_NOT_SUPPORTED;
+        ULONG next = needed > size ? needed : size * 2;
+        if (next <= size || next > 16 * 1024 * 1024) return ERROR_BUFFER_OVERFLOW;
+        size = next;
+    }
+    return ERROR_RETRY;
 }
 
-/* Runs only as the signed shim's .exe child. It never creates/opens a game,
- * performs registry setup or applies FPS. A timeout cannot authorize a game.
- * After acknowledging it waits for root GAME exit, not job/bridge release. */
-static int steam_relay_main(int argc, wchar_t **argv) {
-    wchar_t name[128];
-    if (argc != 3 || !steam_name(name, argv[2], L"map")) return 20;
-    HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, name);
-    if (!mapping) return 21;
-    SteamRendezvous *slot = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(*slot));
-    if (!slot || !valid_steam_slot(slot, argv[2]) || parent_pid(GetCurrentProcess()) != slot->shim_pid) return 22;
-    steam_name(name, argv[2], L"ready");
-    HANDLE ready = OpenEventW(EVENT_MODIFY_STATE, FALSE, name);
-    steam_name(name, argv[2], L"release");
-    HANDLE release = OpenEventW(SYNCHRONIZE, FALSE, name);
-    if (!ready || !release || InterlockedCompareExchange(&slot->relay_pid, (LONG)GetCurrentProcessId(), 0) != 0 ||
-        InterlockedCompareExchange(&slot->state, 1, 0) != 0) return 23;
-    if (!SetEvent(ready)) return 24;
-    DWORD result = WaitForSingleObject(release, INFINITE);
-    int ok = result == WAIT_OBJECT_0 && valid_steam_slot(slot, argv[2]) &&
-             InterlockedCompareExchange(&slot->state, 0, 0) == 2;
-    CloseHandle(ready); CloseHandle(release); UnmapViewOfFile(slot); CloseHandle(mapping);
-    return ok ? 0 : 25;
-}
-
-static void release_steam_relay(void) {
-    if (steam_slot) InterlockedExchange(&steam_slot->state, 2);
-    if (steam_release && !SetEvent(steam_release)) steam_error = GetLastError();
-}
-
-static DWORD prepare_steam_rendezvous(const wchar_t *request) {
-    wchar_t name[128];
-    if (!steam_name(name, request, L"map")) return ERROR_INVALID_PARAMETER;
-    steam_mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, sizeof(SteamRendezvous), name);
-    if (!steam_mapping) return GetLastError();
-    if (GetLastError() == ERROR_ALREADY_EXISTS) { CloseHandle(steam_mapping); steam_mapping = NULL; return ERROR_ALREADY_EXISTS; }
-    steam_slot = MapViewOfFile(steam_mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(*steam_slot));
-    if (!steam_slot) return GetLastError();
-    steam_name(name, request, L"ready");
-    steam_ready = CreateEventW(NULL, TRUE, FALSE, name);
-    if (!steam_ready) return GetLastError();
-    if (GetLastError() == ERROR_ALREADY_EXISTS) { CloseHandle(steam_ready); steam_ready = NULL; return ERROR_ALREADY_EXISTS; }
-    steam_name(name, request, L"release");
-    steam_release = CreateEventW(NULL, TRUE, FALSE, name);
-    if (!steam_release) return GetLastError();
-    if (GetLastError() == ERROR_ALREADY_EXISTS) { CloseHandle(steam_release); steam_release = NULL; return ERROR_ALREADY_EXISTS; }
-    steam_slot->magic = STEAM_MAGIC;
-    steam_slot->version = STEAM_PROTOCOL;
-    for (unsigned i = 0; i < 64; i++) steam_slot->token[i] = (char)request[i];
+/* Success returns one durable object, not a source-slot number or a reopened
+ * PID. Validate again after duplication because source slots can close/recycle.
+ * Monotonic TotalProcesses == 2 proves that only shim + root have EVER joined
+ * the request job. Eager descendants before adoption are rejected visibly;
+ * this count must never be waited down or used to select a replacement. */
+static DWORD acquire_steam_child(HANDLE ownership_job, const wchar_t *expected, HANDLE *retained) {
+    SteamHandleSnapshot *snapshot = NULL;
+    DWORD error = steam_handle_snapshot(&snapshot);
+    if (error) return error;
+    USHORT process_type = 0;
+    for (ULONG_PTR i = 0; i < snapshot->count; i++) {
+        const SteamHandleEntry *entry = &snapshot->entries[i];
+        if (entry->owner == GetCurrentProcessId() && entry->value == (ULONG_PTR)shim) process_type = entry->type;
+    }
+    HANDLE selected = NULL;
+    DWORD selected_pid = 0;
+    unsigned matches = 0;
+    ULONGLONG shim_created = process_creation(shim);
+    if (!process_type || !shim_created) error = ERROR_INVALID_DATA;
+    for (ULONG_PTR i = 0; !error && i < snapshot->count; i++) {
+        const SteamHandleEntry *entry = &snapshot->entries[i];
+        if (entry->owner != shim_pid || entry->type != process_type) continue;
+        HANDLE candidate = NULL;
+        /* AssignProcessToJobObject requires SET_QUOTA and TERMINATE even though
+         * this bridge never terminates an already-running game. */
+        DWORD rights = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION |
+            PROCESS_SET_QUOTA | PROCESS_TERMINATE | SYNCHRONIZE;
+        if (!DuplicateHandle(shim, (HANDLE)entry->value, GetCurrentProcess(), &candidate, rights, FALSE, 0)) continue;
+        DWORD pid = GetProcessId(candidate), length = 32768;
+        wchar_t image[32768] = {0};
+        BOOL own = FALSE, steam = FALSE;
+        ULONGLONG created = process_creation(candidate);
+        if (pid && pid != shim_pid && created >= shim_created &&
+            parent_pid(candidate) == shim_pid &&
+            IsProcessInJob(candidate, ownership_job, &own) && own &&
+            IsProcessInJob(candidate, steam_job, &steam) && steam &&
+            QueryFullProcessImageNameW(candidate, 0, image, &length) && length < 32768 && !_wcsicmp(image, expected)) {
+            /* With a retained HANDLE, equal PID means the same live object even
+             * when several source handles refer to it. Keep one reference. */
+            if (selected && selected_pid == pid) { CloseHandle(candidate); continue; }
+            matches++;
+            if (!selected) { selected = candidate; selected_pid = pid; }
+            else CloseHandle(candidate);
+        } else CloseHandle(candidate);
+    }
+    HeapFree(GetProcessHeap(), 0, snapshot);
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
+    if (!error && !QueryInformationJobObject(ownership_job, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), NULL)) error = GetLastError();
+    if (!error && accounting.TotalProcesses > 2) {
+        diagnostic("Steam ownership rejected total=%lu expected=2; descendant existed before target adoption", accounting.TotalProcesses);
+        error = ERROR_INVALID_DATA;
+    }
+    if (!error && WaitForSingleObject(shim, 0) != WAIT_TIMEOUT) error = ERROR_PROCESS_ABORTED;
+    if (!error && matches > 1) error = ERROR_INVALID_DATA;
+    if (!error && (!matches || accounting.TotalProcesses != 2)) error = ERROR_RETRY;
+    if (error) {
+        if (selected) CloseHandle(selected);
+        return error;
+    }
+    *retained = selected;
     return 0;
 }
 
 static void close_steam(void) {
-    if (steam_slot) UnmapViewOfFile(steam_slot);
-    if (steam_mapping) CloseHandle(steam_mapping);
-    if (steam_ready) CloseHandle(steam_ready);
-    if (steam_release) CloseHandle(steam_release);
     if (shim) CloseHandle(shim);
     if (steam_job) CloseHandle(steam_job);
 }

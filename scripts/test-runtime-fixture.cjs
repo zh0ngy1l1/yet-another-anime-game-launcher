@@ -202,6 +202,12 @@ async function until(predicate, label, ms = 150000) {
       "target-bound worker"
     );
     assert.match(read("game/root-observed"), /d3d11.preferredMaxFrameRate=0;/);
+    if (handoff) {
+      // Exercise descendants after successful target attribution; the native
+      // suite separately covers fail-closed eager descendants before adoption.
+      fs.writeFileSync(path.join(root, "game/child-create"), "create");
+      await until(() => read("game/child-observed"), "owned descendant");
+    }
     if (steam)
       assert.match(
         read("game/root-startup"),
@@ -250,8 +256,9 @@ async function until(predicate, label, ms = 150000) {
     assert.match(output, /trace:loaddll:.*Loaded /);
     for (const event of [
       "bridge version=3",
-      "game created suspended",
-      "game resumed",
+      ...(steam
+        ? ["game adopted"]
+        : ["game created suspended", "game resumed"]),
       "worker start requested",
       "write begin",
       "write end",
@@ -272,7 +279,7 @@ async function until(predicate, label, ms = 150000) {
   assert.equal(child.exitCode, 0);
   console.log(
     tamperSteam
-      ? "PASS prepared system32 Steam artifact replacement rejected before game/relay/worker creation; exact registry/file restoration completed. Evidence:"
+      ? "PASS prepared system32 Steam artifact replacement rejected before game/shim/worker creation; exact registry/file restoration completed. Evidence:"
       : "PASS actual Native IO/acquisition/hash staging, supervisor, bridge target/job/worker, controller, normal quit veto, duplicate admission, Wine waits, registry and file restoration. Evidence:",
     root
   );

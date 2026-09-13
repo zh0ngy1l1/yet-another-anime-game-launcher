@@ -581,7 +581,7 @@ export async function prepareFpsBridge(
       )
         throw new Error(
           input.steamPatch
-            ? `FPS Steam rendezvous/game creation not acknowledged: ${value.error}; Steam error: ${value.steamError}`
+            ? `FPS Steam child ownership/game creation not acknowledged: ${value.error}; Steam error: ${value.steamError}`
             : `FPS game CreateProcess not acknowledged: ${value.error}`
         );
       return value;
@@ -644,7 +644,7 @@ export async function prepareFpsBridge(
         const value = await probe();
         if (value.launched && value.steamError)
           report(
-            `Steam shim/rendezvous failed: ${value.steamError}; retaining game/job observation`
+            `Steam shim/child ownership failed: ${value.steamError}; retaining game/job observation`
           );
         if (
           value.active === 0 &&
@@ -661,7 +661,7 @@ export async function prepareFpsBridge(
           steamPendingSince ??= Date.now();
           if (Date.now() - steamPendingSince >= 30000)
             report(
-              "Game ended; Steam shim/relay job completion remains pending. Close and new launch stay blocked"
+              "Game ended; Steam job completion remains pending. Close and new launch stay blocked"
             );
         }
         if (value.primaryExited && value.active)

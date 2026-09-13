@@ -1,8 +1,8 @@
 {
   "version": 3,
   "filename": "fps-bridge.exe",
-  "size": 37888,
-  "sha256": "d7aa8ac472c5757f4d96847b626fe7b955e9ff6184940bc17b32f66c5900873d",
+  "size": 36864,
+  "sha256": "12db0203a736f56b51c424c3ad26d2efbbdae4b5b870b8f62df639b024e182ba",
   "compiler": "x86_64-w64-mingw32-gcc (GCC) 16.2.0",
   "command": [
     "x86_64-w64-mingw32-gcc",
@@ -21,9 +21,9 @@
     "-o",
     ".tmp/fps-bridge.exe"
   ],
-  "sourceSha256": "30ba7e14734d21643c2092e75afb488cc5167b45c4be8414a66a359cab6748d3",
+  "sourceSha256": "5908269884b88718a1b7f6ee6b16187e897587d77d7ca4f515830da0d49d4c12",
   "registrySourceSha256": "7f212da010cbfdddb9eb1b6a0c730f4ef225dffa59a06565cb85ecb997132a46",
-  "steamSourceSha256": "22708e8631c1be2451739c58a60c019ce4de03a385078d5ee5de3c9183e58f04",
+  "steamSourceSha256": "a0a35f2db5baa6c54c214138da752c21cd85cb0a071fa96e20c30eea1cf82bb2",
   "steamArtifacts": [
     {
       "filename": "steam.exe",

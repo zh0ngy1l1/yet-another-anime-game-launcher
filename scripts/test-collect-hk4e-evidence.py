@@ -12,6 +12,13 @@ spec.loader.exec_module(collector)
 
 
 class EvidenceTest(unittest.TestCase):
+    def test_unix_only_run_supersedes_older_disabled_log(self):
+        paths = [Path('game_100000.log'), Path('game_200000.log.wine.log'),
+                 Path('game_200000.log.steam.log'), Path('game_300000.log.old')]
+        epochs = [epoch for p in paths if (epoch := collector.game_log_epoch(p)) is not None]
+        self.assertEqual(max(epochs), 200)
+        self.assertIsNone(collector.game_log_epoch(Path('game_invalid.log.wine.log')))
+
     def test_exact_requests_exclude_templates_and_fixtures(self):
         self.assertEqual(collector.request_paths(
             '/tmp/yaagl-fps.XXXXXXXXXX /tmp/yaagl-owned-wine.XXXXXXXXXX '

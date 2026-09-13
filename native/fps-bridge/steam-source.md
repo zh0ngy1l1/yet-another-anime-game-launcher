@@ -60,60 +60,73 @@ Inspection downloads, disassembly, certificate extraction and feasibility output
 are retained under `.tmp/steam-source-inspection/`. No canonical fetch or history
 rewrite occurred. Source links are references, not reproducible-build evidence.
 
-## Creation, rendezvous and lifetime
+## Direct signed-shim creation and retained child ownership
 
-1. The existing synchronous admission lease covers preparation onward. A fresh
-   private directory/token stages and verifies the bridge and signed Steam pair.
-   Original prefix Steam-file preparation remains journaled. After preparation,
-   boot and launch verify the actual system32 pair and require Wine C: to resolve
-   to that prefix drive_c. The selected shim is now
-   `C:\windows\system32\steam.exe`, matching the disabled route; the staged
-   signed pair remains verified acquisition evidence, while the bridge and relay
-   continue using the private bridge executable. No game or shim runs during artifact acquisition or registry save.
-2. On `launch`, the bridge creates the **signed shim suspended**, retains its
-   process handle and assigns a Steam job with no breakaway/kill-on-close flags
-   before resuming. The shim runs the same staged bridge in `--steam-relay`
-   mode. That mode never launches, scans or modifies a game.
-3. A request-specific named mapping and ready/release events form the rendezvous.
-   The bridge creates them exclusively before starting the shim. The relay checks
-   the exact token, magic/version, expected Windows parent and single-use state;
-   only one relay can acknowledge. Stale names, collisions, malformed messages or
-   missing rendezvous cannot authorize game creation. A ten-second rendezvous
-   timeout releases the relay if it arrives late, **not** ownership or a process
-   lifetime. The original controller's 90/10/5-second policies remain unchanged.
-4. After readiness, the bridge calls `CreateProcessW` for the exact game,
-   suspended, using `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` with its **retained
-   shim HANDLE**. No handle/PID received from the relay identifies the target.
-   The returned game HANDLE is authoritative. Before resume, the bridge checks
-   Windows parentage and inherited Steam-job membership, then assigns a nested
-   game job. There is no interval of unaccounted game execution.
-5. Wine takes inherited handles from the selected parent. Actual standard-stream
-   handles are therefore transferred with `DuplicateHandle` into that retained
-   parent and passed through an explicit inheritance list. Remote handles are
-   closed once after creation, without retrying a potentially reused handle slot.
-   The game keeps the Steam route's arguments/cwd and the existing plan's game
-   environment; the bridge/worker keeps the companion environment.
-6. The worker uses only the returned game HANDLE. Game exit stops FPS work and
-   releases the relay; the shim's child wait can then finish. It does **not** wait
-   for bridge/job release, which would be circular. Game descendants stay in the
-   nested job and are never adopted as FPS targets. Early shim exit is observable
-   independently from the still-live game and fails the transaction while it
-   continues observing that game. Relay/shim nonzero exit is also reported.
-7. Release requires game HANDLE exit, zero game and Steam jobs, shim HANDLE exit,
-   and worker-thread completion. The supervisor must then confirm its direct
-   Wine child separately, followed by request-owned Wine waiting, exact registry
-   restoration, another Wine wait and journal restoration. Unknown states, failed
-   cleanup and timeouts keep close/admission guarded with diagnostics/retry.
+The signed shim now receives the actual game command, matching the disabled
+Steam route. It creates the game with its ordinary CreateProcessW branch;
+there is no relay and no PROC_THREAD_ATTRIBUTE_PARENT_PROCESS override. This
+preserves its actual child HANDLE, child command line, startup flags, inheritance
+and FreeConsole ordering. The earlier parent-image/API equivalence fixtures did
+not establish these properties. The new regression observes that the old route's
+shim held only the relay HANDLE, while direct creation holds the actual child's.
+It does not assert that Genshin uses that particular query.
 
-Wine's implementations were inspected at the unmodified `wine-11.0` tag:
-[`kernelbase/process.c`](https://github.com/wine-mirror/wine/blob/wine-11.0/dlls/kernelbase/process.c),
-[`server/process.c`](https://github.com/wine-mirror/wine/blob/wine-11.0/server/process.c),
-[`server/handle.c`](https://github.com/wine-mirror/wine/blob/wine-11.0/server/handle.c).
-The parent attribute references a process object with `PROCESS_CREATE_PROCESS`;
-job and handle inheritance use that object. Real fixtures on the existing Wine
-11.0 loader verify these paths. **Windows parentage is the compatibility property
-tested here; macOS Unix parentage may differ.** A process snapshot or PID alone
-does not establish ownership.
+1. Admission, private staging, canonical system32 verification and C: mapping
+   checks are unchanged. SteamGameId service mode remains rejected before setup
+   and again at the native boundary. The signed resources are not modified.
+2. The bridge creates the signed shim suspended and retains its returned HANDLE.
+   It assigns the unnamed Steam job before resuming that shim. Both jobs
+   disallow breakaway and have no kill-on-close behavior. Thus all supported
+   descendants are accounted for before any game execution, even while game
+   identity is being established. The Steam count covers the entire tree.
+3. The bridge queries the system handle snapshot supported by this Wine, examines
+   only entries belonging to its retained shim, and duplicates candidate handles
+   from that exact process object. It does not open a game PID, scan executable
+   names globally, inject code, or ask a relay to identify the target. Snapshot
+   entries are hints; each duplicated HANDLE must independently identify the
+   expected executable, exact shim parent, creation time at or after that shim,
+   and membership in the private Steam job. Multiple handles to one retained process
+   object are allowed; multiple distinct candidate processes fail.
+4. Before adoption, cumulative Steam-job TotalProcesses must still be exactly two:
+   the shim and its sole ever-created child. The game is assigned to the nested game job, then that cumulative
+   count is checked again. The count does not decrement on exit. This rejects an already-exited/replaced child and an eager descendant
+   before adoption. A count, assignment or query failure never becomes permission to choose
+   a later process; the Steam job continues to own the entire lifetime. The
+   second check proves no child preceded nested assignment on a successful
+   admission, preserving the separate game/descendant count. The shim must still be alive. These checks strengthen the
+   pinned shim's inspected one-child, no-service-mode branch.
+5. The accepted HANDLE becomes the immutable FPS and exit-status target. Game
+   identity is acquired after creation, while lifetime ownership already exists
+   through the jobs. There is no claim of an authenticated CreateProcess return
+   handoff or possession of the game's initial thread. The existing automatic
+   initialization/signature/write policy starts only after adoption. Once a
+   target is accepted, descendants are tracked and never substituted for it.
+6. A missed short-lived child, early shim exit, ambiguous tree or query failure
+   produces a visible launch error. A failed adoption can therefore mean game
+   execution occurred without an attributed game HANDLE. It does not mean no
+   game ran. Jobs and the retained shim still gate cleanup. No running process
+   is terminated to force adoption or release; only a never-resumed shim may be
+   terminated if its initial assignment/resumption fails.
+7. Release still requires both jobs empty, retained shim and any acquired game
+   HANDLE exited, and the FPS worker ended. Supervisor acknowledgement, Wine
+   waiting, exact registry restoration, another Wine wait and journal restoration
+   remain separate prerequisites. Unknown states retain close/admission guards.
+
+The strict first-child proof can reject legitimate software that creates a
+Windows descendant before handle adoption. Such a failure is observable and
+retains ownership; it is not silently retried with a weaker selection rule.
+Fixtures cover this limit separately from descendants created after adoption.
+The jobs do not account for native Unix forks, another prefix or pre-existing
+services. Privileged same-user process/memory tampering remains outside the
+existing guarantee.
+
+Source and binary context are recorded in the [creation investigation](../../docs/fps-direct-steam-candidate-20260913.md).
+The selected Wine double-forks child processes: persistent Unix PPID is normally
+launchd on both routes, although the originating creator differs. The direct
+shim also supplies its own ordinary Windows/Unix stream context, removing the
+old split between a selected parent's Windows handle table and a bridge
+creator's Unix handle lookup. GUI game stdout/stderr may be NULL, as on disabled
+Steam. Persistent Unix exceptions/module/bridge diagnostics remain in .wine.log.
 
 ## Mutations, limits and evidence
 
@@ -134,12 +147,11 @@ replacement or runtime tampering remains outside that protection; the tests do
 not claim privileged local attacker resistance. The bridge's game/job handles
 do not strengthen the Perl supervisor's direct-child-only ownership guarantee.
 
-The relay changes the shim's child command line. The parent image now uses the
-same canonical prefix path as disabled Steam. Creation still uses the bridge,
-explicit inherited standard handles and nested jobs. Preserving signed bytes,
-parent image path and verified Windows parentage is **not proof
-of current Genshin world-load compatibility**, executable handoff behavior or
-achieved FPS. Those remain operator-run Step 7.5 gates. A handoff through a
+The shim now directly creates the game with the canonical prefix path used by
+disabled Steam. The shim itself is launched by the bridge inside its Steam job; the adopted
+game subsequently joins the nested game job.
+Preserving signed bytes and direct game creation is **not proof of current
+Genshin world-load compatibility**, executable handoff behavior or achieved FPS. Those remain operator-run Step 7.5 gates. A handoff through a
 pre-existing service/native Unix process/another prefix is unsupported. Other
 launchers must not concurrently mutate the same game/Wine files. There is no
 force-quit, launcher-crash or power-loss recovery promise. Packaged-app/release

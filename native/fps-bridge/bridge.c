@@ -16,6 +16,7 @@
 #include <wchar.h>
 
 #include "registry.c"
+static void diagnostic(const char *format, ...);
 #include "steam.c"
 
 static HANDLE game, job, worker, worker_stop;
@@ -207,11 +208,7 @@ static DWORD job_processes(HANDLE selected_job) {
 
 static DWORD active_processes(void) { return job_processes(job); }
 
-static int write_status(unsigned sequence, DWORD error) {
-    wchar_t path[32768], temporary[32768];
-    if (swprintf(path, 32768, L"%ls\\response", directory) < 0 ||
-        swprintf(temporary, 32768, L"%ls\\response.tmp", directory) < 0) return 0;
-    DWORD active = active_processes();
+static int observe_game_exit(void) {
     if (game) {
         DWORD wait = WaitForSingleObject(game, 0);
         if (wait == WAIT_OBJECT_0) {
@@ -223,16 +220,31 @@ static int write_status(unsigned sequence, DWORD error) {
                 } else game_exit_error = GetLastError();
             }
         }
-        else if (wait != WAIT_TIMEOUT) active = MAXDWORD;
+        else if (wait != WAIT_TIMEOUT) return 0;
     }
+    return 1;
+}
+
+static int write_status(unsigned sequence, DWORD error) {
+    wchar_t path[32768], temporary[32768];
+    if (swprintf(path, 32768, L"%ls\\response", directory) < 0 ||
+        swprintf(temporary, 32768, L"%ls\\response.tmp", directory) < 0) return 0;
+    DWORD active = active_processes();
+    if (!observe_game_exit()) active = MAXDWORD;
     int worker_done = !worker || WaitForSingleObject(worker, 0) == WAIT_OBJECT_0;
     if (shim) {
         DWORD wait = WaitForSingleObject(shim, 0);
         if (wait == WAIT_OBJECT_0) {
+            /* The child may exit between the first poll and this shim poll.
+             * Reobserve it before classifying the shim's propagated exit code. */
+            if (!observe_game_exit()) active = MAXDWORD;
             DWORD code = 0;
             if (!shim_exited && !steam_error) {
                 if (!GetExitCodeProcess(shim, &code)) steam_error = GetLastError();
-                else if (code) steam_error = code;
+                /* The direct signed shim returns its retained child's status.
+                 * Preserve a different shim failure; don't report the game's
+                 * already-recorded exception again as an independent failure. */
+                else if (code && (!game_exit_known || code != game_exit_code)) steam_error = code;
             }
             shim_exited = 1;
         }
@@ -260,9 +272,8 @@ static DWORD never_resumed_failure(PROCESS_INFORMATION *process, DWORD error) {
 }
 
 static DWORD start_steam(void) {
-    /* An inherited SteamGameId opts into Proton's broader Steam/VR registry,
-     * library files and restart service. That is NOT the launcher's Steam Patch
-     * path. Reject it without running the shim, rather than skipping its setup. */
+    /* Presence, including empty text, selects a broader unsupported Proton
+     * service/restart mode. Reject it before any shim/game creation. */
     wchar_t *environment = GetEnvironmentStringsW();
     if (!environment) return GetLastError();
     int unsupported = 0;
@@ -270,12 +281,11 @@ static DWORD start_steam(void) {
         if (!_wcsnicmp(e, L"SteamGameId=", 12)) unsupported = 1;
     FreeEnvironmentStringsW(environment);
     if (unsupported) return ERROR_NOT_SUPPORTED;
-    wchar_t request[65], self[32768], command[32768];
-    for (unsigned i = 0; i <= 64; i++) request[i] = token[i];
-    DWORD error = prepare_steam_rendezvous(request);
-    if (error) return error;
-    if (!GetModuleFileNameW(NULL, self, 32768) || wcschr(self, L'"') || wcschr(steam_path, L'"') ||
-        swprintf(command, 32768, L"\"%ls\" \"%ls\" --steam-relay %ls", steam_path, self, request) < 0) return ERROR_INVALID_PARAMETER;
+    DWORD error = 0;
+    wchar_t command[32768];
+    const wchar_t *quote = wcspbrk(executable, L" \t") ? L"\"" : L"";
+    if (wcschr(steam_path, L'"') || swprintf(command, 32768, L"\"%ls\" %ls%ls%ls", steam_path, quote, executable, quote) < 0)
+        return ERROR_INVALID_PARAMETER;
     STARTUPINFOW startup = {0}; PROCESS_INFORMATION process = {0}; startup.cb = sizeof(startup);
     wchar_t steam_log[32768];
     if (swprintf(steam_log, 32768, L"%ls.steam.log", log_path) < 0) return ERROR_INVALID_PARAMETER;
@@ -290,23 +300,48 @@ static DWORD start_steam(void) {
     error = created ? 0 : GetLastError();
     CloseHandle(output);
     if (!created) return error;
-    shim = process.hProcess; shim_pid = process.dwProcessId; steam_slot->shim_pid = shim_pid;
-    if (!AssignProcessToJobObject(steam_job, shim)) error = never_resumed_failure(&process, GetLastError());
+    shim = process.hProcess; shim_pid = process.dwProcessId;
+    /* The Steam job owns the entire tree before any shim instruction.
+     * No breakaway and no kill-on-close; root exit never releases descendants. */
+    if (!AssignProcessToJobObject(steam_job, shim))
+        error = never_resumed_failure(&process, GetLastError());
     else if (ResumeThread(process.hThread) == (DWORD)-1) error = never_resumed_failure(&process, GetLastError());
     CloseHandle(process.hThread);
     if (error) return error;
-    HANDLE waits[] = {steam_ready, shim};
-    DWORD wait = WaitForMultipleObjects(2, waits, FALSE, 10000);
-    if (wait != WAIT_OBJECT_0) return wait == WAIT_TIMEOUT ? ERROR_TIMEOUT : ERROR_PROCESS_ABORTED;
-    if (!valid_steam_slot(steam_slot, request) || steam_slot->shim_pid != shim_pid ||
-        InterlockedCompareExchange(&steam_slot->state, 0, 0) != 1 || !steam_slot->relay_pid ||
-        WaitForSingleObject(shim, 0) != WAIT_TIMEOUT) return ERROR_INVALID_STATE;
+    diagnostic("Steam direct creation shim=%lu command=%ls; Steam job assigned before resume", shim_pid, command);
+    ULONGLONG deadline = GetTickCount64() + 10000;
+    do {
+        error = acquire_steam_child(steam_job, executable, &game);
+        if (error != ERROR_RETRY) break;
+        Sleep(1); /* Wait only for the actual creation handle, never delay a game. */
+    } while (GetTickCount64() < deadline);
+    if (error == ERROR_RETRY) error = ERROR_TIMEOUT;
+    if (error) {
+        diagnostic("Steam child ownership failed shim=%lu error=%lu; request jobs remain owned", shim_pid, error);
+        return error;
+    }
+    game_pid = GetProcessId(game);
+    /* Keep the exact HANDLE even if admission fails after direct creation. The
+     * game is already running: never terminate it to hide an ownership failure.
+     * A second cumulative check proves no descendant preceded nested assignment. */
+    JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting;
+    if (!AssignProcessToJobObject(job, game)) error = GetLastError();
+    else if (!QueryInformationJobObject(steam_job, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), NULL)) error = GetLastError();
+    else if (accounting.TotalProcesses != 2) error = ERROR_INVALID_DATA;
+    if (error) {
+        diagnostic("Steam game admission failed game=%lu error=%lu; retained game and Steam job await exit", game_pid, error);
+        return error;
+    }
+    launched = 1;
     steam_acknowledged = 1;
-    wchar_t image[32768] = {0};
+    wchar_t image[32768] = {0}, cwd[32768] = {0};
     DWORD length = 32768;
     BOOL identified = QueryFullProcessImageNameW(shim, 0, image, &length);
-    diagnostic("Steam ready shim=%lu relay=%ld image=%ls imageError=%lu", shim_pid,
-        steam_slot->relay_pid, image, identified ? 0 : GetLastError());
+    GetCurrentDirectoryW(32768, cwd);
+    diagnostic("Steam ready shim=%lu image=%ls imageError=%lu; retained direct child game=%lu totalProcesses=2", shim_pid,
+        image, identified ? 0 : GetLastError(), game_pid);
+    diagnostic("game adopted game=%lu parent=%lu shim=%lu cwd=%ls gameDXMT=%ls command=%ls", game_pid,
+        parent_pid(game), shim_pid, cwd, game_config, command);
     return 0;
 }
 
@@ -315,95 +350,41 @@ static DWORD launch(void) {
     attempted = 1;
     wchar_t command[32768], previous[32768];
     if (wcschr(executable, L'"') || swprintf(command, 32768,
-        L"\"%ls\"%ls", executable, *steam_path ? L"" : L" -platform_type CLOUD_THIRD_PARTY_PC -is_cloud 1") < 0) return ERROR_INVALID_PARAMETER;
+        L"\"%ls\" -platform_type CLOUD_THIRD_PARTY_PC -is_cloud 1", executable) < 0) return ERROR_INVALID_PARAMETER;
     DWORD n = GetEnvironmentVariableW(L"DXMT_CONFIG", previous, 32768);
     if (n >= 32768 || !SetEnvironmentVariableW(L"DXMT_CONFIG", game_config)) return ERROR_INVALID_PARAMETER;
     if (*steam_path) {
         steam_error = start_steam();
-        if (steam_error) {
-            SetEnvironmentVariableW(L"DXMT_CONFIG", n ? previous : NULL);
-            release_steam_relay(); return steam_error;
-        }
+        SetEnvironmentVariableW(L"DXMT_CONFIG", n ? previous : NULL);
+        return steam_error;
     }
-    STARTUPINFOEXW startup = {0};
-    PROCESS_INFORMATION process = {0};
-    startup.StartupInfo.cb = shim ? sizeof(startup) : sizeof(startup.StartupInfo);
-    SIZE_T attributes_size = 0;
-    BOOL attributes_initialized = FALSE;
-    HANDLE remote[2] = {NULL, NULL};
+    STARTUPINFOW startup = {0}; PROCESS_INFORMATION process = {0}; startup.cb = sizeof(startup);
     SECURITY_ATTRIBUTES security = {sizeof(security), NULL, TRUE};
     HANDLE output = CreateFileW(log_path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
         &security, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (output == INVALID_HANDLE_VALUE) {
         DWORD error = GetLastError();
         SetEnvironmentVariableW(L"DXMT_CONFIG", n ? previous : NULL);
-        release_steam_relay();
         return error;
     }
-    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-    const char *hide = getenv("PROTON_HIDE_PROCESS_WINDOW");
-    if (shim && hide && *hide && *hide != '0') {
-        startup.StartupInfo.dwFlags |= STARTF_USESHOWWINDOW;
-        startup.StartupInfo.wShowWindow = SW_HIDE;
-    }
-    startup.StartupInfo.hStdOutput = startup.StartupInfo.hStdError = output;
-    startup.StartupInfo.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    DWORD error = 0;
-    if (shim) {
-        /* With an explicit parent Wine copies that parent's handle table.
-         * Duplicate real handles into the RETAINED parent, then explicitly
-         * inherit only those. A number copied between processes is not a handle. */
-        HANDLE input = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-            &security, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (input == INVALID_HANDLE_VALUE ||
-            !DuplicateHandle(GetCurrentProcess(), output, shim, &remote[0], 0, TRUE, DUPLICATE_SAME_ACCESS) ||
-            !DuplicateHandle(GetCurrentProcess(), input, shim, &remote[1], 0, TRUE, DUPLICATE_SAME_ACCESS)) error = GetLastError();
-        if (input != INVALID_HANDLE_VALUE) CloseHandle(input);
-        if (!error) {
-            InitializeProcThreadAttributeList(NULL, 2, 0, &attributes_size);
-            startup.lpAttributeList = HeapAlloc(GetProcessHeap(), 0, attributes_size);
-            if (!startup.lpAttributeList) error = ERROR_NOT_ENOUGH_MEMORY;
-            else if (!(attributes_initialized = InitializeProcThreadAttributeList(startup.lpAttributeList, 2, 0, &attributes_size)) ||
-                !UpdateProcThreadAttribute(startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, &shim, sizeof(shim), NULL, NULL) ||
-                !UpdateProcThreadAttribute(startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST, remote, sizeof(remote), NULL, NULL)) error = GetLastError();
-        }
-        startup.StartupInfo.hStdOutput = startup.StartupInfo.hStdError = remote[0];
-        startup.StartupInfo.hStdInput = remote[1];
-    }
-    BOOL ok = !error && CreateProcessW(executable, command, NULL, NULL, TRUE,
-        CREATE_SUSPENDED | (shim ? EXTENDED_STARTUPINFO_PRESENT : 0), NULL,
-        shim ? NULL : game_directory, &startup.StartupInfo, &process);
-    if (!error && !ok) error = GetLastError();
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdOutput = startup.hStdError = output;
+    startup.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
+    BOOL ok = CreateProcessW(executable, command, NULL, NULL, TRUE,
+        CREATE_SUSPENDED, NULL, game_directory, &startup, &process);
+    DWORD error = ok ? 0 : GetLastError();
     SetEnvironmentVariableW(L"DXMT_CONFIG", n ? previous : NULL);
     CloseHandle(output);
-    if (startup.lpAttributeList) {
-        if (attributes_initialized) DeleteProcThreadAttributeList(startup.lpAttributeList);
-        HeapFree(GetProcessHeap(), 0, startup.lpAttributeList);
-    }
-    for (unsigned i = 0; i < 2; i++) if (remote[i]) {
-        HANDLE local;
-        if (DuplicateHandle(shim, remote[i], GetCurrentProcess(), &local, 0, FALSE, DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) CloseHandle(local);
-        else steam_error = GetLastError(); /* Never retry a possibly closed remote handle. */
-    }
-    if (!ok) { release_steam_relay(); return error; }
+    if (!ok) return error;
     game = process.hProcess;
     game_pid = process.dwProcessId;
-    diagnostic("game created suspended game=%lu parent=%lu shim=%lu", game_pid, parent_pid(game), shim_pid);
-    /* Before ResumeThread, this is an owned, never-run failed launch. */
-    BOOL in_job = FALSE;
-    if (steam_error || (shim && (parent_pid(game) != shim_pid || !IsProcessInJob(game, steam_job, &in_job) || !in_job)) ||
-        !AssignProcessToJobObject(job, game)) {
-        error = steam_error ? steam_error : GetLastError();
-        error = never_resumed_failure(&process, error ? error : ERROR_INVALID_STATE);
-    } else if (ResumeThread(process.hThread) == (DWORD)-1) {
-        error = GetLastError();
-        error = never_resumed_failure(&process, error);
-    } else {
+    diagnostic("game created suspended game=%lu parent=%lu shim=0", game_pid, parent_pid(game));
+    if (!AssignProcessToJobObject(job, game)) error = never_resumed_failure(&process, GetLastError());
+    else if (ResumeThread(process.hThread) == (DWORD)-1) error = never_resumed_failure(&process, GetLastError());
+    else {
         launched = 1;
-        wchar_t cwd[32768] = {0};
-        GetCurrentDirectoryW(32768, cwd);
-        diagnostic("game resumed game=%lu parent=%lu shim=%lu cwd=%ls gameDXMT=%ls command=%ls",
-            game_pid, parent_pid(game), shim_pid, shim ? cwd : game_directory, game_config, command);
+        diagnostic("game resumed game=%lu parent=%lu shim=0 cwd=%ls gameDXMT=%ls command=%ls", game_pid,
+            parent_pid(game), game_directory, game_config, command);
     }
     CloseHandle(process.hThread);
     return error;
@@ -411,7 +392,6 @@ static DWORD launch(void) {
 
 int wmain(int argc, wchar_t **argv) {
     if (argc > 1 && !wcscmp(argv[1], L"--registry")) return registry_main(argc, argv);
-    if (argc > 1 && !wcscmp(argv[1], L"--steam-relay")) return steam_relay_main(argc, argv);
     if ((argc != 7 && argc != 8) || wcslen(argv[1]) > 32000 || wcslen(argv[2]) != 64) return 2;
     for (unsigned i = 0; i < 64; i++) {
         if (!((argv[2][i] >= L'0' && argv[2][i] <= L'9') || (argv[2][i] >= L'a' && argv[2][i] <= L'f'))) return 2;
@@ -446,6 +426,15 @@ int wmain(int argc, wchar_t **argv) {
         active_processes() != 0) return 3;
     if (*steam_path && (!steam_job || !SetInformationJobObject(steam_job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)) ||
         job_processes(steam_job) != 0)) return 3;
+    if (*steam_path) {
+        SteamHandleSnapshot *preflight = NULL;
+        DWORD error = steam_handle_snapshot(&preflight);
+        if (error) {
+            diagnostic("Steam child-handle capability unavailable error=%lu; no shim or game created", error);
+            return 3;
+        }
+        HeapFree(GetProcessHeap(), 0, preflight);
+    }
     wchar_t path[32768];
     swprintf(path, 32768, L"%ls\\command", directory);
     unsigned last = 0;
@@ -499,9 +488,7 @@ int wmain(int argc, wchar_t **argv) {
         if (game && WaitForSingleObject(game, 0) == WAIT_OBJECT_0) {
             primary_exited = 1;
             SetEvent(worker_stop);
-            release_steam_relay();
         }
-        if (attempted && !game && !launched) release_steam_relay();
         Sleep(20);
     }
     if (worker) CloseHandle(worker);

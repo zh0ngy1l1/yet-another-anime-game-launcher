@@ -281,7 +281,7 @@ it("unconfirmed Steam cleanup remains visibly failed and guarded until later con
   await tick(32000);
   expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
   expect(rig.ownership.state().detail).toMatch(
-    /Steam shim\/relay job completion remains pending/
+    /Steam job completion remains pending/
   );
   expect(rig.ownership.beginClose()).toBe(false);
   expect(rig.ownership.reserve()).toBeUndefined();
@@ -289,7 +289,7 @@ it("unconfirmed Steam cleanup remains visibly failed and guarded until later con
   const result = await rig.finish(transaction);
   expect(
     result?.observationErrors.some(error =>
-      String(error).includes("Steam shim/relay")
+      String(error).includes("Steam job completion")
     )
   ).toBe(true);
   expect(result?.cleanupErrors).toEqual([]);
@@ -310,7 +310,7 @@ it("early Steam exit fails observation without retargeting or restoring a living
   expect(await rig.finish(transaction)).toBeInstanceOf(Error);
 });
 
-it("cancellation during a pending Steam rendezvous accounts for late game creation", async () => {
+it("cancellation during pending Steam child attribution accounts for late game creation", async () => {
   const rig = launch("60", true),
     handoff = deferred<void>();
   rig.native.io.command.mockImplementation(async (directory, text) => {

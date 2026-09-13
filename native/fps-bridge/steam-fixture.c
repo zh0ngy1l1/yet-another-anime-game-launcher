@@ -6,12 +6,21 @@
 #endif
 #define _UNICODE
 #include <windows.h>
-#include <winternl.h>
 #include <stdio.h>
 #include <wchar.h>
 
+static int create(const wchar_t *image, PROCESS_INFORMATION *process) {
+    wchar_t command[32768];
+    if (swprintf(command, 32768, L"\"%ls\"", image) < 0) return 0;
+    STARTUPINFOW startup = {0}; startup.cb = sizeof(startup);
+    if (!CreateProcessW(NULL, command, NULL, NULL, FALSE, CREATE_UNICODE_ENVIRONMENT,
+        NULL, NULL, &startup, process)) return 0;
+    CloseHandle(process->hThread);
+    return 1;
+}
+
 int wmain(int argc, wchar_t **argv) {
-    if (argc != 4 || wcscmp(argv[2], L"--steam-relay") || wcslen(argv[3]) != 64) return 10;
+    if (argc != 2) return 10;
     wchar_t mode[64], directory[32768], stop[32768];
     GetEnvironmentVariableW(L"FPS_STEAM_FIXTURE_MODE", mode, 64);
     GetEnvironmentVariableW(L"FPS_FIXTURE_DIRECTORY", directory, 32768);
@@ -22,35 +31,32 @@ int wmain(int argc, wchar_t **argv) {
         return 0;
     }
     if (!wcscmp(mode, L"late")) Sleep(10500);
-    if (!wcscmp(mode, L"mismatch")) argv[3][0] = argv[3][0] == L'a' ? L'b' : L'a';
-    if (!wcscmp(mode, L"protocol")) {
-        wchar_t name[128]; swprintf(name, 128, L"Local\\YAAGL.FPS.%ls.map", argv[3]);
-        HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, name);
-        DWORD *slot = mapping ? MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, 8) : NULL;
-        if (!slot) return 12;
-        slot[1] = 999;
-        UnmapViewOfFile(slot); CloseHandle(mapping);
+    PROCESS_INFORMATION process = {0}, decoy = {0};
+    wchar_t wrong[32768];
+    GetEnvironmentVariableW(L"FPS_STEAM_FIXTURE_WRONG_IMAGE", wrong, 32768);
+    if (!wcscmp(mode, L"eager")) {
+        wchar_t decoy_directory[32768];
+        swprintf(decoy_directory, 32768, L"%ls\\decoy", directory);
+        SetEnvironmentVariableW(L"FPS_FIXTURE_DIRECTORY", decoy_directory);
+        if (!create(wrong, &decoy)) return 12;
+        SetEnvironmentVariableW(L"FPS_FIXTURE_DIRECTORY", directory);
     }
-    wchar_t command[32768];
-    swprintf(command, 32768, L"\"%ls\" --steam-relay %ls", argv[1], argv[3]);
-    STARTUPINFOW si = {0}; PROCESS_INFORMATION pi = {0}; si.cb = sizeof(si);
-    if (!CreateProcessW(argv[1], command, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) return 13;
-    CloseHandle(pi.hThread);
-    if (!wcscmp(mode, L"early")) {
+    if (!create(!wcscmp(mode, L"wrong-image") ? wrong : argv[1], &process)) return 13;
+    if (!wcscmp(mode, L"early") || !wcscmp(mode, L"drop-handle")) {
         while (GetFileAttributesW(stop) == INVALID_FILE_ATTRIBUTES) Sleep(20);
-    } else {
-        if (!wcscmp(mode, L"after-handoff")) {
-            while (GetFileAttributesW(stop) == INVALID_FILE_ATTRIBUTES) Sleep(20);
-            wchar_t name[128]; swprintf(name, 128, L"Local\\YAAGL.FPS.%ls.map", argv[3]);
-            HANDLE mapping = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, name);
-            DWORD *slot = mapping ? MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, 8) : NULL;
-            if (!slot) return 14;
-            slot[1] = 999; UnmapViewOfFile(slot); CloseHandle(mapping);
-        }
-        WaitForSingleObject(pi.hProcess, INFINITE);
+        CloseHandle(process.hProcess);
+        if (!wcscmp(mode, L"early")) return 0;
+        swprintf(stop, 32768, L"%ls\\steam-exit-stop", directory);
+        while (GetFileAttributesW(stop) == INVALID_FILE_ATTRIBUTES) Sleep(20);
+        return 0;
     }
+    WaitForSingleObject(process.hProcess, INFINITE);
     DWORD code = 0;
-    if (wcscmp(mode, L"early")) GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
+    GetExitCodeProcess(process.hProcess, &code);
+    CloseHandle(process.hProcess);
+    if (decoy.hProcess) {
+        WaitForSingleObject(decoy.hProcess, INFINITE);
+        CloseHandle(decoy.hProcess);
+    }
     return (int)code;
 }

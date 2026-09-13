@@ -33,6 +33,7 @@ cp.execFileSync(
     "-Wextra",
     "-Werror",
     "-municode",
+    ...(steam ? ["-mwindows", "-DFPS_FIXTURE_GUI"] : []),
     "-O2",
     "-static",
     "-Wl,--no-insert-timestamp",
@@ -170,6 +171,28 @@ async function main() {
     "decoy ready",
     120000
   );
+  const statusFixture = path.join(root, "status-fixture.exe");
+  cp.execFileSync(process.env.FPS_BRIDGE_CC || "x86_64-w64-mingw32-gcc", [
+    "-std=c11",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-static",
+    "-municode",
+    "native/fps-bridge/status-fixture.c",
+    "-lpsapi",
+    "-ladvapi32",
+    "-o",
+    statusFixture,
+  ]);
+  const statusDirectory = path.join(root, "status-observation");
+  fs.mkdirSync(statusDirectory);
+  assert.equal(
+    await spawn(statusFixture, [win(statusDirectory)]).completion,
+    0
+  );
+  console.log("PASS deterministic child/shim exit observation races");
   if (steam)
     for (const artifact of require("../native/fps-bridge/steam-artifacts.json"))
       fs.copyFileSync(
@@ -193,7 +216,11 @@ async function main() {
         win(path.join(dir, "game.log")),
         ...(steam ? ["C:\\windows\\system32\\steam.exe"] : []),
       ],
-      { FPS_FIXTURE_DIRECTORY: win(dir), FPS_FIXTURE_DETACH: "1" }
+      {
+        FPS_FIXTURE_DIRECTORY: win(dir),
+        FPS_FIXTURE_DETACH: "1",
+        ...(steam ? { FPS_FIXTURE_CHILD_GATE: "1" } : {}),
+      }
     );
     const initial = await until(() => status(dir), "bridge capabilities");
     assert.equal(initial.token, token);
@@ -244,11 +271,11 @@ async function main() {
       assert.match(metadata, /argc=1\r?\n/);
       assert.match(metadata, /KEEP=fixture-kept/);
       assert.ok(metadata.includes(`cwd=${win(process.cwd())}`));
-      await until(
-        () =>
-          read(path.join(dir, "game.log"))?.includes("harmless fixture stdout"),
-        "game stdout redirection"
-      );
+      // This fails on the former relay route: the signed shim retained its
+      // relay, not the actual game. The GUI fixture follows the game's PE
+      // subsystem and must be the shim's real directly created child.
+      assert.match(metadata, /parentRetainsSelfProcessHandle=1\r?\n/);
+      fs.writeFileSync(path.join(dir, "child-create"), "fixture-only gate\n");
     }
     await until(
       () => read(path.join(dir, "child-observed")),
@@ -327,6 +354,7 @@ async function main() {
         "-O2",
         "-static",
         "-municode",
+        ...(steam ? ["-mwindows", "-DFPS_FIXTURE_GUI"] : []),
         mode === "no-pattern"
           ? "-DFPS_FIXTURE_NO_PATTERN"
           : "-DFPS_FIXTURE_AMBIGUOUS",
@@ -440,26 +468,45 @@ async function main() {
       );
     }
     let s = await request("launch");
-    assert.equal(s.launched, 1);
+    if (steam && !s.launched) {
+      // A direct shim may reap a very short-lived child before its retained
+      // handle can be acquired. Keep that an explicit launch failure; never
+      // invent an attributed game exit or adopt another process.
+      assert.notEqual(s.launchError, 0);
+      assert.equal(s.pid, 0);
+      assert.equal(s.exitCodeKnown, 0);
+    } else assert.equal(s.launched, 1);
+    const attributed = s.launched === 1;
     for (let i = 0; i < 300; i++) {
       s = await request("probe");
-      if (s.primaryExited && !s.active && !s.steamActive) break;
+      if ((!attributed || s.primaryExited) && !s.active && !s.steamActive)
+        break;
       await sleep(20);
     }
-    assert.equal(s.primaryExited, 1);
-    assert.equal(s.exitCodeKnown, 1);
-    assert.equal(s.exitCode, 0xc0000005);
-    assert.equal(s.exitCodeError, 0);
+    if (attributed) {
+      assert.equal(s.primaryExited, 1);
+      assert.equal(s.exitCodeKnown, 1);
+      assert.equal(s.exitCode, 0xc0000005);
+      assert.equal(s.exitCodeError, 0);
+    } else {
+      assert.equal(s.pid, 0);
+      assert.equal(s.exitCodeKnown, 0);
+      assert.notEqual(s.launchError, 0);
+    }
     assert.equal(s.generation, 0);
     assert.equal(s.workerState, 0);
     assert.equal(s.workerDone, 1);
-    const gameLog = read(path.join(dir, "game.log"));
-    assert.match(gameLog, /harmless fixture stdout/);
-    assert.match(gameLog, /harmless fixture stderr/);
+    if (!steam) {
+      const gameLog = read(path.join(dir, "game.log"));
+      assert.match(gameLog, /harmless fixture stdout/);
+      assert.match(gameLog, /harmless fixture stderr/);
+    }
+    assert.equal(s.active, 0);
+    assert.equal(s.steamActive, 0);
     assert.equal((await request("release")).released, 1);
     assert.equal(await bridge.completion, 0);
     console.log(
-      "PASS simulated game failure before worker start: exact game exit code independent of successful bridge exit, retained output, guarded release"
+      "PASS simulated game failure before worker start: exact attributed exit or explicit missed-handoff failure, no worker or retarget, guarded release"
     );
   }
   if (steam) {
@@ -484,15 +531,18 @@ async function main() {
     for (const mode of [
       "before-create",
       "missing",
-      "mismatch",
-      "protocol",
+      "wrong-image",
+      "eager",
       "late",
       "early",
-      "after-handoff",
+      "drop-handle",
       "SteamGameId",
     ]) {
       const dir = path.join(root, "steam-" + mode);
       fs.mkdirSync(dir);
+      fs.mkdirSync(path.join(dir, "decoy"));
+      const wrongImage = path.join(dir, "other-fixture.exe");
+      fs.copyFileSync(fixturePath, wrongImage);
       const token = crypto.randomBytes(32).toString("hex");
       let sequence = 0;
       const bridge = spawn(
@@ -511,6 +561,7 @@ async function main() {
         {
           FPS_FIXTURE_DIRECTORY: win(dir),
           FPS_STEAM_FIXTURE_MODE: mode,
+          FPS_STEAM_FIXTURE_WRONG_IMAGE: win(wrongImage),
           ...(mode === "SteamGameId" ? { SteamGameId: "test" } : {}),
         }
       );
@@ -527,7 +578,7 @@ async function main() {
         );
       }
       let s = await request("launch");
-      if (mode === "early" || mode === "after-handoff") {
+      if (mode === "early" || mode === "drop-handle") {
         assert.equal(s.error, 0);
         assert.equal(s.steamReady, 1);
         const gamePid = s.pid,
@@ -555,18 +606,35 @@ async function main() {
         assert.equal(s.active, 1);
         assert.notEqual((await request("release")).error, 0);
         assert.equal((await request("stop", 1)).error, 0);
+        if (mode === "drop-handle") {
+          for (let i = 0; i < 200; i++) {
+            s = await request("probe");
+            if (s.workerDone) break;
+            await sleep(20);
+          }
+          assert.equal(s.workerDone, 1);
+          assert.equal((await request("start", 2, 61)).error, 0);
+          await until(
+            () => read(path.join(dir, "root-observed"))?.split(" ")[1] === "61",
+            "copied game handle survives shim closing its source handle"
+          );
+          assert.equal((await request("stop", 2)).error, 0);
+        }
       } else {
         assert.notEqual(s.error, 0);
         assert.equal(s.launched, 0);
         assert.equal(s.pid, 0);
-        assert.equal(read(path.join(dir, "root-startup")), undefined);
-        if (mode === "missing" || mode === "late") {
+        if (["before-create", "missing", "SteamGameId"].includes(mode))
+          assert.equal(read(path.join(dir, "root-startup")), undefined);
+        if (["missing", "late", "wrong-image", "eager"].includes(mode)) {
           assert.notEqual(s.steamActive, 0);
           assert.notEqual((await request("release")).error, 0);
         }
         if (mode === "SteamGameId") assert.equal(s.shimPid, 0);
       }
-      for (const which of ["root", "child", "steam"]) stopFixture(dir, which);
+      for (const which of ["root", "child", "steam", "steam-exit"])
+        stopFixture(dir, which);
+      stopFixture(path.join(dir, "decoy"));
       for (
         let i = 0;
         i < 300 && (s.active || s.steamActive || !s.workerDone);
@@ -578,7 +646,6 @@ async function main() {
       assert.equal(s.active, 0);
       assert.equal(s.steamActive, 0);
       assert.equal(s.workerDone, 1);
-      if (mode === "after-handoff") assert.equal(s.steamError, 25);
       assert.equal((await request("release")).released, 1);
       assert.equal(await bridge.completion, 0);
       assert.equal(
