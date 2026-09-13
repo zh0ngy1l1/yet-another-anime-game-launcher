@@ -113,10 +113,31 @@ int wmain(int argc, wchar_t **argv) {
     swprintf(output, 32768, L"%ls\\%ls-observed", directory, child ? L"child" : L"root");
     wchar_t detach[2], gate[2], create[32768];
     int child_created = 0;
+    wchar_t window_flag[2], window_gate[32768], window_ready[32768];
+    int want_window = !child && GetEnvironmentVariableW(L"FPS_FIXTURE_WINDOW", window_flag, 2) && window_flag[0] == L'1';
+    HWND fixture_window = NULL;
+    swprintf(window_gate, 32768, L"%ls\\window-create", directory);
+    swprintf(window_ready, 32768, L"%ls\\window-ready", directory);
     int want_child = !child && GetEnvironmentVariableW(L"FPS_FIXTURE_DETACH", detach, 2) && detach[0] == L'1';
     int child_gate = GetEnvironmentVariableW(L"FPS_FIXTURE_CHILD_GATE", gate, 2) && gate[0] == L'1';
     swprintf(create, 32768, L"%ls\\child-create", directory);
     while (GetFileAttributesW(stop) == INVALID_FILE_ATTRIBUTES) {
+        /* A real window exercises Wine's lazy explorer desktop creation. The
+         * controller opens this fixture-only gate after target admission. */
+        if (want_window && !fixture_window && GetFileAttributesW(window_gate) != INVALID_FILE_ATTRIBUTES) {
+            fixture_window = CreateWindowExW(0, L"STATIC", L"YAAGL harmless FPS window fixture",
+                WS_OVERLAPPEDWINDOW, 0, 0, 160, 80, NULL, NULL, GetModuleHandleW(NULL), NULL);
+            if (!fixture_window) return 8;
+            FILE *ready = _wfopen(window_ready, L"w");
+            if (!ready) return 9;
+            fwprintf(ready, L"pid=%lu hwnd=0x%llx\n", GetCurrentProcessId(), (unsigned long long)(uintptr_t)fixture_window);
+            fclose(ready);
+        }
+        MSG message;
+        while (fixture_window && PeekMessageW(&message, NULL, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
         /* This gate controls only fixture descendants. The root keeps running
          * and reporting FPS before the controller authorizes the child. */
         if (want_child && !child_created && (!child_gate || GetFileAttributesW(create) != INVALID_FILE_ATTRIBUTES)) {
@@ -138,6 +159,7 @@ int wmain(int argc, wchar_t **argv) {
         }
         Sleep(50);
     }
+    if (fixture_window) DestroyWindow(fixture_window);
     return 0;
 }
 

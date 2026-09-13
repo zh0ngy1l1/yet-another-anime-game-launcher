@@ -26,6 +26,7 @@ export function boundary(steamPatch = false) {
     steamReady: 0,
     steamError: 0,
     steamActive: 0,
+    diagnosticError: 0,
   };
   const direct = deferred<{ confirmed: boolean; status?: number }>();
   const events: string[] = [];

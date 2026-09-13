@@ -20,7 +20,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it("verifies the prepared system32 pair and launches its canonical Windows image", async () => {
+it("verifies the system32 pair before starting the signed Steam Wine root with the private bridge", async () => {
   const rig = boundary(true),
     bridge = await rig.prepare();
   // Acquisition occurs before the caller prepares prefix files.
@@ -29,7 +29,9 @@ it("verifies the prepared system32 pair and launches its canonical Windows image
   const selected = "/selected/prefix/drive_c/windows/system32";
   expect(rig.io.verify).toHaveBeenLastCalledWith(bridge.path, selected);
   const request = rig.io.start.mock.calls[0][0];
-  expect(request.args[6]).toBe("C:\\windows\\system32\\steam.exe");
+  expect(request.executable).toBe(`${selected}/steam.exe`);
+  expect(request.args[0]).toBe("Z:\\tmp\\request\\fps-bridge.exe");
+  expect(request.args[7]).toBe("C:\\windows\\system32\\steam.exe");
   expect(request.args).not.toContain("Z:\\tmp\\request\\steam.exe");
   expect(request.outputLog).toBe("/logs/game.log.wine.log");
   expect(request.environment.WINEDEBUG).toBe(
@@ -50,6 +52,7 @@ it("direct FPS launch requires no Steam files and retains custom Wine debug chan
   await bridge.boot();
   expect(rig.io.verify).toHaveBeenLastCalledWith(bridge.path, undefined);
   const request = rig.io.start.mock.calls[0][0];
+  expect(request.executable).toBe("/tmp/request/fps-bridge.exe");
   expect(request.args).toHaveLength(6);
   expect(request.environment.WINEDEBUG).toBe("-all,+timestamp,+seh,+loaddll");
   await bridge.launch();
@@ -191,6 +194,10 @@ it.each([
   { steamReady: 2 },
   { shimExited: -1 },
   { steamActive: 1.5 },
+  { diagnosticError: -1 },
+  { diagnosticError: 0x100000000 },
+  { diagnosticError: "5" },
+  { diagnosticError: null },
   { shimPid: 42, pid: 42 },
   { steamReady: 1, shimPid: 0 },
 ])("rejects malformed Steam protocol %j", patch => {
@@ -198,6 +205,15 @@ it.each([
   expect(() =>
     parseBridgeStatus(JSON.stringify({ ...rig.status, ...patch }), rig.token)
   ).toThrow();
+});
+
+it("accepts older protocol-3 status without a diagnostic error field", () => {
+  const rig = boundary(true),
+    older = { ...rig.status };
+  Reflect.deleteProperty(older, "diagnosticError");
+  expect(
+    parseBridgeStatus(JSON.stringify(older), rig.token).diagnosticError
+  ).toBe(0);
 });
 
 it("reports nonzero game exit before worker initialization while retaining descendant lifetime", async () => {

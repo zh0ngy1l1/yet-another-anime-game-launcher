@@ -60,3 +60,10 @@ int wmain(int argc, wchar_t **argv) {
     }
     return (int)code;
 }
+
+/* Match the pinned signed shim's GUI subsystem. A CUI shim would allocate an
+ * unrelated conhost child when the real GUI bridge has no console. */
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, wchar_t *command, int show) {
+    (void)instance; (void)previous; (void)command; (void)show;
+    return wmain(__argc, __wargv);
+}

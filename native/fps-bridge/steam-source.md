@@ -62,6 +62,21 @@ rewrite occurred. Source links are references, not reproducible-build evidence.
 
 ## Direct signed-shim creation and retained child ownership
 
+The complete enabled process chain now starts with the verified canonical signed
+Steam shim as Wine's initial executable. That outer shim creates the private GUI
+bridge as its ordinary child and waits for it; the bridge then creates the inner
+signed shim and the actual game described below. Before desktop or inner-shim
+creation, the bridge requires its own actual parent to be live PID `0x20`, with
+the canonical `C:\windows\system32\steam.exe` image and a creation time no later
+than the bridge. It opens only that ancestor with query/synchronization rights
+and retains its HANDLE through exit, preventing reuse of the PID queried by the
+investigated game startup. This check is separate from FPS target ownership:
+the game is still acquired only by duplicating the inner shim's retained child
+HANDLE. A competing Wine user after the final preparation wait, wrong root image
+or direct bridge entry fails visibly before any game is created. No process is
+killed, and the protocol remains alive for normal empty-job release and outer
+foreground completion.
+
 The signed shim now receives the actual game command, matching the disabled
 Steam route. It creates the game with its ordinary CreateProcessW branch;
 there is no relay and no PROC_THREAD_ATTRIBUTE_PARENT_PROCESS override. This
@@ -126,7 +141,7 @@ launchd on both routes, although the originating creator differs. The direct
 shim also supplies its own ordinary Windows/Unix stream context, removing the
 old split between a selected parent's Windows handle table and a bridge
 creator's Unix handle lookup. GUI game stdout/stderr may be NULL, as on disabled
-Steam. Persistent Unix exceptions/module/bridge diagnostics remain in .wine.log.
+Steam. Persistent Unix exceptions and module diagnostics remain in `.wine.log`; serialized and flushed bridge diagnostics use the separate mandatory `.bridge.log`. The bridge uses the GUI subsystem so direct creation by the outer signed Steam shim does not allocate a Wine console.
 
 ## Mutations, limits and evidence
 
@@ -162,3 +177,34 @@ the pre-worker driver-initialization failure and a four-arm harmless context
 comparison. It does not establish that the former private image path caused the
 game failure. Job membership, creator and standard-handle differences remain
 explicit compatibility limits; ownership and close protection are unchanged.
+
+## Runtime desktop ordering and owned game lifetime
+
+Wine 11.0 `dlls/win32u/winstation.c:get_desktop_window` lazily starts canonical
+`explorer.exe /desktop` with `NtCreateUserProcess`, zero process flags and the
+calling process as its parent. `server/process.c` consequently inherits that
+caller's jobs. `server/winstation.c:remove_desktop_user` schedules an ordinary
+`WM_CLOSE` only when the remaining desktop users are the desktop manager's own
+threads. An outer Steam process and bridge waiting for an explorer-containing
+game job form a circular wait.
+
+The bridge now initializes the desktop before inner Steam or game creation,
+from its own context outside both game jobs. It requires a live desktop owner
+outside those jobs and records the owner and membership checks. No game-created
+process is removed from a job or omitted from its counts. Runtime infrastructure
+shutdown remains part of the foreground supervisor and full Wine-wait gates
+before restoration.
+
+The exact selected Wine reproduced the problem with a harmless real-window
+fixture. With the earlier GUI bridge, the fixture's explorer became the sole
+remaining member of both jobs after the fixture and its ordinary descendant
+exited. Release remained refused. The failed baseline was recovered separately
+with a PID/image/creation-checked ordinary desktop `WM_CLOSE`; it was not an
+automatic cleanup pass. With desktop preparation, the same fixture's worker
+wrote 120, descendant lifetime remained guarded, and both jobs, outer Steam
+and Wine completed naturally. The production native Steam suite now includes
+the real-window case at target 60, through the normal public test entrypoint.
+The external before/after records are under
+`fps-direct-failure-20260913T204809Z/desktop-lifetime` in the local evidence root.
+An autonomous game result requiring desktop recovery must remain distinct from
+an automatic cleanup pass on the corrected candidate.

@@ -24,8 +24,8 @@ def request_paths(text):
 
 
 def game_log_epoch(path):
-    # Direct signed Steam may create only the Unix/Steam logs for a GUI child.
-    match = re.fullmatch(r'game_(\d+)\.log(?:\.(?:wine|steam)\.log)?', path.name)
+    # GUI children may create only Unix, Steam or durable bridge diagnostics.
+    match = re.fullmatch(r'game_(\d+)\.log(?:\.(?:wine|steam|bridge)\.log)?', path.name)
     return int(match.group(1)) / 1000 if match else None
 
 

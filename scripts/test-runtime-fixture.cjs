@@ -197,10 +197,12 @@ async function until(predicate, label, ms = 150000) {
     );
   }
   if (!tamperSteam) {
-    await until(
-      () => read("game/root-observed")?.split(" ")[1] === "61",
-      "target-bound worker"
-    );
+    await until(() => {
+      const completed = read("result.json");
+      if (completed && JSON.parse(completed).error)
+        throw Error(JSON.parse(completed).error);
+      return read("game/root-observed")?.split(" ")[1] === "61";
+    }, "target-bound worker");
     assert.match(read("game/root-observed"), /d3d11.preferredMaxFrameRate=0;/);
     if (handoff) {
       // Exercise descendants after successful target attribution; the native
@@ -252,8 +254,15 @@ async function until(predicate, label, ms = 150000) {
       .readdirSync(path.join(root, "logs"))
       .filter(name => name.endsWith(".wine.log"));
     assert.equal(logs.length, 1);
-    const output = read(path.join("logs", logs[0]));
-    assert.match(output, /trace:loaddll:.*Loaded /);
+    const wineOutput = read(path.join("logs", logs[0]));
+    assert.match(wineOutput, /trace:loaddll:.*Loaded /);
+    const bridgeLogs = fs
+      .readdirSync(path.join(root, "logs"))
+      .filter(name => name.endsWith(".bridge.log"));
+    assert.deepEqual(bridgeLogs, [
+      logs[0].replace(/\.wine\.log$/, ".bridge.log"),
+    ]);
+    const output = read(path.join("logs", bridgeLogs[0]));
     for (const event of [
       "bridge version=3",
       ...(steam
@@ -269,6 +278,16 @@ async function until(predicate, label, ms = 150000) {
         "missing persistent bridge/Wine diagnostic: " + event
       );
     assert.match(output, /game exit game=\d+ code=0x00000000/);
+    if (steam) {
+      assert.match(
+        output,
+        /Steam bootstrap retained parent=32 image=C:\\windows\\system32\\steam\.exe created=\d+ bridgeCreated=\d+/
+      );
+      assert.match(
+        output,
+        /desktop prepared hwnd=0x[0-9a-f]+ owner=\d+ gameJobMember=0 steamJobMember=0 error=0/
+      );
+    }
     assert.equal(
       fs.statSync(path.join(root, "logs", logs[0])).mode & 0o777,
       0o600

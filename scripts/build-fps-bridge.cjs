@@ -23,6 +23,7 @@ const args = [
   "-Wextra",
   "-Werror",
   "-municode",
+  "-mwindows",
   "-static",
   "-s",
   "-Wl,--no-insert-timestamp",

@@ -4,7 +4,7 @@
  * See steam-source.md for the cumulative-history proof and fail-closed limits. */
 #include <winternl.h>
 
-static HANDLE shim, steam_job;
+static HANDLE shim, steam_job, steam_bootstrap;
 static DWORD shim_pid, steam_error;
 static int shim_exited, steam_acknowledged;
 
@@ -20,6 +20,53 @@ static ULONGLONG process_creation(HANDLE process) {
     FILETIME created, exited, kernel, user;
     if (!GetProcessTimes(process, &created, &exited, &kernel, &user)) return 0;
     return ((ULONGLONG)created.dwHighDateTime << 32) | created.dwLowDateTime;
+}
+
+static DWORD validate_steam_environment(void) {
+    /* Presence, including an empty value, selects unsupported service mode. */
+    wchar_t *environment = GetEnvironmentStringsW();
+    if (!environment) return GetLastError();
+    int unsupported = 0;
+    for (const wchar_t *entry = environment; *entry; entry += wcslen(entry) + 1)
+        if (!_wcsnicmp(entry, L"SteamGameId=", 12)) unsupported = 1;
+    FreeEnvironmentStringsW(environment);
+    return unsupported ? ERROR_NOT_SUPPORTED : 0;
+}
+
+/* The supported Steam route starts a fresh Wine session with the unchanged
+ * canonical signed shim. Current HK4E startup queries the first Wine process,
+ * PID 0x20. A wineserver wait is not an atomic prefix reservation: reject a
+ * competing Wine user or a different entry context before creating any game.
+ * This ancestor is queried only; no process is adopted, written or stopped. */
+static DWORD validate_steam_bootstrap(void) {
+    DWORD parent = parent_pid(GetCurrentProcess()), error = 0, length = 32768;
+    wchar_t image[32768] = {0};
+    ULONGLONG own_created = process_creation(GetCurrentProcess()), created = 0;
+    HANDLE candidate = NULL;
+    if (parent != 0x20) error = ERROR_BAD_ENVIRONMENT;
+    else {
+        candidate = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, FALSE, parent);
+        if (!candidate) error = GetLastError();
+        else {
+            created = process_creation(candidate);
+            if (!QueryFullProcessImageNameW(candidate, 0, image, &length)) error = GetLastError();
+            else if (length >= 32768 || _wcsicmp(image, L"C:\\windows\\system32\\steam.exe") ||
+                !own_created || !created || created > own_created ||
+                GetProcessId(candidate) != parent || parent_pid(GetCurrentProcess()) != parent ||
+                WaitForSingleObject(candidate, 0) != WAIT_TIMEOUT) error = ERROR_BAD_ENVIRONMENT;
+        }
+    }
+    if (error) {
+        diagnostic("Steam bootstrap rejected parent=%lu expected=32 image=%ls error=%lu; no game or inner shim created", parent, image, error);
+        if (candidate) CloseHandle(candidate);
+        return ERROR_BAD_ENVIRONMENT;
+    }
+    /* Retain the exact ancestor object through bridge exit so its PID cannot
+     * be recycled between this check and the game's own startup query. */
+    steam_bootstrap = candidate;
+    diagnostic("Steam bootstrap retained parent=%lu image=%ls created=%llu bridgeCreated=%llu", parent, image,
+        (unsigned long long)created, (unsigned long long)own_created);
+    return 0;
 }
 
 /* Native SystemExtendedHandleInformation layout, supported by the selected
@@ -129,4 +176,5 @@ static DWORD acquire_steam_child(HANDLE ownership_job, const wchar_t *expected, 
 static void close_steam(void) {
     if (shim) CloseHandle(shim);
     if (steam_job) CloseHandle(steam_job);
+    if (steam_bootstrap) CloseHandle(steam_bootstrap);
 }

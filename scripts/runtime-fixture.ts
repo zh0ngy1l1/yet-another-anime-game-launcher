@@ -114,6 +114,9 @@ async function main() {
             )
               await writeFile(path, "fixture replacement after preparation");
           }
+        // Real program preparation waits after its registry/patch work before
+        // the canonical Steam bootstrap starts a fresh Wine process namespace.
+        await wine.waitUntilServerOff();
       },
     },
     launchOwnership.claim(),

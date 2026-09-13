@@ -152,7 +152,7 @@ it.each(["1", "60", "61", "120", "360"])(
   }
 );
 it.each(["60", "61", "120"])(
-  "Steam target %s propagates signed route, context and plan through the real controller",
+  "Steam target %s starts the signed Wine root before the owned bridge and preserves its plan",
   async target => {
     const rig = launch(target, true),
       transaction = rig.start();
@@ -165,7 +165,11 @@ it.each(["60", "61", "120"])(
     const request = rig.native.io.start.mock.calls.find(
       ([request]) => request.args[0] !== "--registry"
     )?.[0];
+    expect(request?.executable).toBe(
+      "/selected/prefix/drive_c/windows/system32/steam.exe"
+    );
     expect(request?.args).toEqual([
+      "Z:\\tmp\\request\\fps-bridge.exe",
       "Z:\\tmp\\request",
       rig.native.token,
       "Z:\\game\\GenshinImpact.exe",
@@ -187,7 +191,7 @@ it.each(["60", "61", "120"])(
   }
 );
 
-it("Steam game exit retains close/admission through relay, worker, supervisor, Wine, registry and files", async () => {
+it("Steam game exit retains close/admission through inner shim, worker, outer Steam supervisor, Wine, registry and files", async () => {
   const rig = launch("61", true),
     transaction = rig.start();
   await tick(11000);
@@ -204,7 +208,7 @@ it("Steam game exit retains close/admission through relay, worker, supervisor, W
   await tick(2000);
   guarded();
   expect(rig.journal.restore).not.toHaveBeenCalled();
-  // A living relay/shim cannot be mistaken for a game descendant or exit.
+  // A living inner shim cannot be mistaken for a game descendant or exit.
   expect(rig.ownership.state().failed).toBe(false);
   rig.native.status.shimExited = 1;
   rig.native.status.steamActive = 0;
@@ -214,6 +218,10 @@ it("Steam game exit retains close/admission through relay, worker, supervisor, W
   await tick(2000);
   guarded();
   expect(rig.native.events).toContain("release");
+  // Bridge release alone cannot prove that its waiting outer Steam parent and
+  // foreground supervisor completed. Restoration must await that completion.
+  expect(rig.native.events).not.toContain("registry:restore");
+  expect(rig.journal.restore).not.toHaveBeenCalled();
   const wine = deferred<Awaited<ReturnType<typeof rig.wait>>>();
   rig.wait.mockReturnValueOnce(wine.promise);
   const registry = deferred<{ confirmed: boolean; status: number }>();
@@ -504,6 +512,49 @@ it("a confirmed CreateProcess failure observes the request before safe cleanup a
   expect(rig.journal.restore).toHaveBeenCalledOnce();
   expect(rig.ownership.state().held).toBe(false);
 });
+
+it("a Steam bootstrap precondition failure releases only empty jobs and awaits the outer supervisor before restoration", async () => {
+  const rig = launch("60", true),
+    command = rig.native.command;
+  rig.native.io.command.mockImplementation(async (directory, text) => {
+    await command(directory, text);
+    if (text.includes(" launch "))
+      Object.assign(rig.native.status, {
+        launched: 0,
+        pid: 0,
+        active: 0,
+        shimPid: 0,
+        steamReady: 0,
+        steamActive: 0,
+        launchError: 10,
+        steamError: 10,
+        error: 10,
+      });
+  });
+  const transaction = rig.start();
+  await tick(50);
+  expect(rig.native.events).not.toContain("start");
+  expect(rig.native.status).toMatchObject({
+    pid: 0,
+    shimPid: 0,
+    generation: 0,
+    released: 1,
+    active: 0,
+    steamActive: 0,
+  });
+  expect(rig.ownership.state().held).toBe(true);
+  expect(rig.native.events).not.toContain("registry:restore");
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  rig.native.direct.resolve({ confirmed: true, status: 0 });
+  await tick(50);
+  const failure = await transaction.completion;
+  expect(String(failure)).toContain(
+    "FPS Steam child ownership/game creation not acknowledged: 10; Steam error: 10"
+  );
+  expect(String(failure)).toContain("Cleanup completed");
+  expect(rig.journal.restore).toHaveBeenCalledOnce();
+  expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
+});
 it("cancellation retains a late bridge spawn through cooperative release and direct-child completion", async () => {
   const rig = launch(),
     ready = deferred<void>(),
@@ -540,6 +591,156 @@ it("cancellation retains a late bridge spawn through cooperative release and dir
   expect(stops).toBe(0);
   expect(rig.journal.restore).toHaveBeenCalledOnce();
   expect(rig.ownership.state().held).toBe(false);
+});
+
+it("failed Steam startup without a bridge handshake drains the outer process without stopping it or restoring early", async () => {
+  const rig = launch("60", true),
+    original = rig.native.start,
+    stop = vi.fn(() => rig.native.direct.promise);
+  rig.native.io.start.mockImplementation(request =>
+    request.args[0] === "--registry"
+      ? original(request)
+      : {
+          started: Promise.reject(new Error("startup acknowledgement failed")),
+          completion: rig.native.direct.promise,
+          stop,
+        }
+  );
+  const transaction = rig.start();
+  await tick(31000);
+  expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
+  expect(rig.ownership.beginClose()).toBe(false);
+  expect(stop).not.toHaveBeenCalled();
+  expect(rig.native.events).not.toContain("launch");
+  expect(rig.native.events).not.toContain("release");
+  expect(rig.wait).toHaveBeenCalledTimes(1);
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  const wine = deferred<Awaited<ReturnType<typeof rig.wait>>>();
+  rig.wait.mockReturnValueOnce(wine.promise);
+  rig.native.direct.resolve({ confirmed: true, status: 3 });
+  await tick(30);
+  expect(rig.ownership.state().held).toBe(true);
+  expect(rig.native.events).not.toContain("registry:restore");
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  wine.resolve({ exitCode: 0, stdOut: "", stdErr: "", pid: 1 });
+  await tick(30);
+  const failure = await transaction.completion;
+  expect(String(failure)).toContain("startup acknowledgement failed");
+  expect(String(failure)).toContain("Cleanup completed");
+  expect(stop).not.toHaveBeenCalled();
+  expect(rig.journal.restore).toHaveBeenCalledOnce();
+  expect(rig.ownership.state().held).toBe(false);
+});
+
+it("a durable bridge log failure rejects Steam admission but permits cooperative empty-job release", async () => {
+  const rig = launch("60", true);
+  rig.native.status.diagnosticError = 5;
+  const transaction = rig.start();
+  await tick(30);
+  expect(rig.native.events).not.toContain("launch");
+  expect(rig.native.events).not.toContain("start");
+  expect(rig.native.events).toContain("release");
+  expect(rig.ownership.state().held).toBe(true);
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  rig.native.direct.resolve({ confirmed: true, status: 0 });
+  await tick(30);
+  const failure = await transaction.completion;
+  expect(String(failure)).toContain(
+    "initial capability/lifecycle handshake failed"
+  );
+  expect(String(failure)).toContain(
+    "durable bridge diagnostics failed with error 5"
+  );
+  expect(String(failure)).toContain("Cleanup completed");
+  expect(rig.journal.restore).toHaveBeenCalledOnce();
+  expect(rig.ownership.state().held).toBe(false);
+});
+
+it.each([false, true])(
+  "terminal initial log-open failure drains known startup completion before restoration (Steam=%s)",
+  async steam => {
+    const rig = launch("60", steam),
+      original = rig.native.start,
+      stop = vi.fn(() => rig.native.direct.promise);
+    rig.native.status.diagnosticError = rig.native.status.error = 80;
+    rig.native.io.start.mockImplementation(request =>
+      request.args[0] === "--registry"
+        ? original(request)
+        : {
+            started: Promise.resolve(),
+            completion: rig.native.direct.promise,
+            stop,
+          }
+    );
+    const transaction = rig.start();
+    await tick(31000);
+    expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
+    expect(stop).not.toHaveBeenCalled();
+    expect(rig.native.io.command).not.toHaveBeenCalled();
+    expect(rig.journal.restore).not.toHaveBeenCalled();
+    const wine = deferred<Awaited<ReturnType<typeof rig.wait>>>();
+    rig.wait.mockReturnValueOnce(wine.promise);
+    rig.native.direct.resolve({ confirmed: true, status: 3 });
+    await tick(30);
+    expect(rig.ownership.state().held).toBe(true);
+    expect(rig.native.events).not.toContain("registry:restore");
+    expect(rig.journal.restore).not.toHaveBeenCalled();
+    wine.resolve({ exitCode: 0, stdOut: "", stdErr: "", pid: 1 });
+    await tick(30);
+    const failure = await transaction.completion;
+    expect(String(failure)).toContain(
+      "durable bridge diagnostics failed with error 80"
+    );
+    expect(String(failure)).toContain("Cleanup completed");
+    expect(stop).not.toHaveBeenCalled();
+    expect(rig.native.io.command).not.toHaveBeenCalled();
+    expect(rig.journal.restore).toHaveBeenCalledOnce();
+    expect(rig.ownership.state().held).toBe(false);
+  }
+);
+
+it("terminal log-open status with unconfirmed foreground lifetime retains the cleanup guard", async () => {
+  const rig = launch("60", true);
+  rig.native.status.diagnosticError = rig.native.status.error = 80;
+  const transaction = rig.start();
+  await tick(30);
+  rig.native.direct.resolve({ confirmed: false, status: 3 });
+  await tick(30);
+  expect(rig.ownership.state()).toMatchObject({
+    held: true,
+    failed: true,
+    canRetry: true,
+  });
+  expect(rig.wait).toHaveBeenCalledTimes(1);
+  expect(rig.native.io.command).not.toHaveBeenCalled();
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  rig.ownership.retry();
+  await tick(30);
+  expect(rig.ownership.state().held).toBe(true);
+  expect(rig.wait).toHaveBeenCalledTimes(1);
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  void transaction;
+});
+
+it("initial diagnostics failure cannot authorize terminal cleanup when a game lifetime is reported", async () => {
+  const rig = launch("60", true);
+  Object.assign(rig.native.status, {
+    diagnosticError: 80,
+    error: 80,
+    launched: 1,
+    pid: 42,
+    active: 1,
+  });
+  const transaction = rig.start();
+  await tick(30);
+  rig.native.direct.resolve({ confirmed: true, status: 3 });
+  await tick(30);
+  expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
+  expect(rig.native.events).toContain("release");
+  expect(rig.native.status.released).toBe(0);
+  expect(rig.wait).toHaveBeenCalledTimes(1);
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  void transaction;
 });
 it("helper scan failure remains visibly failed while observing the live game", async () => {
   const rig = launch(),

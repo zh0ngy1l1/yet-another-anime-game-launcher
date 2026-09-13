@@ -40,6 +40,7 @@ export interface BridgeStatus {
   steamReady: number;
   steamError: number;
   steamActive: number;
+  diagnosticError: number;
 }
 
 export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
@@ -72,8 +73,11 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
     "steamReady",
     "steamError",
     "steamActive",
+    "diagnosticError",
   ]) {
     const value: unknown = Reflect.get(data, key);
+    // Protocol 3 originally had no durable bridge log error field.
+    if (key === "diagnosticError" && value === undefined) continue;
     if (
       typeof value !== "number" ||
       !Number.isInteger(value) ||
@@ -107,7 +111,10 @@ export function parseBridgeStatus(raw: string, token: string): BridgeStatus {
       Reflect.get(data, "pid") === Reflect.get(data, "shimPid"))
   )
     throw new Error("Invalid FPS bridge lifecycle");
-  return data as BridgeStatus;
+  return {
+    ...data,
+    diagnosticError: Reflect.get(data, "diagnosticError") ?? 0,
+  } as BridgeStatus;
 }
 
 const bridgeIO = {
@@ -301,11 +308,13 @@ export async function prepareFpsBridge(
   let generation = 0;
   let queue: Promise<unknown> = Promise.resolve();
   let sealed = false;
+  let terminalDiagnosticFailure = false;
   let launchIssued = false;
   let commandCompleted = false;
   let commandFailed = false;
   let executionFailureReported = false;
   let gameExitReported = false;
+  let diagnosticFailureReported = false;
   let lastReport = "";
   let lastReportTime = 0;
   const winePath = (p: string) => "Z:" + p.replaceAll("/", "\\");
@@ -365,12 +374,19 @@ export async function prepareFpsBridge(
               "steamReady",
               "steamError",
               "steamActive",
+              "diagnosticError",
             ].some(
               key => Reflect.get(previous, key) !== Reflect.get(value, key)
             )
           )
             input.event?.(`FPS request ${token}: ${JSON.stringify(value)}`);
           last = value;
+          if (value.diagnosticError && !diagnosticFailureReported) {
+            diagnosticFailureReported = true;
+            input.diagnostic(
+              `FPS request ${token}: durable bridge diagnostics failed with error ${value.diagnosticError}; output ${input.log}.bridge.log. Retaining game/job and cleanup observation`
+            );
+          }
           if (value.primaryExited && !gameExitReported) {
             gameExitReported = true;
             if (!value.exitCodeKnown || value.exitCode !== 0)
@@ -385,7 +401,7 @@ export async function prepareFpsBridge(
                   value.generation
                 }. Continuing job/worker cleanup; Wine output: ${
                   input.log
-                }.wine.log`
+                }.wine.log; bridge output: ${input.log}.bridge.log`
               );
           }
           return value;
@@ -436,12 +452,18 @@ export async function prepareFpsBridge(
     await io.verify(path, steamDirectory);
     if (steamDirectory)
       input.event?.(
-        `FPS request ${token}: verified Steam execution pair at ${steamDirectory}; Windows image ${FPS_STEAM_WINDOWS_PATH}`
+        `FPS request ${token}: verified Steam execution pair at ${steamDirectory}; Windows image ${FPS_STEAM_WINDOWS_PATH}; signed Steam starts the private bridge and remains the foreground Wine root`
       );
     execution = io.start({
       wine: input.wine,
-      executable: path,
+      // Keep the same signed Wine root image as the disabled Steam route. Its
+      // ordinary child is our verified private bridge; the bridge still creates
+      // and owns the inner Steam/game jobs and retains the actual game HANDLE.
+      // The outer shim waits for the bridge, so foreground completion remains
+      // required after the bridge's release acknowledgement.
+      executable: steamDirectory ? join(steamDirectory, "steam.exe") : path,
       args: [
+        ...(steamDirectory ? [winePath(path)] : []),
         winePath(directory),
         token,
         winePath(input.executable),
@@ -476,7 +498,7 @@ export async function prepareFpsBridge(
     });
     await execution.started;
     const initial = await read(0);
-    if (
+    const initialProcessStateInvalid =
       initial.launched ||
       initial.pid ||
       initial.primaryExited ||
@@ -489,14 +511,22 @@ export async function prepareFpsBridge(
       !initial.workerDone ||
       initial.workerError ||
       initial.launchError ||
-      initial.error ||
       initial.released ||
       initial.shimPid ||
       initial.shimExited ||
       initial.steamReady ||
       initial.steamError ||
-      initial.steamActive
-    )
+      initial.steamActive;
+    // The native mandatory-log open failure publishes this empty capability
+    // response and exits without entering the command loop. Sending release to
+    // that terminal bridge cannot produce an acknowledgement. Require natural
+    // foreground completion instead, followed by the caller's Wine wait.
+    terminalDiagnosticFailure = Boolean(
+      !initialProcessStateInvalid &&
+        initial.diagnosticError &&
+        initial.error === initial.diagnosticError
+    );
+    if (initialProcessStateInvalid || initial.error || initial.diagnosticError)
       throw new Error(
         "FPS bridge initial capability/lifecycle handshake failed"
       );
@@ -532,6 +562,26 @@ export async function prepareFpsBridge(
 
   async function probe() {
     return request("probe");
+  }
+
+  async function releaseBridge() {
+    if (!execution) return;
+    if (!sealed) {
+      const value = await request("release");
+      if (
+        value.error ||
+        !value.released ||
+        value.active ||
+        value.steamActive ||
+        (value.shimPid && !value.shimExited) ||
+        !value.workerDone
+      )
+        throw new Error(
+          `FPS bridge release not confirmed; retained ${directory}`
+        );
+      sealed = true;
+    }
+    await confirmExecution(false);
   }
   const game: FpsGameObserver = {
     async discover() {
@@ -671,25 +721,7 @@ export async function prepareFpsBridge(
         await io.pause();
       }
     },
-    async release() {
-      if (!execution) return;
-      if (!sealed) {
-        const value = await request("release");
-        if (
-          value.error ||
-          !value.released ||
-          value.active ||
-          value.steamActive ||
-          (value.shimPid && !value.shimExited) ||
-          !value.workerDone
-        )
-          throw new Error(
-            `FPS bridge release not confirmed; retained ${directory}`
-          );
-        sealed = true;
-      }
-      await confirmExecution(false);
-    },
+    release: releaseBridge,
     settleRegistry,
     dispose: async () => {
       await settleRegistry();
@@ -741,6 +773,29 @@ export async function prepareFpsBridge(
     async discardBeforeLaunch() {
       if (launchIssued)
         throw new Error("Cannot discard after game launch issuance");
+      if (terminalDiagnosticFailure) {
+        input.event?.(
+          `FPS request ${token}: terminal initial diagnostics failure before process creation; awaiting foreground completion; no release or stop issued; retained ${directory}`
+        );
+        await confirmExecution(false);
+        sealed = true;
+        return;
+      }
+      if (steamDirectory && execution) {
+        // Stopping the waiting outer Steam process cannot prove its child ended.
+        // A recognized bridge may release cooperatively. Without its handshake,
+        // retain admission while the foreground execution drains naturally; the
+        // caller must then confirm Wine completion before any restoration.
+        if (last) await releaseBridge();
+        else {
+          input.event?.(
+            `FPS request ${token}: draining signed Steam foreground execution before bridge handshake; no stop issued; retained ${directory}`
+          );
+          await confirmExecution(false);
+          sealed = true;
+        }
+        return;
+      }
       sealed = true;
       await confirmExecution(true);
     },

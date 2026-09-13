@@ -12,6 +12,12 @@ const artifact = JSON.parse(
 );
 const bytes = fs.readFileSync("sidecar/fps-bridge/fps-bridge.exe");
 assert.equal(bytes.length, artifact.size);
+const peOffset = bytes.readUInt32LE(0x3c);
+assert.equal(
+  bytes.readUInt16LE(peOffset + 24 + 68),
+  2,
+  "bridge must use the GUI subsystem without allocating a Wine console"
+);
 assert.equal(
   crypto.createHash("sha256").update(bytes).digest("hex"),
   artifact.sha256
@@ -116,6 +122,12 @@ function status(dir) {
 function stopFixture(dir, which = "root") {
   fs.writeFileSync(path.join(dir, `${which}-stop`), "");
 }
+function waitServer() {
+  cp.execFileSync(path.join(path.dirname(wine), "wineserver"), ["-w"], {
+    env,
+    timeout: 30000,
+  });
+}
 function steamState() {
   const registry = [
     ["HKEY_CURRENT_USER\\Software\\Valve\\Steam"],
@@ -161,9 +173,9 @@ function steamState() {
 }
 async function main() {
   console.log("Wine fixture evidence:", root);
-  const decoyDir = path.join(root, "decoy");
+  let decoyDir = path.join(root, "decoy");
   fs.mkdirSync(decoyDir);
-  const decoy = spawn(fixturePath, [], {
+  let decoy = spawn(fixturePath, [], {
     FPS_FIXTURE_DIRECTORY: win(decoyDir),
   });
   await until(
@@ -193,6 +205,31 @@ async function main() {
     0
   );
   console.log("PASS deterministic child/shim exit observation races");
+  const diagnosticsFixture = path.join(root, "diagnostics-fixture.exe");
+  cp.execFileSync(process.env.FPS_BRIDGE_CC || "x86_64-w64-mingw32-gcc", [
+    "-std=c11",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-static",
+    "-municode",
+    "native/fps-bridge/diagnostics-fixture.c",
+    "-lpsapi",
+    "-ladvapi32",
+    "-o",
+    diagnosticsFixture,
+  ]);
+  const diagnosticsDirectory = path.join(root, "diagnostics-observation");
+  fs.mkdirSync(diagnosticsDirectory);
+  assert.equal(
+    await spawn(diagnosticsFixture, [win(diagnosticsDirectory)]).completion,
+    0
+  );
+  assert.equal(status(diagnosticsDirectory).diagnosticError, 29);
+  console.log(
+    "PASS durable diagnostics: mandatory open, concurrent lines, write/short-write/flush failures, no unrecorded worker writes"
+  );
   if (steam)
     for (const artifact of require("../native/fps-bridge/steam-artifacts.json"))
       fs.copyFileSync(
@@ -200,13 +237,125 @@ async function main() {
         path.join(prefix, "drive_c/windows/system32", artifact.filename)
       );
   const originalSteam = steam ? steamState() : undefined;
+  if (steam) {
+    // The first decoy deliberately owns Wine PID32. This reproduces a prefix
+    // user racing the production wineserver wait without touching that user.
+    for (const mode of ["warm-prefix", "wrong-root-image", "direct-entry"]) {
+      const dir = path.join(root, `bootstrap-${mode}`);
+      fs.mkdirSync(dir);
+      const token = crypto.randomBytes(32).toString("hex");
+      const args = [
+        win(dir),
+        token,
+        win(fixturePath),
+        win(dir),
+        "d3d11.preferredMaxFrameRate=60;",
+        win(path.join(dir, "game.log")),
+        "C:\\windows\\system32\\steam.exe",
+      ];
+      const selected =
+        mode === "direct-entry"
+          ? bridgePath
+          : path.join(
+              mode === "wrong-root-image"
+                ? steamDir
+                : path.join(prefix, "drive_c/windows/system32"),
+              "steam.exe"
+            );
+      const execution = spawn(
+        selected,
+        mode === "direct-entry" ? args : [win(bridgePath), ...args],
+        {
+          FPS_FIXTURE_DIRECTORY: win(dir),
+        }
+      );
+      await until(() => status(dir), "bootstrap rejection capabilities");
+      for (const [sequence, operation] of [
+        [1, "launch"],
+        [2, "release"],
+      ]) {
+        fs.writeFileSync(
+          path.join(dir, "command.tmp"),
+          `${token} ${sequence} ${operation} 0 0\n`
+        );
+        fs.renameSync(path.join(dir, "command.tmp"), path.join(dir, "command"));
+        const result = await until(
+          () => status(dir)?.sequence === sequence && status(dir),
+          operation
+        );
+        assert.equal(result.pid, 0);
+        assert.equal(result.shimPid, 0);
+        assert.equal(result.active, 0);
+        assert.equal(result.steamActive, 0);
+        assert.equal(result.generation, 0);
+        assert.equal(result.workerDone, 1);
+        if (operation === "launch") {
+          assert.equal(result.error, 10);
+          assert.equal(result.steamError, 10);
+          assert.equal(read(path.join(dir, "root-startup")), undefined);
+          assert.match(
+            read(path.join(dir, "game.log.bridge.log")),
+            /Steam bootstrap rejected/
+          );
+        } else assert.equal(result.released, 1);
+      }
+      assert.equal(await execution.completion, 0);
+      if (mode === "warm-prefix") {
+        assert.equal(
+          read(path.join(decoyDir, "root-observed")).split(" ")[1],
+          "60"
+        );
+        assert.equal(decoy.done, false);
+        stopFixture(decoyDir);
+        assert.equal(await decoy.completion, 0);
+      }
+      waitServer();
+      console.log(
+        `PASS Steam bootstrap ${mode}: no game/shim created, visible failure and empty-job release, existing target untouched`
+      );
+    }
+  }
+  async function spawnBridge(args, extra = {}) {
+    if (!steam) return spawn(bridgePath, args, extra);
+    waitServer();
+    // Never enter the signed outer shim's unsupported service branch. That
+    // negative test starts the bridge directly and verifies native rejection.
+    const serviceNegative = Object.keys(extra).some(
+      key => key.toLowerCase() === "steamgameid"
+    );
+    const execution = serviceNegative
+      ? spawn(bridgePath, args, extra)
+      : spawn(
+          path.join(prefix, "drive_c/windows/system32/steam.exe"),
+          [win(bridgePath), ...args],
+          extra
+        );
+    const directory = args[0].slice(2).replaceAll("\\", "/");
+    await until(() => status(directory), "outer Steam bridge capabilities");
+    decoyDir = path.join(directory, "outside-decoy");
+    fs.mkdirSync(decoyDir);
+    const thisDecoyDir = decoyDir;
+    decoy = spawn(fixturePath, [], { FPS_FIXTURE_DIRECTORY: win(decoyDir) });
+    const thisDecoy = decoy;
+    await until(
+      () => read(path.join(decoyDir, "root-observed")),
+      "outside-job decoy ready"
+    );
+    const foreground = execution.completion;
+    execution.completion = foreground.then(async code => {
+      stopFixture(thisDecoyDir);
+      assert.equal(await thisDecoy.completion, 0);
+      waitServer();
+      return code;
+    });
+    return execution;
+  }
   for (const fps of [1, 60, 61, 120, 360]) {
     const dir = path.join(root, `target-${fps}`);
     fs.mkdirSync(dir);
     const token = crypto.randomBytes(32).toString("hex");
     let sequence = 0;
-    const bridge = spawn(
-      bridgePath,
+    const bridge = await spawnBridge(
       [
         win(dir),
         token,
@@ -220,6 +369,7 @@ async function main() {
         FPS_FIXTURE_DIRECTORY: win(dir),
         FPS_FIXTURE_DETACH: "1",
         ...(steam ? { FPS_FIXTURE_CHILD_GATE: "1" } : {}),
+        ...(steam && fps === 60 ? { FPS_FIXTURE_WINDOW: "1" } : {}),
       }
     );
     const initial = await until(() => status(dir), "bridge capabilities");
@@ -275,6 +425,29 @@ async function main() {
       // relay, not the actual game. The GUI fixture follows the game's PE
       // subsystem and must be the shim's real directly created child.
       assert.match(metadata, /parentRetainsSelfProcessHandle=1\r?\n/);
+      assert.match(
+        read(path.join(dir, "game.log.bridge.log")),
+        /Steam bootstrap retained parent=32 image=C:\\windows\\system32\\steam.exe/
+      );
+      const startupLog = read(path.join(dir, "game.log.bridge.log"));
+      assert.match(
+        startupLog,
+        /desktop prepared .*gameJobMember=0 steamJobMember=0 error=0/
+      );
+      assert.ok(
+        startupLog.indexOf("desktop prepared") <
+          startupLog.indexOf("Steam direct creation")
+      );
+      if (fps === 60) {
+        fs.writeFileSync(
+          path.join(dir, "window-create"),
+          "fixture-only window gate\n"
+        );
+        await until(
+          () => read(path.join(dir, "window-ready")),
+          "real fixture window ready"
+        );
+      }
       fs.writeFileSync(path.join(dir, "child-create"), "fixture-only gate\n");
     }
     await until(
@@ -300,6 +473,26 @@ async function main() {
     s = await request("probe");
     assert.equal(s.pid, pid);
     assert.equal(s.workerState, 2);
+    assert.equal(s.diagnosticError, 0);
+    await until(
+      () =>
+        read(path.join(dir, "game.log.bridge.log"))?.includes(
+          `value=${fps} target=${fps} action=equal`
+        ),
+      "durable worker readback"
+    );
+    const diagnosticLog = read(path.join(dir, "game.log.bridge.log"));
+    assert.match(diagnosticLog, /consoleWindow=0x0\r?\n/);
+    assert.match(diagnosticLog, /worker applying/);
+    if (fps !== 60) assert.match(diagnosticLog, /write end .*ok=1 written=4/);
+    assert.ok(
+      diagnosticLog
+        .split("\n")
+        .filter(Boolean)
+        .every(
+          line => line.startsWith("FPS ") && line.includes(`request=${token} `)
+        )
+    );
     s = await request("stop", 99);
     assert.notEqual(s.error, 0);
     s = await request("stop", 1);
@@ -364,8 +557,7 @@ async function main() {
       ]);
     const token = crypto.randomBytes(32).toString("hex");
     let sequence = 0;
-    const bridge = spawn(
-      bridgePath,
+    const bridge = await spawnBridge(
       [
         win(dir),
         token,
@@ -439,8 +631,7 @@ async function main() {
     fs.mkdirSync(dir);
     const token = crypto.randomBytes(32).toString("hex");
     let sequence = 0;
-    const bridge = spawn(
-      bridgePath,
+    const bridge = await spawnBridge(
       [
         win(dir),
         token,
@@ -520,6 +711,7 @@ async function main() {
       "-Werror",
       "-static",
       "-municode",
+      "-mwindows",
       "native/fps-bridge/steam-fixture.c",
       "-o",
       path.join(faultDir, "steam.exe"),
@@ -545,8 +737,7 @@ async function main() {
       fs.copyFileSync(fixturePath, wrongImage);
       const token = crypto.randomBytes(32).toString("hex");
       let sequence = 0;
-      const bridge = spawn(
-        bridgePath,
+      const bridge = await spawnBridge(
         [
           win(dir),
           token,
@@ -760,6 +951,9 @@ main()
         stopFixture(path.join(root, entry.name));
         stopFixture(path.join(root, entry.name), "child");
         stopFixture(path.join(root, entry.name), "steam");
+        for (const name of ["outside-decoy", "decoy"])
+          if (fs.existsSync(path.join(root, entry.name, name)))
+            stopFixture(path.join(root, entry.name, name));
       }
     for (const entry of fs.readdirSync(root, { withFileTypes: true }))
       if (entry.isDirectory()) {

@@ -33,6 +33,7 @@ static BOOL WINAPI fixture_exit_code(HANDLE handle, DWORD *code) {
 
 #define WaitForSingleObject fixture_wait
 #define GetExitCodeProcess fixture_exit_code
+#define FPS_BRIDGE_NO_GUI_ENTRY
 #define wmain unused_bridge_entrypoint
 #ifndef FPS_STATUS_BRIDGE_SOURCE
 #define FPS_STATUS_BRIDGE_SOURCE "bridge.c"
@@ -48,6 +49,8 @@ int wmain(int argc, wchar_t **argv) {
     memset(token, 'f', 64);
     token[64] = 0;
     InitializeCriticalSection(&diagnostic_lock);
+    swprintf(log_path, 32768, L"%ls\\status", directory);
+    if (!open_diagnostics()) return 13;
     game = fixture_game;
     shim = fixture_shim;
     game_pid = 4242;
@@ -72,6 +75,7 @@ int wmain(int argc, wchar_t **argv) {
             if (primary_exited || game_exit_known || steam_error != 42) return 11;
         } else if (!primary_exited || !game_exit_known || game_exit_code || steam_error != 42) return 12;
     }
+    CloseHandle(diagnostic_file);
     DeleteCriticalSection(&diagnostic_lock);
     puts("PASS status child-exit-between-polls, true early shim exit, and distinct shim error");
     return 0;
