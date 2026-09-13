@@ -247,6 +247,7 @@ async function until(predicate, label, ms = 150000) {
       .filter(name => name.endsWith(".wine.log"));
     assert.equal(logs.length, 1);
     const output = read(path.join("logs", logs[0]));
+    assert.match(output, /trace:loaddll:.*Loaded /);
     for (const event of [
       "bridge version=3",
       "game created suspended",

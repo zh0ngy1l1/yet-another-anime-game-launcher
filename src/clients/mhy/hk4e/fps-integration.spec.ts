@@ -33,7 +33,7 @@ it("verifies the prepared system32 pair and launches its canonical Windows image
   expect(request.args).not.toContain("Z:\\tmp\\request\\steam.exe");
   expect(request.outputLog).toBe("/logs/game.log.wine.log");
   expect(request.environment.WINEDEBUG).toBe(
-    "fixme-all,err-unwind,+timestamp,+seh"
+    "fixme-all,err-unwind,+timestamp,+seh,+loaddll"
   );
   await bridge.launch();
   expect(rig.io.verify).toHaveBeenLastCalledWith(bridge.path, selected);
@@ -51,7 +51,7 @@ it("direct FPS launch requires no Steam files and retains custom Wine debug chan
   expect(rig.io.verify).toHaveBeenLastCalledWith(bridge.path, undefined);
   const request = rig.io.start.mock.calls[0][0];
   expect(request.args).toHaveLength(6);
-  expect(request.environment.WINEDEBUG).toBe("-all,+timestamp,+seh");
+  expect(request.environment.WINEDEBUG).toBe("-all,+timestamp,+seh,+loaddll");
   await bridge.launch();
   rig.exit();
   rig.direct.resolve({ confirmed: true, status: 0 });
@@ -444,6 +444,9 @@ describe("transaction admission, queue lifetime and normal close", () => {
       const guarded = async () => {
         expect(launchOwnership.reserve()).toBeUndefined();
         expect(await GLOBAL_onClose(false)).toBe(false);
+        expect(launchOwnership.state().detail).not.toContain(
+          "Cleanup completed"
+        );
       };
       await guarded();
       rig.exit();
@@ -494,6 +497,12 @@ describe("transaction admission, queue lifetime and normal close", () => {
         companion: () => {
           throw Error("must not start");
         },
+        reportedErrors: () => [
+          new Error("primary setup failure"),
+          new Error("additional observation"),
+          new Error("additional observation"),
+          new Error("secondary restore failure"),
+        ],
         cleanup: async () =>
           ++attempts === 1 ? [new Error("secondary restore failure")] : [],
       },
@@ -502,6 +511,7 @@ describe("transaction admission, queue lifetime and normal close", () => {
     await tick();
     expect(own.state().canRetry).toBe(true);
     expect(own.reserve()).toBeUndefined();
+    expect(own.state().detail).not.toContain("Cleanup completed");
     own.retry();
     await tick();
     const error = await transaction.completion;
@@ -510,6 +520,13 @@ describe("transaction admission, queue lifetime and normal close", () => {
     expect(error.cleanupErrors).toEqual([
       new Error("secondary restore failure"),
     ]);
+    expect(error.observationErrors).toEqual([
+      new Error("additional observation"),
+    ]);
+    expect(error.message).toBe(
+      "Launch finished with errors: Error: primary setup failure; Error: additional observation. Cleanup completed. Earlier cleanup errors: Error: secondary restore failure"
+    );
+    expect(own.state().detail).toBe(error.message);
     expect(own.state().held).toBe(false);
   });
   it("generator early return cannot abandon background preparation or cleanup", async () => {

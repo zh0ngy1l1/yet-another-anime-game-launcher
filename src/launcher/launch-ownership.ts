@@ -5,12 +5,17 @@ export class LaunchFailure extends Error {
   constructor(
     message: string,
     readonly primary?: unknown,
-    readonly cleanupErrors: readonly unknown[] = []
+    readonly cleanupErrors: readonly unknown[] = [],
+    readonly observationErrors: readonly unknown[] = []
   ) {
     super(message);
     if (primary instanceof LaunchFailure) {
       this.primary = primary.primary ?? primary;
       this.cleanupErrors = [...primary.cleanupErrors, ...cleanupErrors];
+      this.observationErrors = [
+        ...primary.observationErrors,
+        ...observationErrors,
+      ];
     }
   }
 }

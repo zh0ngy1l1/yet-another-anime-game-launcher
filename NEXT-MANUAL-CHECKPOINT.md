@@ -1,18 +1,21 @@
-# One next manual checkpoint: corrected Steam image, enabled 60
+# Next checkpoint: one fresh FPS-disabled control
 
-The previous enabled-60 attempt **failed** during protection-driver initialization, before the FPS worker started. Its cleanup is confirmed by logs. This build corrects the enabled shim's image path and adds exception/evidence capture; a real-game fix is **not yet verified**. The [follow-up report](docs/fps-enabled60-followup-20260913.md) contains the diagnosis, limits and regression results. The earlier evidence and checkpoint remain preserved externally.
+The canonical Steam enabled-60 attempt failed again. Its exception is a **write to `0x1000` before the FPS worker starts**, distinct from the documented historical FPS-page read fault. The launcher did finish cleanup; its duplicate “cleanup” error label was misleading and is now fixed. The [current investigation](docs/fps-canonical60-investigation-20260913.md) contains the evidence and limits.
 
-Use the existing **development profile**, game, Wine and DXMT for this comparison. Leave **Steam Patch on**, **Launch Fix/block hosts off**, **FPS unlocking on, target 60**, DXMT 0.80.0, timeout fix and Metal HUD as before. Do not install the archived Wine candidate or use the separate packaged app for this attempt. Existing provenance authorization remains recorded; you operate the game.
+**An enabled-game crash fix is not yet established.** The tested changes fix reporting and capture exception/module evidence. This single control determines whether direct Steam creation still succeeds with the current game/Wine. Turning FPS off here is a diagnostic comparison, not the implementation of a workaround or replacement for automatic unlocking.
 
-1. If the launcher is already showing an unresolved request/cleanup guard, skip launch and run the collector in step 4 from another terminal. Keep that launcher open; do not force release, delete request files or retry the game.
+Use the existing **development profile**. Do not run the packaged app for this comparison. No Wine replacement, driver installation, security metadata change or historical deployment is needed. Existing provenance acceptance remains recorded; you alone operate the game.
 
-2. Otherwise start the updated development launcher with console capture. Paste these commands in Terminal:
+1. If any launcher is showing an unresolved lifetime/cleanup guard, keep it open and run the collector in step 5 from a second terminal. Do not force release, delete request files, launch another game or bypass that guard. Otherwise continue.
+
+2. Paste the following in Terminal. Verify the printed versions are **Node v16.20.2 / pnpm 7.33.7** before proceeding to Launch. The printed Git identity should match the commit reported with this delivery.
 
 ```sh
 cd /Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher
 export PATH="/Users/david/.npm/_npx/b620232375418b77/node_modules/.bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 node --version
 pnpm --version
+git show -s --format='%H %s' HEAD
 YAAGL_FPS_CAPTURE_DIR="$(mktemp -d /tmp/yaagl-fps-console.XXXXXX)"
 printf 'Console evidence: %s\n' "$YAAGL_FPS_CAPTURE_DIR"
 set -o pipefail
@@ -20,30 +23,34 @@ pnpm start-hk4eos 2>&1 | tee "$YAAGL_FPS_CAPTURE_DIR/terminal.log"
 python3 scripts/collect-hk4e-launch-evidence.py --console "$YAAGL_FPS_CAPTURE_DIR"
 ```
 
-Expected versions are **v16.20.2 / 7.33.7**. Starting prepares the current bridge and matching native resources, then opens the UI. The last command runs automatically after the launcher exits, even if pnpm reports an error; it prints the new evidence directory. If either version differs, stop before Launch.
+The start command rebuilds the current Global development resources and opens the UI. The final collector command runs after the launcher exits and prints a fresh evidence directory. If the UI remains guarded, use step 5 while leaving it open.
 
-Before pressing Launch, verify in a second terminal:
+3. Before pressing Launch, verify the unchanged bridge/Wine identities in a second terminal:
 
 ```sh
 cd /Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher
 shasum -a 256 yaaglwdos/sidecar/fps-bridge/fps-bridge.exe yaaglwdos/wine/lib/wine/x86_64-unix/ntdll.so
 ```
 
-Expected bridge: **`d7aa8ac472c5757f4d96847b626fe7b955e9ff6184940bc17b32f66c5900873d`**, protocol 3, 37,888 bytes. Expected selected Wine library: **`f26ade35f5b49e33b3780b6adc71f9eb9c831ea40222c1bae667ac14135d984b`**. On mismatch, collect evidence and stop before Launch.
+Bridge: **`d7aa8ac472c5757f4d96847b626fe7b955e9ff6184940bc17b32f66c5900873d`**, protocol 3 / 37,888 bytes. Selected Wine library: **`f26ade35f5b49e33b3780b6adc71f9eb9c831ea40222c1bae667ac14135d984b`**. This delivery changes frontend reporting/logging, not those binaries. On mismatch, collect and stop before Launch.
 
-3. Check the settings above, record wall time, and press **Launch once**. Record whether login appears and any numerical Metal HUD FPS value. If login remains stable for **30 seconds**, quit the game normally. If it fails, stop after that attempt. Let the launcher finish cleanup; close the launcher normally only when it allows this. A stable login alone does not accept world gameplay, target 61/120 or measured unlocking above 60.
+4. In the existing settings set **FPS unlocking OFF**. Keep the stored target **60** unchanged. Keep **Steam Patch ON**, **Launch Fix/block hosts OFF**, the same game/path, selected Wine, DXMT 0.80.0, timeout fix and Metal HUD. Do not update or repair the game/runtime for this comparison. Record wall time, then press **Launch once**.
 
-4. If the launcher remains guarded or has not exited, collect immediately from another terminal:
+If login appears, leave it stable for **30 seconds**, record any numerical HUD FPS value, and quit the game normally. If it fails, record the full visible error and stop after that attempt. Allow normal cleanup to finish; close the launcher normally only when permitted. Do **not** follow this with an enabled, higher-target or packaged-game attempt yet.
+
+5. If the launcher remains open/guarded, or you need an immediate capture, run in another terminal:
 
 ```sh
 cd /Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher
 python3 scripts/collect-hk4e-launch-evidence.py
 ```
 
-This command only reads sources and writes a fresh private evidence directory. It automatically captures the full launcher log, all adjacent game/Steam/Wine logs, timestamp-matched terminal captures and macOS reports, game `driverError.log`, game logs/dumps, selected settings/artifact hashes, and any exact retained request directories referenced by the launcher log. Missing, changing or symlink entries are recorded explicitly; no cleanup or protocol command is sent. A second collection after eventual safe cleanup is allowed and creates another directory. Keep both.
+The collector only reads sources and writes a new private evidence directory. It preserves full launcher/game logs, matching terminal captures, game `driverError.log`, game/macOS crash reports, selected settings/artifact identities, and any retained exact `/tmp/yaagl-launch.*`, `/tmp/yaagl-fps.*` or owned-Wine directories referenced by the log. Templates and unrelated fixture directories are excluded. Missing/unstable/symlink sources are recorded; it sends no process or protocol commands. A later collection after safe cleanup creates a separate directory and is allowed.
 
-5. Send the printed evidence directory path plus your start time, visible error text, whether login stayed up, any HUD FPS value, and whether normal cleanup/close became available. The files are local; no upload is automatic. Do not publish the raw logs broadly because game logs can contain private information.
+For this **disabled** control, Wine exception and module records are in the new `game_<timestamp>.log`; a new `.wine.log` or FPS worker is not expected. The command log should include `WINEDEBUG=...+seh,+loaddll`, an `HK4E disabled request` identifying this run, and a final `Wine wait, registry/file restoration and journal cleanup completed` line if cleanup finishes. Handled exceptions can appear in successful runs. Do not classify every trace line as fatal.
 
-The evidence should show `verified Steam execution pair`, `Steam ready ... image=C:\windows\system32\steam.exe`, game PID/parent and DXMT maximum 60, any worker generation/resolution/read/write records, Wine exception details, game exit status, both jobs empty, release, owned supervisor completion, both Wine waits and registry/file restoration. `+seh` includes handled exceptions too; a trace line alone does not establish a fatal fault. If the same driver error recurs, the retained exception instruction/stack may distinguish the remaining creation-context and Wine-runtime explanations.
+6. Return the printed evidence path, start time, whether login remained stable, any HUD FPS value, full visible error if present, and whether cleanup/normal launcher close became available. The collector does not upload anything. Preserve raw logs locally because they can contain private game information.
 
-Current acceptance: disabled launch/normal exit reported with logged restoration; enabled 120 failed; the previous enabled 60 failed; enabled 61 has no accepted operator result; packaged gameplay remains unrun. Do **not** proceed to another target or packaged game until this single result is reviewed. No Native Fullscreen or Game Mode testing is requested.
+Interpretation: a successful contemporary disabled control strengthens the remaining enabled creation-context explanation; a matching disabled write-to-`0x1000`/driver failure points toward a common current game/Wine condition. Neither alone accepts enabled FPS gameplay. A new module-load map can identify this run's fault module if an exception recurs; it is not a crash-time memory dump.
+
+Status remains: earlier disabled operator pass with logged restoration; two enabled-60 failures (private and canonical shim); enabled-120 failure; no accepted enabled-61 result; packaged gameplay unrun. No Native Fullscreen or Game Mode testing is requested.

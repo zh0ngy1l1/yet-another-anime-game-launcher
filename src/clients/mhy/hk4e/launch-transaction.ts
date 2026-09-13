@@ -17,6 +17,7 @@ export interface LaunchTransactionOperations {
   launch(): Promise<void>;
   gameExit(): Promise<void>;
   companion(): ReturnType<typeof createFpsCompanion>;
+  /** Observation history, not evidence of a failed cleanup operation. */
   reportedErrors?(): readonly unknown[];
   /** Called only after attributed lifetime is confirmed, or no launch issued. */
   cleanup(phase: (text: string) => void): Promise<readonly unknown[]>;
@@ -35,7 +36,17 @@ export function createLaunchTransaction(
   let ended = false;
   let primary: unknown;
   let helper: ReturnType<typeof createFpsCompanion> | undefined;
-  const secondary: unknown[] = [];
+  const observationErrors: unknown[] = [];
+  const cleanupErrors: unknown[] = [];
+  let failure: LaunchFailure | undefined;
+  const observe = (error: unknown) => {
+    if (
+      String(error) !== String(primary) &&
+      !cleanupErrors.some(previous => String(previous) === String(error)) &&
+      !observationErrors.some(previous => String(previous) === String(error))
+    )
+      observationErrors.push(error);
+  };
   const wake = () => {
     changed.resolve();
     changed = deferred<void>();
@@ -46,11 +57,13 @@ export function createLaunchTransaction(
   };
   const problem = (error: unknown) => {
     if (primary === undefined) primary = error;
-    else if (primary !== error) secondary.push(error);
+    else observe(error);
     owner.problem(
       `Launch failed: ${String(
         primary
-      )}. Ownership retained until safe cleanup. ${String(error)}`
+      )}. Ownership retained until safe cleanup.${
+        String(primary) !== String(error) ? ` ${String(error)}` : ""
+      }`
     );
   };
   async function watch<T>(promise: Promise<T>, label: string): Promise<T> {
@@ -139,7 +152,7 @@ export function createLaunchTransaction(
           );
         const final = await watch(helper.completion, "FPS helper completion");
         if (final.error !== undefined) problem(final.error);
-        for (const error of final.cleanupErrors) secondary.push(error);
+        cleanupErrors.push(...final.cleanupErrors);
         if (final.cleanup !== "confirmed") {
           // A failed adapter outcome is not evidence of termination. Production
           // bridge completion must still independently confirm its worker/job.
@@ -161,7 +174,7 @@ export function createLaunchTransaction(
           errors = [error];
         }
         if (!errors.length) break;
-        secondary.push(...errors);
+        cleanupErrors.push(...errors);
         await owner.waitForRetry(
           `Cleanup failed; ownership retained. ${errors
             .map(String)
@@ -170,24 +183,39 @@ export function createLaunchTransaction(
             )}. Retry safe cleanup after addressing the reported cause.`
         );
       }
-      secondary.push(...(operations.reportedErrors?.() ?? []));
-      if (primary !== undefined || secondary.length)
-        owner.problem(
-          `Launch finished with errors: ${String(primary ?? secondary[0])}${
-            secondary.length
-              ? `; cleanup: ${secondary.map(String).join("; ")}`
-              : ""
-          }`
+      for (const error of operations.reportedErrors?.() ?? []) observe(error);
+      if (
+        primary !== undefined ||
+        observationErrors.length ||
+        cleanupErrors.length
+      ) {
+        const errors = [
+          ...(primary === undefined ? [] : [primary]),
+          ...observationErrors,
+        ];
+        // Reaching this point means the existing lifetime/cleanup gates have
+        // completed. Earlier failures remain evidence, not pending cleanup.
+        const message = `Launch finished with errors${
+          errors.length ? `: ${errors.map(String).join("; ")}` : ""
+        }. Cleanup completed.${
+          cleanupErrors.length
+            ? ` Earlier cleanup errors: ${cleanupErrors.map(String).join("; ")}`
+            : ""
+        }`;
+        failure = new LaunchFailure(
+          message,
+          primary,
+          cleanupErrors,
+          observationErrors
         );
-      else
+        owner.problem(message);
+      } else
         owner.succeed("Game, FPS worker, Wine wait and restoration completed");
       owner.finish();
       ended = true;
       wake();
     }
-    return primary !== undefined || secondary.length
-      ? new LaunchFailure(String(primary ?? secondary[0]), primary, secondary)
-      : undefined;
+    return failure;
   })();
   async function* program(): CommonUpdateProgram {
     try {

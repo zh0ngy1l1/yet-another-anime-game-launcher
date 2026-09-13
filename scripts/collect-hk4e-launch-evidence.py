@@ -11,7 +11,7 @@ import stat
 import subprocess
 import tempfile
 
-REQUEST = re.compile(r"/tmp/yaagl-(?:fps|owned-wine)\.[A-Za-z0-9]{6,64}(?![A-Za-z0-9_.-])")
+REQUEST = re.compile(r"/tmp/yaagl-(?:fps|owned-wine|launch)\.[A-Za-z0-9]{6,64}(?![A-Za-z0-9_.-])")
 SETTINGS = (
     "game_install_dir", "wine_tag", "wine_state", "installed_dxmt_version",
     "config_hk4e_fps_unlock_enabled", "config_hk4e_fps_unlock_target",

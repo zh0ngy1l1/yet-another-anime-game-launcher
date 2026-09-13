@@ -137,7 +137,9 @@ it("the actual queue retains failed transaction cleanup and accepts a fresh task
   launchOwnership.retry();
   await queued;
   expect(busy()).toBe(false);
-  expect(status()).toBe("Error: setup failed");
+  expect(status()).toBe(
+    "Launch finished with errors: Error: setup failed. Cleanup completed. Earlier cleanup errors: Error: restore denied"
+  );
   expect(launchOwnership.state().held).toBe(false);
   let ran = false;
   await queue.next(async function* () {
@@ -160,4 +162,28 @@ it("queue fatal errors release only an unclaimed primary reservation before shut
   });
   expect(Neutralino.app.exit).toHaveBeenCalledWith(-1);
   ticket.release();
+});
+it("preserves separate observation and cleanup history when wrapping a launch failure", () => {
+  const primary = new Error("game exited");
+  const earlier = new LaunchFailure(
+    "first failure",
+    primary,
+    [new Error("registry restore denied")],
+    [new Error("game observation delayed")]
+  );
+  const wrapped = new LaunchFailure(
+    "cleanup completed after recovery",
+    earlier,
+    [new Error("file restore denied")],
+    [new Error("Wine observation delayed")]
+  );
+  expect(wrapped.primary).toBe(primary);
+  expect(wrapped.cleanupErrors).toEqual([
+    new Error("registry restore denied"),
+    new Error("file restore denied"),
+  ]);
+  expect(wrapped.observationErrors).toEqual([
+    new Error("game observation delayed"),
+    new Error("Wine observation delayed"),
+  ]);
 });

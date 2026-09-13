@@ -5,6 +5,7 @@ import {
 } from "../../../launcher/launch-ownership";
 import { admitFpsLaunch } from "./fps-admission";
 import { launchFpsGame } from "./launch-fps-game";
+import { hk4eWineDebug } from "./launch-diagnostics";
 import { join } from "path-browserify";
 import { CommonUpdateProgram } from "../../../common-update-ui";
 import { Server } from "../../../constants";
@@ -207,6 +208,9 @@ cd /d "${wine.toWinePath(gameDir)}"
     await mkdirp(resolve("./logs"));
     yield ["setStateText", "GAME_RUNNING"];
     const logfile = resolve(`./logs/game_${Date.now()}.log`);
+    void log(
+      `HK4E disabled request ${directory}: Steam Patch=${config.steamPatch}; Wine output: ${logfile}`
+    ).catch(() => undefined);
     if (config.blockNet) {
       const tmpScriptPath = "/tmp/yaagl_network_block_script.sh";
       const blockUrl = server.id == "hk4e_global" ? OS_BLOCK_URL : CN_BLOCK_URL;
@@ -308,6 +312,9 @@ cd /d "${wine.toWinePath(gameDir)}"
       );
     }
   }
+  void log(
+    `HK4E disabled request ${directory}: Wine wait, registry/file restoration and journal cleanup completed`
+  ).catch(() => undefined);
   if (primary !== undefined || secondary.length)
     throw new LaunchFailure(
       String(primary ?? secondary[0]),
@@ -378,6 +385,7 @@ export function gameEnvironment(
 ): Record<string, string> {
   const yaaglDir = resolve("./");
   return {
+    WINEDEBUG: hk4eWineDebug(wine.executionContext?.environment?.WINEDEBUG),
     MTL_HUD_ENABLED: config.metalHud ? "1" : "",
     WINEDLLOVERRIDES: "",
     WINE_ENABLE_TIMEOUT_FIX: config.timeoutFix ? "1" : "0",

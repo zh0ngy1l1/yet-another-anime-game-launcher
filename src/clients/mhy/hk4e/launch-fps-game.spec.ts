@@ -260,10 +260,16 @@ it("retains a pre-worker game failure after otherwise successful Steam cleanup",
   expect(String(failure)).toContain(
     "with code 0xc0000005; worker generation 0"
   );
+  expect(String(failure).match(/with code 0xc0000005/g)).toHaveLength(1);
+  expect(failure?.cleanupErrors).toEqual([]);
+  expect(failure?.observationErrors).toHaveLength(1);
+  expect(String(failure)).toContain("Cleanup completed.");
+  expect(String(failure)).not.toContain("cleanup:");
   expect(rig.native.events).not.toContain("start");
   expect(rig.native.events).toContain("registry:restore");
   expect(rig.native.events).toContain("files-restored");
   expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
+  expect(rig.ownership.state().detail).toBe(failure?.message);
 });
 
 it("unconfirmed Steam cleanup remains visibly failed and guarded until later confirmed completion", async () => {
@@ -282,10 +288,12 @@ it("unconfirmed Steam cleanup remains visibly failed and guarded until later con
   expect(rig.journal.restore).not.toHaveBeenCalled();
   const result = await rig.finish(transaction);
   expect(
-    result?.cleanupErrors.some(error =>
+    result?.observationErrors.some(error =>
       String(error).includes("Steam shim/relay")
     )
   ).toBe(true);
+  expect(result?.cleanupErrors).toEqual([]);
+  expect(result?.message).toContain("Cleanup completed.");
   expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
 });
 

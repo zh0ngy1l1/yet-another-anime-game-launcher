@@ -10,6 +10,7 @@ import { acquireFpsUnlocker } from "./fps-unlocker";
 import { fpsUnlockerIO } from "./fps-unlocker-io";
 import { FPS_BRIDGE_MANIFEST } from "./fps-bridge-manifest";
 import type { FpsGameObserver } from "./fps-companion";
+import { hk4eWineDebug } from "./launch-diagnostics";
 import {
   FPS_STEAM_ARTIFACTS,
   FPS_STEAM_WINDOWS_PATH,
@@ -452,9 +453,7 @@ export async function prepareFpsBridge(
       // Exit status alone cannot identify an access violation's instruction.
       // Keep Wine exception records in the same persistent request output.
       environment: {
-        WINEDEBUG: `${
-          input.wine.environment.WINEDEBUG ?? "fixme-all,err-unwind,+timestamp"
-        },+seh`,
+        WINEDEBUG: hk4eWineDebug(input.wine.environment.WINEDEBUG),
       },
       outputLog: `${input.log}.wine.log`,
     });
