@@ -94,7 +94,7 @@ export function boundary(steamPatch = false) {
       async (_directory: string, _steamPatch = false) =>
         "/tmp/request/fps-bridge.exe"
     ),
-    verify: vi.fn(async (path: string, _steamPatch = false) => {
+    verify: vi.fn(async (path: string, _steamDirectory?: string) => {
       expect(path).toBe("/tmp/request/fps-bridge.exe");
       if (badArtifact) throw new Error("replaced artifact");
     }),

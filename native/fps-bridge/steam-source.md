@@ -64,9 +64,12 @@ rewrite occurred. Source links are references, not reproducible-build evidence.
 
 1. The existing synchronous admission lease covers preparation onward. A fresh
    private directory/token stages and verifies the bridge and signed Steam pair.
-   The exact staged shim path is the selected executable; its adjacent signed
-   DLL is preserved. Original prefix Steam-file preparation still runs and is
-   journaled. No game or shim runs during artifact acquisition or registry save.
+   Original prefix Steam-file preparation remains journaled. After preparation,
+   boot and launch verify the actual system32 pair and require Wine C: to resolve
+   to that prefix drive_c. The selected shim is now
+   `C:\windows\system32\steam.exe`, matching the disabled route; the staged
+   signed pair remains verified acquisition evidence, while the bridge and relay
+   continue using the private bridge executable. No game or shim runs during artifact acquisition or registry save.
 2. On `launch`, the bridge creates the **signed shim suspended**, retains its
    process handle and assigns a Steam job with no breakaway/kill-on-close flags
    before resuming. The shim runs the same staged bridge in `--steam-relay`
@@ -131,11 +134,19 @@ replacement or runtime tampering remains outside that protection; the tests do
 not claim privileged local attacker resistance. The bridge's game/job handles
 do not strengthen the Perl supervisor's direct-child-only ownership guarantee.
 
-The relay changes the shim's child command line and the parent image is staged
-privately. Preserving signed bytes and verified Windows parentage is **not proof
+The relay changes the shim's child command line. The parent image now uses the
+same canonical prefix path as disabled Steam. Creation still uses the bridge,
+explicit inherited standard handles and nested jobs. Preserving signed bytes,
+parent image path and verified Windows parentage is **not proof
 of current Genshin world-load compatibility**, executable handoff behavior or
 achieved FPS. Those remain operator-run Step 7.5 gates. A handoff through a
 pre-existing service/native Unix process/another prefix is unsupported. Other
 launchers must not concurrently mutate the same game/Wine files. There is no
 force-quit, launcher-crash or power-loss recovery promise. Packaged-app/release
 verification remains a separate Step 8 gate.
+
+The [enabled-60 follow-up](../../docs/fps-enabled60-followup-20260913.md) records
+the pre-worker driver-initialization failure and a four-arm harmless context
+comparison. It does not establish that the former private image path caused the
+game failure. Job membership, creator and standard-handle differences remain
+explicit compatibility limits; ownership and close protection are unchanged.

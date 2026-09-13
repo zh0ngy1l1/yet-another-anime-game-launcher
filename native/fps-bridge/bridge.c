@@ -302,7 +302,11 @@ static DWORD start_steam(void) {
         InterlockedCompareExchange(&steam_slot->state, 0, 0) != 1 || !steam_slot->relay_pid ||
         WaitForSingleObject(shim, 0) != WAIT_TIMEOUT) return ERROR_INVALID_STATE;
     steam_acknowledged = 1;
-    diagnostic("Steam ready shim=%lu relay=%ld", shim_pid, steam_slot->relay_pid);
+    wchar_t image[32768] = {0};
+    DWORD length = 32768;
+    BOOL identified = QueryFullProcessImageNameW(shim, 0, image, &length);
+    diagnostic("Steam ready shim=%lu relay=%ld image=%ls imageError=%lu", shim_pid,
+        steam_slot->relay_pid, image, identified ? 0 : GetLastError());
     return 0;
 }
 

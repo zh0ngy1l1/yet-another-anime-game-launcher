@@ -20,6 +20,45 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("verifies the prepared system32 pair and launches its canonical Windows image", async () => {
+  const rig = boundary(true),
+    bridge = await rig.prepare();
+  // Acquisition occurs before the caller prepares prefix files.
+  expect(rig.io.verify).not.toHaveBeenCalled();
+  await bridge.boot();
+  const selected = "/selected/prefix/drive_c/windows/system32";
+  expect(rig.io.verify).toHaveBeenLastCalledWith(bridge.path, selected);
+  const request = rig.io.start.mock.calls[0][0];
+  expect(request.args[6]).toBe("C:\\windows\\system32\\steam.exe");
+  expect(request.args).not.toContain("Z:\\tmp\\request\\steam.exe");
+  expect(request.outputLog).toBe("/logs/game.log.wine.log");
+  expect(request.environment.WINEDEBUG).toBe(
+    "fixme-all,err-unwind,+timestamp,+seh"
+  );
+  await bridge.launch();
+  expect(rig.io.verify).toHaveBeenLastCalledWith(bridge.path, selected);
+  rig.exit();
+  rig.direct.resolve({ confirmed: true, status: 0 });
+  await bridge.release();
+  await bridge.dispose();
+});
+
+it("direct FPS launch requires no Steam files and retains custom Wine debug channels", async () => {
+  const rig = boundary(false);
+  Object.assign(rig.wine.environment, { WINEDEBUG: "-all,+timestamp" });
+  const bridge = await rig.prepare();
+  await bridge.boot();
+  expect(rig.io.verify).toHaveBeenLastCalledWith(bridge.path, undefined);
+  const request = rig.io.start.mock.calls[0][0];
+  expect(request.args).toHaveLength(6);
+  expect(request.environment.WINEDEBUG).toBe("-all,+timestamp,+seh");
+  await bridge.launch();
+  rig.exit();
+  rig.direct.resolve({ confirmed: true, status: 0 });
+  await bridge.release();
+  await bridge.dispose();
+});
+
 async function companion(
   rig: ReturnType<typeof boundary>,
   fps = "120",

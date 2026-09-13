@@ -1,4 +1,4 @@
-import { dirname, join } from "path-browserify";
+import { join } from "path-browserify";
 import { exec, readFile, resolve, writeFile } from "../../../utils/neu";
 import { deferred, delay, operationClock } from "../../../utils/operation";
 import {
@@ -10,7 +10,11 @@ import { acquireFpsUnlocker } from "./fps-unlocker";
 import { fpsUnlockerIO } from "./fps-unlocker-io";
 import { FPS_BRIDGE_MANIFEST } from "./fps-bridge-manifest";
 import type { FpsGameObserver } from "./fps-companion";
-import { FPS_STEAM_ARTIFACTS } from "./fps-steam";
+import {
+  FPS_STEAM_ARTIFACTS,
+  FPS_STEAM_WINDOWS_PATH,
+  verifyFpsSteamPrefix,
+} from "./fps-steam";
 
 export interface BridgeStatus {
   version: 3;
@@ -162,15 +166,16 @@ const bridgeIO = {
       }
     return path;
   },
-  async verify(path: string, steamPatch = false) {
+  async verify(path: string, steamDirectory?: string) {
     if (
       (await fpsUnlockerIO.sha256(path, FPS_BRIDGE_MANIFEST.size)) !==
       FPS_BRIDGE_MANIFEST.sha256
     )
       throw new Error("FPS bridge execution artifact changed");
-    if (steamPatch)
+    if (steamDirectory) {
+      await verifyFpsSteamPrefix(join(steamDirectory, "../../.."));
       for (const artifact of FPS_STEAM_ARTIFACTS) {
-        const selected = join(dirname(path), artifact.filename);
+        const selected = join(steamDirectory, artifact.filename);
         try {
           if (
             (await fpsUnlockerIO.sha256(selected, artifact.size)) !==
@@ -188,6 +193,7 @@ const bridgeIO = {
           );
         }
       }
+    }
   },
   start: startOwnedWineExecution,
   async remove(directory: string) {
@@ -244,6 +250,12 @@ export async function prepareFpsBridge(
 ) {
   const directory = await io.directory();
   const token = io.token();
+  // Setup journals and prepares these prefix files. Verify the actual selected
+  // pair after setup and again before launch, then let the native bridge retain
+  // its image locks and shim HANDLE through the existing guarded lifetime.
+  const steamDirectory = input.steamPatch
+    ? join(input.wine.prefix, "drive_c/windows/system32")
+    : undefined;
   let path: string;
   try {
     path = await io.stage(directory, input.steamPatch);
@@ -420,7 +432,11 @@ export async function prepareFpsBridge(
   }
 
   async function boot() {
-    await io.verify(path, input.steamPatch);
+    await io.verify(path, steamDirectory);
+    if (steamDirectory)
+      input.event?.(
+        `FPS request ${token}: verified Steam execution pair at ${steamDirectory}; Windows image ${FPS_STEAM_WINDOWS_PATH}`
+      );
     execution = io.start({
       wine: input.wine,
       executable: path,
@@ -431,9 +447,15 @@ export async function prepareFpsBridge(
         winePath(input.gameDirectory),
         input.gameDxmtConfig,
         winePath(input.log),
-        ...(input.steamPatch ? [winePath(join(directory, "steam.exe"))] : []),
+        ...(input.steamPatch ? [FPS_STEAM_WINDOWS_PATH] : []),
       ],
-      environment: {},
+      // Exit status alone cannot identify an access violation's instruction.
+      // Keep Wine exception records in the same persistent request output.
+      environment: {
+        WINEDEBUG: `${
+          input.wine.environment.WINEDEBUG ?? "fixme-all,err-unwind,+timestamp"
+        },+seh`,
+      },
       outputLog: `${input.log}.wine.log`,
     });
     void execution.completion.then(outcome => {
@@ -550,7 +572,7 @@ export async function prepareFpsBridge(
     boot,
     probe,
     async launch() {
-      await io.verify(path, input.steamPatch);
+      await io.verify(path, steamDirectory);
       launchIssued = true;
       const value = await request("launch");
       if (

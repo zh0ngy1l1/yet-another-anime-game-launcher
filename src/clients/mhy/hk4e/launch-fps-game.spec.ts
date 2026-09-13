@@ -160,7 +160,7 @@ it.each(["60", "61", "120"])(
     expect(rig.native.io.stage).toHaveBeenCalledWith("/tmp/request", true);
     expect(rig.native.io.verify).toHaveBeenCalledWith(
       "/tmp/request/fps-bridge.exe",
-      true
+      "/selected/prefix/drive_c/windows/system32"
     );
     const request = rig.native.io.start.mock.calls.find(
       ([request]) => request.args[0] !== "--registry"
@@ -174,7 +174,7 @@ it.each(["60", "61", "120"])(
         Number(target) <= 60 ? target : 0
       };`,
       expect.stringMatching(/^Z:\\app\\logs\\game_/),
-      "Z:\\tmp\\request\\steam.exe",
+      "C:\\windows\\system32\\steam.exe",
     ]);
     expect(request?.wine.environment).toMatchObject({
       KEEP: "kept",

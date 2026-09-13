@@ -170,6 +170,12 @@ async function main() {
     "decoy ready",
     120000
   );
+  if (steam)
+    for (const artifact of require("../native/fps-bridge/steam-artifacts.json"))
+      fs.copyFileSync(
+        path.join(steamDir, artifact.filename),
+        path.join(prefix, "drive_c/windows/system32", artifact.filename)
+      );
   const originalSteam = steam ? steamState() : undefined;
   for (const fps of [1, 60, 61, 120, 360]) {
     const dir = path.join(root, `target-${fps}`);
@@ -185,7 +191,7 @@ async function main() {
         win(dir),
         `other=kept;d3d11.preferredMaxFrameRate=${fps <= 60 ? fps : 0};`,
         win(path.join(dir, "game.log")),
-        ...(steam ? [win(path.join(steamDir, "steam.exe"))] : []),
+        ...(steam ? ["C:\\windows\\system32\\steam.exe"] : []),
       ],
       { FPS_FIXTURE_DIRECTORY: win(dir), FPS_FIXTURE_DETACH: "1" }
     );
@@ -231,6 +237,10 @@ async function main() {
       );
       const metadata = read(path.join(dir, "root-startup"));
       assert.match(metadata, new RegExp(`parent=${s.shimPid}\\r?\\n`));
+      assert.match(
+        metadata,
+        /parentImage=C:\\windows\\system32\\steam.exe\r?\n/
+      );
       assert.match(metadata, /argc=1\r?\n/);
       assert.match(metadata, /KEEP=fixture-kept/);
       assert.ok(metadata.includes(`cwd=${win(process.cwd())}`));
@@ -335,7 +345,7 @@ async function main() {
         win(dir),
         "d3d11.preferredMaxFrameRate=0;",
         win(path.join(dir, "game.log")),
-        ...(steam ? [win(path.join(steamDir, "steam.exe"))] : []),
+        ...(steam ? ["C:\\windows\\system32\\steam.exe"] : []),
       ],
       { FPS_FIXTURE_DIRECTORY: win(dir) }
     );
@@ -410,7 +420,7 @@ async function main() {
         win(dir),
         "d3d11.preferredMaxFrameRate=0;",
         win(path.join(dir, "game.log")),
-        ...(steam ? [win(path.join(steamDir, "steam.exe"))] : []),
+        ...(steam ? ["C:\\windows\\system32\\steam.exe"] : []),
       ],
       {
         FPS_FIXTURE_DIRECTORY: win(dir),

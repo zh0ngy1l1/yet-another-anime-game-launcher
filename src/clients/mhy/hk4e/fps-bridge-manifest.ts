@@ -3,7 +3,7 @@ export const FPS_BRIDGE_MANIFEST = Object.freeze({
   version: 3,
   filename: "fps-bridge.exe",
   size: 37888,
-  sha256: "68023d90842e92dda9bbbda72f6ec30a83f7589f6d3d957f334c7c29b786bded",
+  sha256: "d7aa8ac472c5757f4d96847b626fe7b955e9ff6184940bc17b32f66c5900873d",
 });
 export const FPS_STEAM_ARTIFACTS = Object.freeze([
   {

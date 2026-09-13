@@ -37,11 +37,18 @@ int wmain(int argc, wchar_t **argv) {
     Query query = (Query)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationProcess");
     PROCESS_BASIC_INFORMATION info;
     if (!query || query(GetCurrentProcess(), ProcessBasicInformation, &info, sizeof(info), NULL)) return 5;
+    wchar_t parent_image[32768] = {0};
+    HANDLE parent = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, (DWORD)info.InheritedFromUniqueProcessId);
+    DWORD parent_length = 32768;
+    if (parent) {
+        QueryFullProcessImageNameW(parent, 0, parent_image, &parent_length);
+        CloseHandle(parent);
+    }
     wchar_t cwd[32768], keep[128] = {0}, dxmt[32768] = {0};
     GetCurrentDirectoryW(32768, cwd); GetEnvironmentVariableW(L"KEEP", keep, 128);
     GetEnvironmentVariableW(L"DXMT_CONFIG", dxmt, 32768);
-    fwprintf(startup, L"pid=%lu\nparent=%llu\nargc=%d\ncommand=%ls\ncwd=%ls\nKEEP=%ls\nDXMT_CONFIG=%ls\n",
-        GetCurrentProcessId(), (unsigned long long)info.InheritedFromUniqueProcessId, argc, GetCommandLineW(), cwd, keep, dxmt);
+    fwprintf(startup, L"pid=%lu\nparent=%llu\nparentImage=%ls\nargc=%d\ncommand=%ls\ncwd=%ls\nKEEP=%ls\nDXMT_CONFIG=%ls\n",
+        GetCurrentProcessId(), (unsigned long long)info.InheritedFromUniqueProcessId, parent_image, argc, GetCommandLineW(), cwd, keep, dxmt);
     fclose(startup);
     if (!MoveFileExW(startup_tmp, startup_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return 6;
     puts("harmless fixture stdout"); fflush(stdout);

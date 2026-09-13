@@ -6,6 +6,7 @@ import { admitFpsLaunch } from "../src/clients/mhy/hk4e/fps-admission";
 import { prepareFpsBridge } from "../src/clients/mhy/hk4e/fps-bridge";
 import { createLaunchJournal } from "../src/clients/mhy/hk4e/launch-journal";
 import { createFpsUnlockSettings } from "../src/clients/mhy/hk4e/config/fps-unlock-settings";
+import { FPS_STEAM_ARTIFACTS } from "../src/clients/mhy/hk4e/fps-steam";
 import { launchOwnership } from "../src/launcher/launch-ownership";
 import {
   exec,
@@ -90,22 +91,34 @@ async function main() {
       async setup(capture) {
         await capture(join(root, "original-file"));
         await writeFile(join(root, "original-file"), "changed");
+        if (config.steamPatch)
+          for (const artifact of FPS_STEAM_ARTIFACTS) {
+            const path = join(
+              prefix,
+              "drive_c/windows/system32",
+              artifact.filename
+            );
+            // Known originals in this isolated prefix exercise exact restoration.
+            await writeFile(path, `fixture original ${artifact.filename}`);
+            await capture(path);
+            await exec([
+              "/bin/cp",
+              "--",
+              join(root, "sidecar/protonextras", artifact.resource),
+              path,
+            ]);
+            if (
+              Reflect.get(window, "NL_FIXTURE_TAMPER_STEAM") === true &&
+              artifact.filename === "steam.exe"
+            )
+              await writeFile(path, "fixture replacement after preparation");
+          }
       },
     },
     launchOwnership.claim(),
     {
       async bridge(input) {
-        const bridge = await prepareFpsBridge(input);
-        if (Reflect.get(window, "NL_FIXTURE_TAMPER_STEAM") === true) {
-          // Alter only the exact private test artifact before any execution.
-          const path = join(bridge.directory, "steam.exe");
-          await exec(["/bin/chmod", "600", path]);
-          await writeFile(
-            path,
-            "fixture replacement after verified acquisition"
-          );
-        }
-        return bridge;
+        return prepareFpsBridge(input);
       },
       journal: createLaunchJournal,
       companion: {},
