@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 import tarfile
 
@@ -68,6 +69,32 @@ if window_text.count(close) != 1:
 window_source.write_text(window_text.replace(close, '''        nativeWindow->dispatch([exitCode]() {
             nativeWindow->terminate(exitCode);
         });'''))
+# The native watchdog starts before WebView navigation. Its RPC clock waits on
+# a condition variable, never the AppKit or sole WebSocket server thread.
+bootstrap_source = ROOT / "native/bootstrap/bootstrap.cpp"
+shutil.copyfile(bootstrap_source, source / "api/custom/bootstrap.cpp")
+custom_header = source / "api/custom/custom.h"
+custom_text = custom_header.read_text()
+if custom_text.count("vector<string> getMethods();") != 1 or custom_text.count("json getMethods(const json &input);") != 1:
+    raise SystemExit("Native bootstrap declaration patch context changed")
+custom_text = custom_text.replace("vector<string> getMethods();", "vector<string> getMethods();\nvoid armBootstrap();\nvoid observeBootstrapClose();")
+custom_text = custom_text.replace("json getMethods(const json &input);", "json getMethods(const json &input);\njson bootstrap(const json &input);")
+custom_header.write_text(custom_text)
+router_source = source / "server/router.cpp"
+router_text = router_source.read_text()
+router_anchor = '    {"custom.getMethods", custom::controllers::getMethods},'
+if router_text.count(router_anchor) != 1:
+    raise SystemExit("Native bootstrap router patch context changed")
+router_source.write_text(router_text.replace(router_anchor, router_anchor + '\n    {"custom.bootstrap", custom::controllers::bootstrap},'))
+window_text = window_source.read_text()
+close_event = "        case WEBVIEW_WINDOW_CLOSE:"
+if window_text.count(close_event) != 1:
+    raise SystemExit("Native bootstrap close patch context changed")
+window_text = window_text.replace(close_event, close_event + "\n            custom::observeBootstrapClose();")
+navigation = "    nativeWindow->navigate(windowProps.url);"
+if window_text.count(navigation) != 1:
+    raise SystemExit("Native bootstrap navigation patch context changed")
+window_source.write_text('#include "api/custom/custom.h"\n' + window_text.replace(navigation, "    if(windowProps.hidden) custom::armBootstrap();\n" + navigation))
 # Upstream runs handleMessage inline on the sole asio server thread. A live
 # foreground command would block its own ready/stop mailbox RPCs. Dispatch only
 # execCommand; preserve each complete request/message and its response id.
@@ -77,7 +104,7 @@ message = "        neuserver::handleMessage(handler, msg);"
 if server_text.count(message) != 1:
     raise SystemExit("Native foreground dispatch patch context changed")
 server_source.write_text(server_text.replace(message, """        auto request = json::parse(msg->get_payload(), nullptr, false);
-        if(request.is_object() && request.contains("method") && request["method"].is_string() && request["method"] == "os.execCommand") {
+        if(request.is_object() && request.contains("method") && request["method"].is_string() && (request["method"] == "os.execCommand" || request["method"] == "custom.bootstrap")) {
             std::thread([handler, msg]() {
                 neuserver::handleMessage(handler, msg);
             }).detach();
@@ -94,7 +121,7 @@ for directory in config["include"]["*"]:
 for pattern in config["source"]["*"] + config["source"]["darwin"]:
     args.extend(sorted(glob.glob(str(source / pattern), recursive=True)))
 for definition in config["definitions"]["*"] + config["definitions"]["darwin"]:
-    definition = definition.replace(chr(92) + chr(34), chr(34)).replace("${BZ_VERSION}", "4.11.0-yaagl-owned1").replace("${BZ_COMMIT}", REVISION)
+    definition = definition.replace(chr(92) + chr(34), chr(34)).replace("${BZ_VERSION}", "4.11.0-yaagl-owned2").replace("${BZ_COMMIT}", REVISION)
     args.append("-D" + definition)
 for option in config["options"]["darwin"]:
     args.extend(option.split())
@@ -103,12 +130,15 @@ print("Building local HK4E normal-close runtime:", target, flush=True)
 subprocess.run(args, cwd=source, env={**os.environ, "MACOSX_DEPLOYMENT_TARGET": "11.0"}, check=True)
 subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(target)], check=True)
 record = {"upstreamRevision": REVISION, "archiveSha256": ARCHIVE_HASH,
-          "version": "4.11.0-yaagl-owned1", "architecture": arch,
+          "version": "4.11.0-yaagl-owned2", "architecture": arch,
           "compiler": subprocess.check_output(["/usr/bin/clang++", "--version"], text=True).splitlines()[0],
           "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
           "recipeSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
           "patchedServerSha256": hashlib.sha256(server_source.read_bytes()).hexdigest(),
           "patchedWindowSha256": hashlib.sha256(window_source.read_bytes()).hexdigest(),
           "patchedWebviewSha256": hashlib.sha256(webview.read_bytes()).hexdigest()}
+record["bootstrapSourceSha256"] = hashlib.sha256(bootstrap_source.read_bytes()).hexdigest()
+record["patchedRouterSha256"] = hashlib.sha256(router_source.read_bytes()).hexdigest()
+record["patchedCustomHeaderSha256"] = hashlib.sha256(custom_header.read_bytes()).hexdigest()
 (target.with_suffix(".json")).write_text(json.dumps(record, indent=2) + "\n")
 print(json.dumps(record), flush=True)

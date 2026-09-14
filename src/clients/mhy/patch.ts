@@ -181,5 +181,5 @@ export async function* patchRevertProgram(
     await removeFileIfExists(join(gameDir, "dxgi.dll"));
     await removeFileIfExists(join(gameDir, "d3dcompiler_47.dll"));
   }
-  setKey("patched", null);
+  await setKey("patched", null);
 }

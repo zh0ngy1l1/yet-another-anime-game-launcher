@@ -9,7 +9,7 @@ const binary = `bin/hk4e-neutralino-${
 }`;
 const child = cp.spawn(
   path.resolve(binary),
-  ["--load-dir-res", "--path=./" + directory],
+  ["--load-dir-res", "--path=./" + directory, "--window-title=Yaagl OS"],
   { stdio: "inherit" }
 );
 child.on("error", error => {

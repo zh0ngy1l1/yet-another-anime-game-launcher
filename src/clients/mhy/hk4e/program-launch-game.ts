@@ -5,6 +5,7 @@ import {
 } from "../../../launcher/launch-ownership";
 import { admitFpsLaunch } from "./fps-admission";
 import { launchFpsGame } from "./launch-fps-game";
+import { createLaunchFix } from "./launch-fix";
 import { hk4eWineDebug } from "./launch-diagnostics";
 import { join } from "path-browserify";
 import { CommonUpdateProgram } from "../../../common-update-ui";
@@ -25,7 +26,6 @@ import { Wine } from "../../../wine";
 import { Config } from "@config";
 import { patchProgram } from "../patch";
 import { prepareReshadeConfiguration } from "../../../downloadable-resource";
-import { CN_BLOCK_URL, OS_BLOCK_URL } from "../../secret";
 import hk4eHDRGlobalReg from "../../../constants/hk4e_hdr_os.reg?raw";
 import hk4eHDRCnReg from "../../../constants/hk4e_hdr_cn.reg?raw";
 
@@ -132,7 +132,8 @@ async function* launchGameDisabledProgram(
     config: Config;
     server: Server;
   },
-  owner: ReturnType<typeof launchOwnership.claim>
+  owner: ReturnType<typeof launchOwnership.claim>,
+  signal: AbortSignal
 ): CommonUpdateProgram {
   const result = await exec([
     "/usr/bin/mktemp",
@@ -143,12 +144,19 @@ async function* launchGameDisabledProgram(
   if (!/^\/tmp\/yaagl-launch\.[A-Za-z0-9]{10}$/.test(directory))
     throw new Error("Unknown launch journal directory");
   const journal = createLaunchJournal(directory);
+  const launchFix = config.blockNet
+    ? createLaunchFix(server.id, owner.problem)
+    : undefined;
   let originalPatched = "NOTFOUND",
     patchedStateOwned = false,
     hdr = false,
     resolution = false;
   let primary: unknown;
   const secondary: unknown[] = [];
+  const check = () => {
+    if (signal.aborted)
+      throw new Error("Launch cancelled before game creation");
+  };
   let registryDone = false,
     filesDone = false,
     journalDone = false;
@@ -209,40 +217,13 @@ cd /d "${wine.toWinePath(gameDir)}"
     yield ["setStateText", "GAME_RUNNING"];
     const logfile = resolve(`./logs/game_${Date.now()}.log`);
     void log(
-      `HK4E disabled request ${directory}: Steam Patch=${config.steamPatch}; Wine output: ${logfile}`
+      `HK4E disabled request ${directory}: Steam Patch=${
+        config.steamPatch
+      }; Launch Fix=${config.blockNet === true}; Wine output: ${logfile}`
     ).catch(() => undefined);
-    if (config.blockNet) {
-      const tmpScriptPath = "/tmp/yaagl_network_block_script.sh";
-      const blockUrl = server.id == "hk4e_global" ? OS_BLOCK_URL : CN_BLOCK_URL;
-
-      const commands = [
-        `#!/bin/sh`,
-
-        `HOSTS_FILE="/etc/hosts"`,
-        `ENTRY="0.0.0.0 ${blockUrl}"`,
-        `PAD_START="# Temporarily Added by Yaagl"`,
-        `PAD_END="# End of section"`,
-
-        `if ! grep -qF "$ENTRY" "$HOSTS_FILE"; then`,
-        `sudo bash -c "echo -e '$PAD_START\n$ENTRY\n$PAD_END' >> '/etc/hosts'"`,
-        `fi`,
-        `sleep 10`,
-        `sudo sed -i.bak "/$PAD_START/,/$PAD_END/d" "$HOSTS_FILE"`,
-
-        `rm ${tmpScriptPath}`,
-      ];
-
-      await writeFile(tmpScriptPath, commands.join("\n"));
-      await exec(
-        [
-          "osascript",
-          "-e",
-          `do shell script "source ${tmpScriptPath} > /dev/null 2>&1 &" with administrator privileges`,
-        ],
-        {},
-        false
-      );
-    }
+    check();
+    await launchFix?.start();
+    check();
 
     await wine.exec2(
       config.steamPatch ? "C:\\windows\\system32\\steam.exe" : "cmd",
@@ -261,6 +242,7 @@ cd /d "${wine.toWinePath(gameDir)}"
     for (;;) {
       const errors: unknown[] = [];
       try {
+        await launchFix?.finish();
         owner.phase("Waiting for Wine before restoring launch files");
         await waitWine();
         if (!registryDone) {
@@ -315,11 +297,17 @@ cd /d "${wine.toWinePath(gameDir)}"
   void log(
     `HK4E disabled request ${directory}: Wine wait, registry/file restoration and journal cleanup completed`
   ).catch(() => undefined);
-  if (primary !== undefined || secondary.length)
+  const observations = (launchFix?.errors() ?? []).filter(
+    error =>
+      String(error) !== String(primary) &&
+      !secondary.some(previous => String(previous) === String(error))
+  );
+  if (primary !== undefined || secondary.length || observations.length)
     throw new LaunchFailure(
-      String(primary ?? secondary[0]),
+      String(primary ?? observations[0] ?? secondary[0]),
       primary,
-      secondary
+      secondary,
+      observations
     );
 }
 
@@ -409,7 +397,7 @@ export function gameEnvironment(
   };
 }
 
-export async function* launchGameProgram(
+async function* ownedLaunchGameProgram(
   input: {
     gameDir: string;
     gameExecutable: string;
@@ -417,11 +405,8 @@ export async function* launchGameProgram(
     config: Config;
     server: Server;
   },
-  resources: (
-    enabledFps?: boolean
-  ) => CommonUpdateProgram = async function* () {
-    /* Caller may have no resources to prepare. */
-  }
+  resources: (enabledFps?: boolean) => CommonUpdateProgram,
+  signal: AbortSignal
 ): CommonUpdateProgram {
   const owner = launchOwnership.claim();
   input = { ...input, config: { ...input.config } };
@@ -431,9 +416,10 @@ export async function* launchGameProgram(
       ...input,
       server: input.server.id,
     });
+    if (signal.aborted) throw new Error("Launch cancelled before preparation");
     if (!admitted) {
       yield* resources();
-      yield* launchGameDisabledProgram(input, owner);
+      yield* launchGameDisabledProgram(input, owner, signal);
       return;
     }
     const { gameDir, gameExecutable, wine, config, server } = input;
@@ -447,6 +433,9 @@ export async function* launchGameProgram(
         environment: gameEnvironment(wine, config),
         registryResolution:
           config.resolutionCustom && !!resolutionDimensions(config),
+        launchFix: config.blockNet
+          ? createLaunchFix(server.id, owner.problem)
+          : undefined,
         async setup(capture, progress) {
           progress(["setUndeterminedProgress"]);
           progress(["setStateText", "PATCHING"]);
@@ -510,7 +499,13 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
       owner
     );
     delegated = true;
-    yield* transaction.program();
+    signal.addEventListener("abort", transaction.cancel, { once: true });
+    if (signal.aborted) transaction.cancel();
+    try {
+      yield* transaction.program();
+    } finally {
+      signal.removeEventListener("abort", transaction.cancel);
+    }
   } catch (error) {
     if (!delegated) owner.problem(String(error));
     throw error instanceof LaunchFailure
@@ -519,4 +514,36 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
   } finally {
     if (!delegated) owner.finish();
   }
+}
+
+/** Async-generator return normally queues behind a pending next()/await. Record
+ * cancellation synchronously so readiness cannot resume into game creation. */
+export function launchGameProgram(
+  input: Parameters<typeof ownedLaunchGameProgram>[0],
+  resources: (
+    enabledFps?: boolean
+  ) => CommonUpdateProgram = async function* () {
+    /* Caller may have no resources to prepare. */
+  }
+): CommonUpdateProgram {
+  const cancellation = new AbortController();
+  const iterator = ownedLaunchGameProgram(
+    input,
+    resources,
+    cancellation.signal
+  );
+  return {
+    next: (...args) => iterator.next(...args),
+    return(value) {
+      cancellation.abort();
+      return iterator.return(value);
+    },
+    throw(error) {
+      cancellation.abort();
+      return iterator.throw(error);
+    },
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+  };
 }

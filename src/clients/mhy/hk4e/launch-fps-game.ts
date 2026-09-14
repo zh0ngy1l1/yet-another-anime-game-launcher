@@ -13,6 +13,7 @@ import { FpsBridgePreparationFailure, prepareFpsBridge } from "./fps-bridge";
 import { admitFpsLaunch } from "./fps-admission";
 import { createLaunchJournal } from "./launch-journal";
 import { createLaunchTransaction } from "./launch-transaction";
+import type { createLaunchFix } from "./launch-fix";
 
 export function launchFpsGame(
   input: {
@@ -22,6 +23,7 @@ export function launchFpsGame(
     server: Server;
     environment: Record<string, string>;
     registryResolution: boolean;
+    launchFix?: ReturnType<typeof createLaunchFix>;
     resources: (enabledFps?: boolean) => CommonUpdateProgram;
     setup: (
       capture: (path: string) => Promise<void>,
@@ -84,7 +86,10 @@ export function launchFpsGame(
   }
   return createLaunchTransaction(
     {
-      reportedErrors: () => observationErrors,
+      reportedErrors: () => [
+        ...observationErrors,
+        ...(input.launchFix?.errors() ?? []),
+      ],
       async prepare(signal, progress) {
         const check = () => {
           if (signal.aborted) throw new Error("Launch preparation cancelled");
@@ -114,7 +119,9 @@ export function launchFpsGame(
         await log(
           `FPS request ${bridge.token}: artifact=${bridge.path}; route=${
             admitted.steamPatch ? "steam-patch" : "direct"
-          }; loader=${context.loader}; prefix=${context.prefix}; target=${
+          }; Launch Fix=${config.blockNet === true}; loader=${
+            context.loader
+          }; prefix=${context.prefix}; target=${
             companion.fpsArgument
           }; game DXMT_CONFIG=${
             admitted.plan.gameDxmtConfig
@@ -154,6 +161,11 @@ export function launchFpsGame(
         await bridge.boot();
         booted = true;
         check();
+        // The canonical Steam root is already established. Launch Fix is a
+        // separate foreground host operation; only its readiness admits game
+        // creation, and its completion remains part of transaction cleanup.
+        await input.launchFix?.start();
+        check();
       },
       async launch() {
         launched = true;
@@ -187,6 +199,7 @@ export function launchFpsGame(
           }
         ),
       async cleanup(phase) {
+        await input.launchFix?.finish();
         if (!bridge) {
           if (preparationRecovery) {
             await preparationRecovery();

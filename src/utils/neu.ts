@@ -1,4 +1,5 @@
 import { launchOwnership } from "../launcher/launch-ownership";
+import { getBootstrapClock } from "../bootstrap-clock";
 import { join } from "path-browserify";
 import { build, CommandSegments, rawString } from "./command-builder";
 
@@ -126,11 +127,29 @@ export function tar_extract_directory(
 
 export async function spawn(
   segments: CommandSegments,
-  env?: { [key: string]: string }
+  env?: { [key: string]: string },
+  onSpawn?: (process: { pid: number; id: number }) => void
 ) {
+  const clock = getBootstrapClock();
+  clock?.assertActive();
   const cmd = build(segments, env);
   await log(cmd);
-  const { pid, id } = await Neutralino.os.spawnProcess(cmd);
+  const start = async () => {
+    const process = await Neutralino.os.spawnProcess(cmd);
+    if (
+      !Number.isSafeInteger(process.pid) ||
+      process.pid <= 0 ||
+      !Number.isSafeInteger(process.id) ||
+      process.id < 0
+    ) {
+      throw Error("Invalid sidecar creation acknowledgement");
+    }
+    // Register cleanup before resolving the tracked spawn. A startup cancel
+    // waits for this acknowledgement before it snapshots termination hooks.
+    onSpawn?.(process);
+    return process;
+  };
+  const { pid, id } = await (clock ? clock.trackSpawn(start) : start());
   // await Neutralino.os.
   await log(pid + "");
   await log(cmd);
@@ -153,6 +172,7 @@ export async function getKeyOrDefault(
 }
 
 export async function setKey(key: string, value: string | null) {
+  getBootstrapClock()?.assertActive();
   return await Neutralino.storage.setData(key, value);
 }
 

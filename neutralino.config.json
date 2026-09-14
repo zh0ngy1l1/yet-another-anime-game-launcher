@@ -20,12 +20,13 @@
     "debug.log",
     "window.*",
     "filesystem.*",
-    "computer.*"
+    "computer.*",
+    "custom.bootstrap"
   ],
   "globalVariables": {},
   "modes": {
     "window": {
-      "title": "Yet Another Anime Game Launcher",
+      "title": "Yaagl OS",
       "width": 1280,
       "height": 730,
       "minWidth": 400,

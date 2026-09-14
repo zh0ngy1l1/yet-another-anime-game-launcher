@@ -1,3 +1,5 @@
+import { whenBootstrapReady } from "../bootstrap-clock";
+import { queueStartupRecovery } from "./startup-recovery";
 import { openDir, fatal, open } from "@utils";
 import {
   Box,
@@ -100,7 +102,11 @@ export async function createLauncher({
     const [statusText, progress, programBusy, taskQueue] = createTaskQueueState(
       { locale }
     );
-    taskQueue.next(() => init(config));
+    // Rendering must not begin native patch recovery before startup admission.
+    void whenBootstrapReady().then(
+      () => queueStartupRecovery(taskQueue, () => init(config)),
+      () => undefined
+    );
 
     const [
       nonUrgentStatusText,
@@ -114,6 +120,7 @@ export async function createLauncher({
     const [videoLoaded, setVideoLoaded] = createSignal(false);
 
     async function onButtonClick() {
+      await whenBootstrapReady();
       if (programBusy()) return;
       const admission = launchOwnership.reserve();
       if (!admission) return;

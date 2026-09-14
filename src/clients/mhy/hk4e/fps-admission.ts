@@ -33,7 +33,7 @@ export async function admitFpsLaunch(
     );
   if (!settings.value.enabled) return undefined;
   const { config, wine, server, gameDir, gameExecutable } = input;
-  if (native.os !== "Darwin" || native.version !== "4.11.0-yaagl-owned1")
+  if (native.os !== "Darwin" || native.version !== "4.11.0-yaagl-owned2")
     throw new Error(
       "FPS unlocking requires the local HK4E runtime with normal-quit protection; run scripts/build-hk4e-native.py"
     );
@@ -44,10 +44,6 @@ export async function admitFpsLaunch(
     )
   )
     throw new Error("FPS unlocking supports direct global or China HK4E only");
-  if (config.blockNet)
-    throw new Error(
-      "FPS unlocking does not support the background privileged network-blocking script; disable network blocking for this launch"
-    );
   if (
     !["11.0-dxmt-signed-with-patches", "11.0-dxmt-signed"].includes(
       wine.distributionId

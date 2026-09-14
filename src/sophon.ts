@@ -1,4 +1,4 @@
-import { log } from "@utils";
+import { log, wait } from "@utils";
 
 interface GameOperationOptions {
   gamedir: string;
@@ -227,7 +227,7 @@ export async function createSophonRetry(
       return await createSophon(host, port);
     } catch (error) {
       log("Failed to create sophon client, retrying..." + error);
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      await wait(3000);
     }
   }
   throw new Error("Failed to create sophon client after retries");

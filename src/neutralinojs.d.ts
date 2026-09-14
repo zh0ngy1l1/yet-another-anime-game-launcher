@@ -1,4 +1,14 @@
 declare namespace Neutralino {
+  namespace custom {
+    function bootstrap(input: {
+      op: "begin" | "wait" | "ready" | "fail" | "cancel";
+      milliseconds?: number;
+      message?: string;
+    }): Promise<{
+      phase: "starting" | "ready" | "failed" | "cancelled";
+      message?: string;
+    }>;
+  }
   type ErrorCode =
     | "NE_FS_DIRCRER"
     | "NE_FS_RMDIRER"

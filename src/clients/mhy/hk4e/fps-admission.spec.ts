@@ -76,7 +76,7 @@ it("disabled Steam does not inspect FPS-specific environment/capabilities", asyn
   ).toBeUndefined();
   expect(environment).not.toHaveBeenCalled();
 });
-const native = { os: "Darwin", version: "4.11.0-yaagl-owned1" } as const;
+const native = { os: "Darwin", version: "4.11.0-yaagl-owned2" } as const;
 function input() {
   return {
     server: "hk4e_global",
@@ -168,7 +168,6 @@ describe("persisted settings to FPS admission", () => {
     "backend",
     "distribution",
     "capability",
-    "network",
     "region",
     "executable",
     "loader",
@@ -183,7 +182,6 @@ describe("persisted settings to FPS admission", () => {
     if (field === "distribution")
       request.wine = { ...request.wine, distributionId: "unverified" };
     if (field === "capability") request.wine.attributes.winePath = undefined;
-    if (field === "network") request.config.blockNet = true;
     if (field === "region") request.server = "hoyoplay";
     if (field === "executable") request.gameExecutable = "another.exe";
     if (field === "loader" || field === "prefix")
@@ -234,6 +232,30 @@ describe("persisted settings to FPS admission", () => {
     expect(stored.get(FPS_UNLOCK_TARGET_KEY)).toBe("120");
   });
 });
+
+it.each(
+  [false, true].flatMap(block =>
+    ["60", "120"].map(target => ({ block, target }))
+  )
+)(
+  "admits saved Launch Fix=$block with enabled target=$target without changing it",
+  async ({ block, target }) => {
+    stored.set(FPS_UNLOCK_ENABLED_KEY, "true");
+    stored.set(FPS_UNLOCK_TARGET_KEY, target);
+    const request = input();
+    request.config.blockNet = block;
+    request.config.steamPatch = true;
+    const admitted = await admitFpsLaunch(
+      request,
+      native,
+      undefined,
+      async () => false
+    );
+    expect(admitted?.plan.companion.fpsArgument).toBe(Number(target));
+    expect(request.config.blockNet).toBe(block);
+    expect(setData).not.toHaveBeenCalled();
+  }
+);
 
 it.each(["/game/GenshinImpact.exe", "/selected/wine64", "/prefix"])(
   "rejects a missing identity prerequisite %s before enabled preparation",

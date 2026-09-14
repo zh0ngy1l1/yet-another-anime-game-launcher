@@ -1,4 +1,3 @@
-import { launchOwnership } from "./launcher/launch-ownership";
 import {
   exec,
   log,
@@ -7,12 +6,11 @@ import {
   resolve,
   appendFile,
   addTerminationHook,
-  GLOBAL_onClose,
   setKey,
   getKeyOrDefault,
-  exit,
   rawString,
 } from "./utils";
+import { assertBootstrapActive } from "./bootstrap-clock";
 import { createAria2Retry } from "./aria2";
 import {
   checkWine,
@@ -40,54 +38,49 @@ import {
 } from "@hope-ui/solid";
 
 export async function createApp() {
+  assertBootstrapActive();
   await setKey("singleton", null);
 
   const aria2_port = 6868;
 
-  await Neutralino.events.on("windowClose", async () => {
-    if (await GLOBAL_onClose(false)) {
-      try {
-        await exit(0);
-      } catch (error) {
-        launchOwnership.cancelClose();
-        throw error;
-      }
-    }
-  });
-
   const locale = await createLocale();
   const github = await createGithubEndpoint();
+  assertBootstrapActive();
   const aria2_session = resolve("./aria2.session");
   await appendFile(aria2_session, "");
   const pid = (await exec(["echo", rawString("$PPID")])).stdOut.split("\n")[0];
-  const { pid: apid } = await spawn([
-    "./sidecar/aria2/aria2c",
-    "-d",
-    "/",
-    "--no-conf",
-    "--enable-rpc",
-    `--rpc-listen-port=${aria2_port}`,
-    `--rpc-listen-all=true`,
-    `--rpc-allow-origin-all`,
-    `--input-file`,
-    `${aria2_session}`,
-    `--save-session`,
-    `${aria2_session}`,
-    `--pause`,
-    `true`,
-    "--stop-with-process",
-    pid,
-  ]);
-  addTerminationHook(async () => {
-    // double insurance (esp. for self restart)
-    await log("killing process " + apid);
-    try {
-      await exec(["kill", apid + ""]);
-    } catch {
-      await log("killing process failed?");
-    }
-    return true;
-  });
+  await spawn(
+    [
+      "./sidecar/aria2/aria2c",
+      "-d",
+      "/",
+      "--no-conf",
+      "--enable-rpc",
+      `--rpc-listen-port=${aria2_port}`,
+      `--rpc-listen-all=true`,
+      `--rpc-allow-origin-all`,
+      `--input-file`,
+      `${aria2_session}`,
+      `--save-session`,
+      `${aria2_session}`,
+      `--pause`,
+      `true`,
+      "--stop-with-process",
+      pid,
+    ],
+    undefined,
+    ({ pid: apid }) =>
+      addTerminationHook(async () => {
+        // double insurance (esp. for self restart)
+        await log("killing process " + apid);
+        try {
+          await exec(["kill", apid + ""]);
+        } catch {
+          await log("killing process failed?");
+        }
+        return true;
+      })
+  );
   const aria2 = await Promise.race([
     createAria2Retry({ host: "127.0.0.1", port: aria2_port }),
     timeout(15000),
@@ -99,6 +92,7 @@ export async function createApp() {
     )
   );
   await log(`Launched aria2 version ${aria2.version.version}`);
+  assertBootstrapActive();
   const initialUpdateCheck = await createUpdater({
     github,
     aria2,
@@ -107,6 +101,7 @@ export async function createApp() {
   const ignoredVersion = await getKeyOrDefault("ignore_launcher_update", "");
 
   const wineStatus = await checkWine(github);
+  assertBootstrapActive();
   const prefixPath = resolve("./wineprefix"); // CHECK: hardcoded path?
 
   let MainApp: () => JSXElement;
@@ -131,15 +126,14 @@ export async function createApp() {
       prefix: prefixPath,
       distro: wineStatus.wineDistribution,
     });
+    assertBootstrapActive();
+    const channelClient = await createClient({ wine, aria2, locale });
+    assertBootstrapActive();
     MainApp = await createLauncher({
       wine,
       locale,
       github,
-      channelClient: await createClient({
-        wine,
-        aria2,
-        locale,
-      }),
+      channelClient,
       onCheckUpdate,
     });
   } else {

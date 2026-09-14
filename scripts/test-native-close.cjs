@@ -68,7 +68,7 @@ async function until(predicate) {
   );
   assert.equal(
     fs.readFileSync(path.join(dir, "ready"), "utf8"),
-    "4.11.0-yaagl-owned1"
+    "4.11.0-yaagl-owned2"
   );
   cp.execFileSync("osascript", [
     "-l",

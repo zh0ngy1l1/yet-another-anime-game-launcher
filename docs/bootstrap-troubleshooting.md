@@ -1,3 +1,5 @@
+> Historical investigation: the visible "Starting launcher…" implementation and runtime commands below describe the earlier candidate. The current hidden-startup implementation, native clock, guarded failure panel and validation limits are documented in [native/bootstrap/README.md](../native/bootstrap/README.md). Those historical runtime commands were not executed for the current revision.
+
 # Step 7.5: Sophon healthy, launcher hidden
 
 On September 12, 2026, the development launcher at

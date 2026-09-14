@@ -12,6 +12,13 @@ import type { Wine } from "../../../wine";
 import type { Server } from "../../../constants";
 import { prepareFpsBridge } from "./fps-bridge";
 import { boundary } from "./fps-integration-fixture";
+import { createLaunchFix } from "./launch-fix";
+
+vi.mock("./launch-fix", () => ({
+  createLaunchFix: vi.fn(() => {
+    throw Error("unexpected Launch Fix acquisition");
+  }),
+}));
 
 vi.mock("./fps-bridge", () => ({
   prepareFpsBridge: vi.fn(() => {
@@ -51,7 +58,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("window", {
     NL_OS: "Darwin",
-    NL_VERSION: "4.11.0-yaagl-owned1",
+    NL_VERSION: "4.11.0-yaagl-owned2",
     NL_CWD: "/app",
     NL_PATH: ".",
   });
@@ -136,6 +143,75 @@ it.each([false, true])(
     );
     expect(files.has("/app/config.bat")).toBe(false);
     expect(launchOwnership.state().held).toBe(false);
+  }
+);
+
+it.each([false, true])(
+  "cancelling pending Launch Fix readiness with FPS=%s cannot create the game",
+  async fps => {
+    vi.useFakeTimers();
+    const clock = vi
+      .spyOn(operationClock, "now")
+      .mockImplementation(() => Date.now());
+    try {
+      stored.set(FPS_UNLOCK_ENABLED_KEY, String(fps));
+      stored.set(FPS_UNLOCK_TARGET_KEY, "60");
+      const request = input(),
+        native = boundary(true),
+        ready = deferred<void>(),
+        restored = deferred<void>();
+      request.config.steamPatch = true;
+      request.config.blockNet = true;
+      Object.assign(request.wine, {
+        distributionId: "11.0-dxmt-signed-with-patches",
+        executionContext: { loader: "/wine/bin/wine", prefix: "/prefix" },
+        attributes: { renderBackend: "dxmt", winePath: "wine" },
+      });
+      vi.spyOn(Neutralino.filesystem, "getStats").mockImplementation(
+        async path =>
+          ({
+            isFile: path !== "/prefix",
+            isDirectory: path === "/prefix",
+          } as never)
+      );
+      const fix = {
+        start: vi.fn(() => ready.promise),
+        finish: vi.fn(() => restored.promise),
+        errors: () => [],
+      };
+      vi.mocked(createLaunchFix).mockReturnValue(fix);
+      if (fps) {
+        const actual = await vi.importActual<typeof import("./fps-bridge")>(
+          "./fps-bridge"
+        );
+        vi.mocked(prepareFpsBridge).mockImplementationOnce(value =>
+          actual.prepareFpsBridge(value, native.io)
+        );
+      }
+      const iterator = launchGameProgram(request),
+        running = drain(iterator);
+      // Attach before cancellation: the pending next may report the cancellation.
+      const observed = running.catch(error => error);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(fix.start).toHaveBeenCalledOnce();
+      const returning = iterator.return();
+      ready.resolve();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(native.events).not.toContain("launch");
+      expect(request.wine.exec2).not.toHaveBeenCalled();
+      expect(fix.finish).toHaveBeenCalled();
+      expect(launchOwnership.state().held).toBe(true);
+      restored.resolve();
+      native.direct.resolve({ confirmed: true, status: 0 });
+      await vi.advanceTimersByTimeAsync(1000);
+      await returning;
+      await observed;
+      expect(launchOwnership.state().held).toBe(false);
+      expect(files.has("/app/config.bat")).toBe(false);
+    } finally {
+      clock.mockRestore();
+      vi.useRealTimers();
+    }
   }
 );
 it("disabled non-DXMT keeps its environment and admits unsupported retained FPS preferences", async () => {
@@ -270,3 +346,192 @@ it("preserves registry execution failure when temporary-file removal also fails"
   expect(request.wine.exec2).not.toHaveBeenCalled();
   expect(launchOwnership.state().held).toBe(false);
 });
+
+it.each(
+  [false, true].flatMap(fps =>
+    [false, true].flatMap(block =>
+      [60, 120].map(target => ({ fps, block, target }))
+    )
+  )
+)(
+  "composes saved FPS=$fps Launch Fix=$block target=$target through inert launch boundaries",
+  async ({ fps, block, target }) => {
+    vi.useFakeTimers();
+    const clock = vi
+      .spyOn(operationClock, "now")
+      .mockImplementation(() => Date.now());
+    try {
+      stored.set(FPS_UNLOCK_ENABLED_KEY, String(fps));
+      stored.set(FPS_UNLOCK_TARGET_KEY, String(target));
+      stored.set("config_block_net", String(block));
+      const request = input(),
+        native = boundary(true),
+        events: string[] = [];
+      const ready = deferred<void>(),
+        restored = deferred<void>();
+      const fix = {
+        start: vi.fn(async () => {
+          events.push("block:start");
+          await ready.promise;
+          events.push("block:ready");
+        }),
+        finish: vi.fn(async () => {
+          events.push("block:finish");
+          await restored.promise;
+          events.push("block:restored");
+        }),
+        errors: () => [],
+      };
+      request.config.steamPatch = true;
+      request.config.blockNet = block;
+      Object.assign(request.wine, {
+        distributionId: "11.0-dxmt-signed-with-patches",
+        executionContext: { loader: "/wine/bin/wine", prefix: "/prefix" },
+        attributes: { renderBackend: "dxmt", winePath: "wine" },
+      });
+      vi.spyOn(Neutralino.filesystem, "getStats").mockImplementation(
+        async path =>
+          ({
+            isFile: path !== "/prefix",
+            isDirectory: path === "/prefix",
+          } as never)
+      );
+      vi.mocked(createLaunchFix).mockReturnValue(fix);
+      if (fps) {
+        const actual = await vi.importActual<typeof import("./fps-bridge")>(
+          "./fps-bridge"
+        );
+        native.io.start.mockImplementation(value => {
+          if (value.args[0] !== "--registry") events.push("bridge:boot");
+          return native.start(value);
+        });
+        vi.mocked(prepareFpsBridge).mockImplementationOnce(value =>
+          actual.prepareFpsBridge(value, native.io)
+        );
+      }
+      const running = drain(launchGameProgram(request));
+      await vi.advanceTimersByTimeAsync(11000);
+      if (block) {
+        expect(fix.start).toHaveBeenCalledOnce();
+        expect(request.wine.exec2).not.toHaveBeenCalled();
+        expect(native.events).not.toContain("launch");
+        expect(launchOwnership.state().held).toBe(true);
+        expect(await GLOBAL_onClose(false)).toBe(false);
+        if (fps) expect(events).toEqual(["bridge:boot", "block:start"]);
+        ready.resolve();
+        await vi.advanceTimersByTimeAsync(11000);
+      } else expect(createLaunchFix).not.toHaveBeenCalled();
+      if (fps) {
+        expect(native.events).toContain(`fps:${target}`);
+        expect(
+          vi.mocked(prepareFpsBridge).mock.calls[0][0].gameDxmtConfig
+        ).toBe(`d3d11.preferredMaxFrameRate=${target === 60 ? 60 : 0};`);
+        expect(
+          native.io.start.mock.calls.find(
+            call => call[0].args[0] !== "--registry"
+          )?.[0].wine.environment.DXMT_CONFIG
+        ).toBe(`d3d11.preferredMaxFrameRate=${target};`);
+        expect(request.wine.exec2).not.toHaveBeenCalled();
+        native.exit();
+        native.stopped();
+        native.direct.resolve({ confirmed: true, status: 0 });
+        await vi.advanceTimersByTimeAsync(2000);
+      } else
+        expect(request.wine.exec2).toHaveBeenCalledWith(
+          "C:\\windows\\system32\\steam.exe",
+          ["Z:\\game\\GenshinImpact.exe"],
+          expect.objectContaining({
+            DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
+            WINE_ENABLE_TIMEOUT_FIX: "1",
+          }),
+          expect.any(String),
+          true
+        );
+      if (block) {
+        expect(fix.finish).toHaveBeenCalled();
+        expect(launchOwnership.state().held).toBe(true);
+        expect(files.has("/app/config.bat")).toBe(true);
+        restored.resolve();
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      await running;
+      expect(launchOwnership.state().held).toBe(false);
+      expect(files.has("/app/config.bat")).toBe(false);
+      expect(request.config.blockNet).toBe(block);
+      expect(request.config.steamPatch).toBe(true);
+      expect(stored.get(FPS_UNLOCK_ENABLED_KEY)).toBe(String(fps));
+      expect(stored.get(FPS_UNLOCK_TARGET_KEY)).toBe(String(target));
+      expect(stored.get("config_block_net")).toBe(String(block));
+    } finally {
+      clock.mockRestore();
+      vi.useRealTimers();
+    }
+  }
+);
+
+it.each([false, true])(
+  "Launch Fix readiness failure with FPS=%s never issues a game and retains cleanup ownership",
+  async fps => {
+    vi.useFakeTimers();
+    const clock = vi
+      .spyOn(operationClock, "now")
+      .mockImplementation(() => Date.now());
+    try {
+      stored.set(FPS_UNLOCK_ENABLED_KEY, String(fps));
+      stored.set(FPS_UNLOCK_TARGET_KEY, "60");
+      const request = input(),
+        native = boundary(true),
+        restored = deferred<void>();
+      const launchError = Error("block readiness failed");
+      request.config.steamPatch = true;
+      request.config.blockNet = true;
+      Object.assign(request.wine, {
+        distributionId: "11.0-dxmt-signed-with-patches",
+        executionContext: { loader: "/wine/bin/wine", prefix: "/prefix" },
+        attributes: { renderBackend: "dxmt", winePath: "wine" },
+      });
+      vi.spyOn(Neutralino.filesystem, "getStats").mockImplementation(
+        async path =>
+          ({
+            isFile: path !== "/prefix",
+            isDirectory: path === "/prefix",
+          } as never)
+      );
+      vi.mocked(createLaunchFix).mockReturnValue({
+        start: async () => {
+          throw launchError;
+        },
+        finish: () => restored.promise,
+        errors: () => [launchError],
+      });
+      if (fps) {
+        const actual = await vi.importActual<typeof import("./fps-bridge")>(
+          "./fps-bridge"
+        );
+        vi.mocked(prepareFpsBridge).mockImplementationOnce(value =>
+          actual.prepareFpsBridge(value, native.io)
+        );
+      }
+      const running = drain(launchGameProgram(request));
+      const observed = running.catch(error => error);
+      const rejected = expect(running).rejects.toThrow(
+        "block readiness failed"
+      );
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(request.wine.exec2).not.toHaveBeenCalled();
+      expect(native.events).not.toContain("launch");
+      expect(launchOwnership.state().held).toBe(true);
+      expect(files.has("/app/config.bat")).toBe(true);
+      restored.resolve();
+      native.direct.resolve({ confirmed: true, status: 0 });
+      await vi.advanceTimersByTimeAsync(1000);
+      await rejected;
+      expect((await observed).cleanupErrors).toEqual([]);
+      expect((await observed).primary).toBe(launchError);
+      expect(launchOwnership.state().held).toBe(false);
+    } finally {
+      clock.mockRestore();
+      vi.useRealTimers();
+    }
+  }
+);

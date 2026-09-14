@@ -1,3 +1,4 @@
+import { getBootstrapClock } from "../bootstrap-clock";
 export async function waitImageReady(url: string) {
   return new Promise((res, rej) => {
     const image = new Image();
@@ -8,6 +9,8 @@ export async function waitImageReady(url: string) {
 }
 
 export function timeout(ms: number): Promise<never> {
+  const clock = getBootstrapClock();
+  if (clock) return clock.wait(ms).then(() => Promise.reject("TIMEOUT"));
   return new Promise((_, rej) => {
     setTimeout(() => {
       rej("TIMEOUT");
@@ -16,6 +19,8 @@ export function timeout(ms: number): Promise<never> {
 }
 
 export function wait(ms: number): Promise<number> {
+  const clock = getBootstrapClock();
+  if (clock) return clock.wait(ms);
   return new Promise((res, rej) => {
     setTimeout(() => {
       res(ms);
