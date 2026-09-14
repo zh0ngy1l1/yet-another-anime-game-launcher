@@ -1,5 +1,32 @@
 > Historical investigation: the visible "Starting launcher…" implementation and runtime commands below describe the earlier candidate. The current hidden-startup implementation, native clock, guarded failure panel and validation limits are documented in [native/bootstrap/README.md](../native/bootstrap/README.md). The current harness was subsequently replaced with guarded isolated hidden-startup fixtures; the owned3 evidence and discovered WebKit scheduling defect are described in that current document. The historical commands below do not describe the current harness.
 
+## Initial artwork presentation candidate (2026-09-14)
+
+The first actual packaged owned3 recording showed an initialized orange Launch
+button on white content for three recorded frames before background artwork
+appeared roughly58ms later. This is a presentation failure; native DOM readiness
+and successful service health alone did not establish a complete first frame.
+The recording and independent frame analysis remain in
+`fps-autonomous-validation-20260914T130005Z/launcher-presentation-01`.
+
+Source inspection found that `waitImageReady` waited for `load` but did not await
+image decoding, and registered handlers after assigning `src`. Background artwork
+was then applied later as CSS; theme/logo/icon images had no corresponding gate.
+The candidate fixes cached-load handler ordering, awaits `HTMLImageElement.decode`,
+and adds a [post-render artwork gate](../src/bootstrap-artwork.ts) for those exact
+CSS URLs. It retains decoded images through native readiness under the existing
+startup deadline/cancellation signal. The project configures no downloadable
+webfonts, so no layout-dependent font-ready wait was introduced. Video can load
+over the prepared static background. No rendering callback or delay is used.
+
+The [HTML image preparation contract](https://html.spec.whatwg.org/multipage/images.html#dom-img-decode)
+supports decoding before presentation, but sharing a decoded resource with CSS
+does not prove the compositor's first visible frame is complete. Deterministic
+regressions cover delayed decoding, load/decode rejection, cancellation, deadline,
+late completion and the synchronous cached-load case. A fresh dense recording of
+the actual rebuilt package must decide whether this candidate removes the white
+frames; the preceding failed presentation remains separate evidence.
+
 ## Current owned3 correction (2026-09-14)
 
 The hidden-bootstrap owned2 delivery (`237dfcaf…`) was tested in an isolated

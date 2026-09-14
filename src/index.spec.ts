@@ -31,6 +31,7 @@ const root = {
   textContent: "",
   setAttribute: vi.fn(),
   removeAttribute: vi.fn(),
+  querySelectorAll: vi.fn(),
 };
 const UI = () => null;
 const settle = async () => {
@@ -76,6 +77,7 @@ beforeEach(async () => {
   waits = [];
   handlers = {};
   root.textContent = "";
+  root.querySelectorAll.mockReturnValue([]);
   vi.stubGlobal("document", { getElementById: () => root });
   vi.stubGlobal(
     "requestAnimationFrame",
@@ -152,6 +154,82 @@ it("keeps normal startup hidden until the initialized DOM is installed, then sho
   expect(phase).toBe("ready");
   expect(shows).toBe(1);
 });
+
+function pendingArtwork() {
+  const decoded = deferred<void>();
+  const image = {
+    onload: null as null | (() => void),
+    onerror: null as null | (() => void),
+    src: "",
+    decode: vi.fn(() => decoded.promise),
+  };
+  vi.stubGlobal(
+    "Image",
+    vi.fn(() => image)
+  );
+  root.querySelectorAll.mockReturnValue([
+    { getAttribute: () => "https://fixture.invalid/background.webp" },
+  ]);
+  vi.mocked(createApp).mockResolvedValue(UI);
+  return { image, decoded };
+}
+
+it("keeps the rendered launcher hidden until required artwork has loaded and decoded", async () => {
+  const { image, decoded } = pendingArtwork();
+  await import("./index");
+  await settle();
+  expect(render).toHaveBeenCalledOnce();
+  expect(shows).toBe(0);
+  expect(image.decode).not.toHaveBeenCalled();
+  image.onload?.();
+  await settle();
+  expect(image.decode).toHaveBeenCalledOnce();
+  expect(shows).toBe(0);
+  decoded.resolve();
+  await settle();
+  expect(shows).toBe(1);
+  expect(requestAnimationFrame).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it.each(["load", "decode"])(
+  "keeps artwork %s failures visible without showing partial UI",
+  async failure => {
+    const { image } = pendingArtwork();
+    await import("./index");
+    await settle();
+    if (failure === "load") image.onerror?.();
+    else {
+      image.decode.mockRejectedValueOnce(Error("Artwork decode failed"));
+      image.onload?.();
+    }
+    await settle();
+    expect(phase).toBe("failed");
+    expect(shows).toBe(0);
+    expect(root.textContent).toMatch(/artwork|Artwork/);
+    expect(native).not.toHaveBeenCalledWith({ op: "ready" });
+  }
+);
+
+it.each(["cancel", "deadline"])(
+  "rejects late artwork completion after %s without weakening cleanup",
+  async stopped => {
+    const { image, decoded } = pendingArtwork();
+    vi.mocked(GLOBAL_onClose).mockResolvedValue(false);
+    await import("./index");
+    await settle();
+    image.onload?.();
+    await settle();
+    if (stopped === "cancel") await handlers.windowClose?.({ detail: null });
+    else await nativeTick(90000);
+    decoded.resolve();
+    await settle();
+    expect(shows).toBe(0);
+    expect(native).not.toHaveBeenCalledWith({ op: "ready" });
+    expect(exit).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  }
+);
 
 it("retries real Sophon health with native elapsed time while all WebView timers are stalled", async () => {
   const fetch = vi

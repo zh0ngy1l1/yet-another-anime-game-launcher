@@ -35,6 +35,7 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const sourceNames = [
   "src/index.tsx",
   "src/bootstrap.ts",
+  "src/bootstrap-artwork.ts",
   "src/bootstrap-clock.ts",
   "src/sophon.ts",
   "src/utils/helper.ts",

@@ -1,5 +1,5 @@
-// Only launcher initialization uses this clock. A hidden macOS WKWebView can
-// suspend DOM timers, while native RPC completions continue to arrive.
+// Only launcher initialization uses this clock. Owned3 also keeps hidden
+// WebKit runnable: a native clock alone cannot prevent suspended RPC delivery.
 export interface BootstrapClock {
   wait(ms: number): Promise<number>;
   assertActive(): void;

@@ -140,6 +140,7 @@ export async function createLauncher({
     return (
       <div
         class="background"
+        data-bootstrap-image={background}
         style={{
           "background-image": background ? `url(${background})` : undefined,
         }}
@@ -182,6 +183,7 @@ export async function createLauncher({
         <Show when={background_theme}>
           <div
             class="background-theme"
+            data-bootstrap-image={background_theme}
             style={{
               "background-image": `url(${background_theme})`,
               // HACK: always load video overlay image.
@@ -192,6 +194,7 @@ export async function createLauncher({
         {logo ? (
           <div
             class="game-logo"
+            data-bootstrap-image={logo}
             style={{
               "background-image": `url(${logo})`,
               height: `${234}px`,
@@ -204,6 +207,7 @@ export async function createLauncher({
             onClick={() => open(url)}
             role="button"
             class="version-icon"
+            data-bootstrap-image={iconImage}
             style={{
               "background-image": `url(${iconImage})`,
               height: `${bh}px`,

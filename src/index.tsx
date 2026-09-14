@@ -6,6 +6,7 @@ import { amber } from "@radix-ui/colors";
 import { exit, GLOBAL_onClose, logerror } from "./utils";
 import { launchOwnership } from "./launcher/launch-ownership";
 import { BootstrapSession, startBootstrap } from "./bootstrap";
+import { prepareBootstrapArtwork } from "./bootstrap-artwork";
 
 function createPlates(
   tag: string,
@@ -130,6 +131,7 @@ if (typeof Neutralino == "undefined") {
         root
       );
     },
+    prepare: () => prepareBootstrapArtwork(root),
     failure: error => {
       root.textContent = `Launcher startup failed.\n${String(error)}`;
       root.setAttribute("role", "alert");

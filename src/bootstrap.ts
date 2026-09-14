@@ -112,10 +112,12 @@ export async function startBootstrap<T>(options: {
   session: BootstrapSession;
   create: () => Promise<T>;
   render: (ui: T) => void;
+  prepare?: () => Promise<() => void>;
   failure: (error: unknown) => void;
 }) {
   const { session } = options;
   setBootstrapClock(session);
+  let releasePresentation: (() => void) | undefined;
   try {
     const status = await session.native({ op: "begin" });
     if (status.phase !== "starting") {
@@ -127,10 +129,25 @@ export async function startBootstrap<T>(options: {
     // Solid's render installs the DOM synchronously. Paint/rAF is neither
     // required nor awaited: a hidden WKWebView may never produce a frame.
     options.render(ui);
+    if (options.prepare) {
+      const prepared = options.prepare();
+      // A late resource completion after cancellation must only release its
+      // retained images; it cannot revive startup or issue native ready.
+      void prepared.then(
+        release => {
+          if (!session.isStarting()) release();
+        },
+        () => undefined
+      );
+      releasePresentation = await Promise.race([prepared, session.failure]);
+      session.assertActive();
+    }
     await session.ready();
   } catch (error) {
     session.stop(String(error));
     options.failure(error);
     await session.native({ op: "fail", message: String(error) });
+  } finally {
+    releasePresentation?.();
   }
 }

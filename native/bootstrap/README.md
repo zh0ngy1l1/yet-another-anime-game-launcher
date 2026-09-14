@@ -29,7 +29,10 @@ condition variable on RPC worker threads; they never block the AppKit or sole
 WebSocket server thread. One steady-clock deadline is checked by begin/readiness admission and bounds every wait, so delayed watchdog delivery cannot extend the budget. Ready, failure and cancellation wake pending waits.
 
 The frontend constructs services once, installs the initialized Solid DOM, then
-sends `ready`. Only the first accepted ready transition shows the main window;
+loads and decodes its explicitly marked initial artwork before sending `ready`.
+Decoded image objects are retained until the native-ready acknowledgement.
+Artwork preparation shares the existing startup failure/cancellation signal and
+native deadline; late decoding cannot revive a cancelled startup. Only the first accepted ready transition shows the main window;
 no paint, requestAnimationFrame, transparent window, offscreen window or early
 startup status window is used. Service health and setup deadline helpers use the
 native clock during initialization and retain normal DOM timers afterward.

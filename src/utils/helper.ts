@@ -1,11 +1,17 @@
 import { getBootstrapClock } from "../bootstrap-clock";
 export async function waitImageReady(url: string) {
-  return new Promise((res, rej) => {
-    const image = new Image();
+  const image = new Image();
+  await new Promise<void>((res, rej) => {
+    // Install handlers first: a cached resource may finish during assignment.
+    image.onload = () => res();
+    image.onerror = () => rej(Error("Launcher artwork failed to load"));
     image.src = url;
-    image.onload = res;
-    image.onerror = rej;
   });
+  image.onload = image.onerror = null;
+  // Loading bytes is not presentation readiness. Decode without requesting
+  // paint: a hidden WebView need not produce a rendering frame.
+  await image.decode();
+  return image;
 }
 
 export function timeout(ms: number): Promise<never> {
