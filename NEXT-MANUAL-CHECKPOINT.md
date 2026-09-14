@@ -1,242 +1,237 @@
-# Manual checkpoint: validated Steam bootstrap and desktop cleanup
+# Manual checkpoint: hidden startup and delayed-crash diagnostics
 
-Use the **development launcher with the existing `yaaglwdos` profile** below.
-This candidate keeps genuine canonical Steam as Wine's initial process, validates
-that bootstrap, prepares Wine's desktop before game creation, and retains the
-inner signed Steam/game HANDLE and strict job ownership. Worker diagnostics are
-now flushed to **`.bridge.log`**, separately from `.wine.log`.
+**The exact next action is the launcher-only check in steps 1–2.** This task did
+not start any launcher, game, hidden/WebView/RPC harness or privileged helper.
+The new bundle has automated/static validation; visual behavior and gameplay
+remain operator checks. Do not automatically advance after a failure.
 
-The investigation and autonomous results are in
-[docs/fps-direct-creation-failure-20260913.md](docs/fps-direct-creation-failure-20260913.md).
-The final implementation, `648b4d227101d11a30e71888c3bf541c7d830c36`, has now
-completed autonomous enabled-60 startup and enabled-120 in-world observation.
-Both runs had generation 1 applying, successful target writes/readbacks, normal
-game exit 0 and automatic cleanup; all 25 file states and both captured registry
-values matched their preimages. The 120 world recording measured
-**91.72–106.78 FPS, median 104.64**, in 61 one-second HUD samples. The saved
-target has been restored to **60**.
+The additional target-150 crash is preserved. A fatal game read on the FPS
+integer's page occurred in the same millisecond as the seventh successful write;
+error 87 followed about two seconds later. The original Wine protection race is
+the leading explanation, but its transient page state was not captured in that
+run. **This package adds diagnostics and launcher corrections, not an installed
+Wine fix or a claim of crash-free gameplay.** See
+[the investigation](docs/fps-delayed-crash-investigation-20260914.md).
 
-Those runs exercised the production launch transaction through the matching
-native RPC runtime. The 60 screenshot sequence included a startup transition
-and one unexplained white frame, so it does not establish an uninterrupted
-30-second stable login observation. **Your next checkpoint verifies that
-stability and the rendered development launcher UI**, first at 60 and then at
-120 after cleanup passes. The packaged
-profile remains separate and untested. A Wine thread abort was recorded during
-the 120 shutdown despite normal game exit and completed cleanup; retain full
-shutdown evidence in your tests. The original Wine post-write protection hazard
-also remains independently documented; it is not repaired by this launcher fix.
+Use this **packaged Global application**, not `pnpm start-hk4eos` or an old open
+window:
 
-Keep **Steam Patch ON**, **Launch Fix/block hosts OFF**, the same Global 7.0.0
-game, selected Wine, DXMT 0.80.0, timeout fix, Metal HUD and other settings.
-Keep the desktop unlocked through the test and cleanup.
-No Native Fullscreen or Game Mode changes. Do not install the offline Wine
-candidate, update/repair the game, run historical or diagnostic recovery helpers,
-or alter security metadata. Existing provenance acceptance remains recorded.
+`/Users/david/Library/Application Support/YAAGL Local Builds/fps-delayed-crash-20260914T031349Z/package/Yaagl OS.app`
+
+It uses the **existing** profile:
+
+`/Users/david/Library/Application Support/Yaagl OS FPS Review`
+
+The window title changes to **Yaagl OS**; the profile directory and bundle ID do
+not change. No Wine/profile/game data is inside the new app. The wrapper stages
+public resources only when you open it and preserves existing saved settings.
+Outer signing/notarization is absent; the matching ARM64 native is ad-hoc signed.
+Intel helpers require Rosetta. The old signed xdelta helper's Intel liblzma
+prerequisite is unresolved, so do not use legacy xdelta update/repair during this
+checkpoint. Sophon resources are complete but were inspected statically only.
 
 ## Stop conditions
 
-Any artifact mismatch, crash, ownership/signature/write/logging error, unknown
-lifetime or unresolved cleanup stops this checkpoint. Do not advance or retry.
-If the game remains responsive, capture live evidence and quit it normally.
-Keep the launcher open while it observes cleanup. Do not force release, terminate
-Wine, delete request/journal files or issue protocol commands. Capture evidence
-and return the full visible error if the guard remains unresolved.
+A crash, artifact mismatch, failed API/write/signature/admission, unresolved
+lifetime, missing cleanup acknowledgement, privileged-operation error or failed
+restoration stops testing. If the game still responds, capture live evidence and
+quit it normally. Keep the launcher open for cleanup. Do not force quit/release,
+kill Wine, delete retained evidence, issue protocol commands, change security
+metadata or install the offline Wine candidate. Do not start a second instance.
+A visible native startup-failure panel is a failure to investigate, not a pass;
+its Quit button uses the normal cleanup guard.
 
-A `Steam bootstrap rejected` error means the required fresh Wine creation context
-was not established; it is a failed admission with no new game expected. Preserve
-it rather than bypassing the check. A successful restoration message after an
-error establishes cleanup, not successful gameplay.
+Keep **Steam Patch ON, Launch Fix/block hosts OFF**, the same Global 7.0.0 game,
+selected original Wine, DXMT 0.80.0, Timeout Fix and Metal HUD settings. Launch Fix
+was OFF for the delayed failed request; its integration is now unit tested with
+FPS off/on, but its historical real-game compatibility issue is not declared
+fixed. Do not enable it or approve a privileged host operation in this checkpoint.
+No Native Fullscreen or Game Mode changes. Existing provenance acceptance remains.
 
-## 1. Open and identify this exact development candidate
+## 1. Verify the new package without opening it
 
-Close any older launcher normally first, after its cleanup is confirmed. Paste
-this block in Terminal; it opens the launcher UI, **not the game**. Do not press
-Launch until step 2. The block refuses a source mismatch or local modifications
-instead of discarding them.
+Close an older launcher normally only if its cleanup is already confirmed. If
+that is unresolved, collect its evidence and stop instead. Paste:
 
 ```sh
 cd /Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher
 export PATH="/Users/david/.npm/_npx/b620232375418b77/node_modules/.bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-python3 - <<'PYCODE' && {
-import json, subprocess
+python3 - <<'PYCODE'
+import hashlib, json, subprocess
 from pathlib import Path
+p = Path('/Users/david/Library/Application Support/YAAGL Local Builds/fps-delayed-crash-20260914T031349Z/package')
+a = p / 'Yaagl OS.app'
+r = a / 'Contents/Resources'
+b = json.loads((r / 'manifests/build.json').read_text())
 assert subprocess.check_output(['node','--version'], text=True).strip() == 'v16.20.2'
 assert subprocess.check_output(['pnpm','--version'], text=True).strip() == '7.33.7'
 assert not subprocess.check_output(['git','status','--porcelain'], text=True).strip(), 'Preserve changes and stop for review'
-p = Path('/Users/david/Library/Application Support/YAAGL Local Builds/fps-validated-delivery-20260913T233733Z/package/Yaagl OS.app/Contents/Resources/manifests/build.json')
-record = json.loads(p.read_text())
 head = subprocess.check_output(['git','rev-parse','HEAD'], text=True).strip()
-assert head == record['sourceCommit'], (head, record['sourceCommit'])
-assert record['bridge']['sha256'] == 'be4b09a0dea1aca9252a1297f1a0c26a46a67d564b9027f547e64b2bb71faa25'
-print('Candidate source:', head)
-print('Node 16.20.2 / pnpm 7.33.7 verified')
+assert head == b['sourceCommit'], (head, b['sourceCommit'])
+assert b['native']['version'] == '4.11.0-yaagl-owned2'
+assert b['bridge']['sha256'] == '59ae7f9e1b753499386cfe5336c9f4a4d911c39c69ce3447712c4522ccbe7c95'
+for entry in json.loads((p / 'bundle-manifest.json').read_text())['files']:
+    f = a / entry['path']
+    assert f.stat().st_size == entry['bytes'], str(f)
+    assert hashlib.sha256(f.read_bytes()).hexdigest() == entry['sha256'], str(f)
+wine = Path.home() / 'Library/Application Support/Yaagl OS FPS Review/wine/lib/wine/x86_64-unix/ntdll.so'
+assert hashlib.sha256(wine.read_bytes()).hexdigest() == 'f26ade35f5b49e33b3780b6adc71f9eb9c831ea40222c1bae667ac14135d984b'
+print('Verified source:', head)
+print('Native:', b['native']['sha256'])
+print('Bridge:', b['bridge']['sha256'])
+print('Resources:', b['resourcesSha256'])
+print('App:', a)
 PYCODE
-YAAGL_FPS_CAPTURE_DIR="$(mktemp -d /tmp/yaagl-fps-console.XXXXXX)"
-printf 'Console evidence: %s\n' "$YAAGL_FPS_CAPTURE_DIR"
+```
+
+A mismatch stops the checkpoint. Do not rebuild/re-copy files to bypass it.
+
+## 2. Launcher-only visual and normal-quit check
+
+Start a screen recording before this command if convenient. It opens the exact
+packaged UI with terminal capture; **do not press Launch in this stage**:
+
+```sh
+cd /Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher
+export YAAGL_CHECKPOINT_CONSOLE="$(mktemp -d /tmp/yaagl-fps-console.XXXXXX)"
+printf 'Keep this console directory: %s\n' "$YAAGL_CHECKPOINT_CONSOLE"
+python3 - <<'PYCODE'
+import os, time
+from pathlib import Path
+Path(os.environ['YAAGL_CHECKPOINT_CONSOLE'], 'started-ms').write_text(str(int(time.time()*1000)))
+PYCODE
 set -o pipefail
-pnpm start-hk4eos 2>&1 | tee "$YAAGL_FPS_CAPTURE_DIR/terminal.log"
-python3 scripts/collect-hk4e-launch-evidence.py --console "$YAAGL_FPS_CAPTURE_DIR"
-}
+"/Users/david/Library/Application Support/YAAGL Local Builds/fps-delayed-crash-20260914T031349Z/package/Yaagl OS.app/Contents/MacOS/parameterized" 2>&1 | tee "$YAAGL_CHECKPOINT_CONSOLE/terminal.log"
+cp "$HOME/Library/Application Support/Yaagl OS FPS Review/neutralinojs.log" "$YAAGL_CHECKPOINT_CONSOLE/launcher-final.log"
 ```
 
-Keep the printed console path. The final collector runs after normal launcher
-exit and prints a new evidence path. Repeat this opening block for each stage.
-The start command rebuilds/copies the committed resources before showing the UI.
+Require the first normal window to contain the initialized interface and have
+exact title **Yaagl OS**, with no preliminary white “Starting Launcher…” window,
+show/hide flash or second normal window. A brief hidden initialization period is
+expected. If startup cannot complete, a native explanation must appear by the
+90-second deadline; preserve its exact text and timing. An indefinitely Dock-only
+process fails. Do not dismiss a cleanup/lifetime warning by forcing exit.
 
-Before pressing Launch, paste this read-only artifact check into a second terminal:
+Check that settings are accessible and saved Launch Fix remains OFF. Close the
+launcher normally. Require normal process exit and terminal command return.
+The final log should contain `Bootstrap DOM ready; showing launcher once` once
+for that startup; retries may precede it. Return the recording/timing, title,
+full visible error if any, and printed console directory. **This is the immediate
+manual checkpoint; gameplay stages below are conditional on its success.**
+
+## 3. Enabled 60 startup and cleanup
+
+Only after step 2 passes, repeat its launch/capture block to open a fresh instance.
+Change only FPS unlocking to ON and target to **60**. Verify Steam Patch ON and
+Launch Fix OFF. Record wall-clock time and press Launch **once**.
+
+Reach login and keep it stable for at least 30 seconds. Require this request's
+`.bridge.log` to show canonical Steam bootstrap, desktop readiness before game
+creation, retained actual game PID, `worker start requested generation=1` with
+`target=60`, `worker applying`, and successful readback/equal 60. Generation 0 or
+login alone is not a worker pass. Compare-equal without writing is correct at 60.
+New `worker heartbeat` records should advance read/equal counters; normal game
+value resets can require writes, which must complete four bytes and read back.
+
+Capture live evidence with step 5 before quitting, quit the game normally, wait
+for step 6's cleanup, then close the launcher and capture final evidence. Do not
+advance after any failure. No fresh disabled game control is required by the
+current delayed-fault evidence; previous successful disabled results remain.
+
+## 4. One controlled delayed-crash observation at 150
+
+Only after enabled 60 and its cleanup pass, this optional diagnostic replay tests
+whether the new observations establish the later operation/page state. **The
+selected original Wine still has the known protection hazard; a successful replay
+would not prove that hazard repaired.** Do not install/change Wine for this test.
+
+Repeat the packaged launch/capture block. Change only target to **150**, matching
+the delayed failed run, and launch once. Require generation at least 1, worker
+applying, successful four-byte writes when needed and equal readbacks of 150.
+Game DXMT maximum must remain 0. Enter a stationary, repeatable in-world scene
+and observe for **six minutes from world entry**, recording exact start/exit times.
+Keep the desktop unlocked. Record numerical HUD minimum/typical/maximum and a
+screenshot/recording; sustained observed FPS above 60 is the performance gate.
+A target label or memory write alone does not establish achieved frame rate.
+
+Take a live capture early in-world to preserve request/journal/registry preimages,
+and a final capture after normal exit or immediately after failure. Keep the full
+recording through any crash. The useful new evidence is `worker heartbeat`
+(read/write/equal/mapping counters), `memory failure probe` (API result, byte count,
+error, retained HANDLE exit state and queried mapping), the last write/readback,
+and the game's exact fault timestamp, accessed address, stack and module mapping.
+These samples can miss a transient NOACCESS interval. Direct proof of that race
+still requires fault-time protection/APC evidence or a separately authorized
+controlled runtime comparison; this checkpoint does not silently enable enormous
+additional Wine trace channels or change runtime libraries.
+
+Stop at the first failure. Do not repeat it, try 61/additional targets, alter
+other settings or turn Launch Fix on to compare. At six minutes, capture and quit
+normally; require cleanup. Passing this duration records only this run's duration,
+worker operation and achieved FPS, not an unlimited stability guarantee.
+
+## 5. Preserve this run's live and final evidence
+
+Use a second Terminal. Replace the first assignment with the exact printed
+console directory from the current launch. This selects one new run by its
+filename timestamp, preserves all its streams and the full launcher log, and
+avoids repeatedly copying unrelated older multi-gigabyte game logs:
 
 ```sh
 cd /Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher
-python3 - <<'PYCODE'
-import hashlib
+export YAAGL_CHECKPOINT_CONSOLE='/tmp/yaagl-fps-console.REPLACE_WITH_PRINTED_SUFFIX'
+YAAGL_RUN_LOG="$(python3 - <<'PYCODE'
+import os, re
 from pathlib import Path
-expected = {
- 'yaaglwdos/sidecar/fps-bridge/fps-bridge.exe': (38912, 'be4b09a0dea1aca9252a1297f1a0c26a46a67d564b9027f547e64b2bb71faa25'),
- 'yaaglwdos/sidecar/protonextras/steam64.exe': (111304, '0424339444c54bf1f9fdbadf12e4e2c90ceef41d987fe573b93f5f2ebfd8a657'),
- 'yaaglwdos/sidecar/protonextras/lsteamclient64.dll': (5560872, 'af50ed0d952ef98d99d4d3ff67b4836b545c9403894430fca31969f9f630637b'),
- 'yaaglwdos/wine/lib/wine/x86_64-unix/ntdll.so': (620688, 'f26ade35f5b49e33b3780b6adc71f9eb9c831ea40222c1bae667ac14135d984b'),
- 'bin/hk4e-neutralino-arm64': (2004496, '3e04ed4a6d2b5389d7dbe525367881a08a5081314ef6dddf973227a66a3857e1'),
-}
-for name, wanted in expected.items():
- p = Path(name)
- actual = (p.stat().st_size, hashlib.sha256(p.read_bytes()).hexdigest())
- assert actual == wanted, (name, actual, wanted)
- print(*actual, name)
+start = int(Path(os.environ['YAAGL_CHECKPOINT_CONSOLE'], 'started-ms').read_text())
+logs = Path.home() / 'Library/Application Support/Yaagl OS FPS Review/logs'
+runs = {int(m.group(1)) for p in logs.glob('game_*.log*')
+        if (m := re.fullmatch(r'game_(\d+)\.log(?:\.(?:wine|bridge|steam)\.log)?', p.name))
+        and int(m.group(1)) >= start}
+assert len(runs) == 1, f'Expected one new run; preserve console and launcher log and stop: {sorted(runs)}'
+print(f'game_{runs.pop()}.log')
 PYCODE
+)" && python3 scripts/collect-hk4e-launch-evidence.py \
+  --profile "$HOME/Library/Application Support/Yaagl OS FPS Review" \
+  --run-log "$YAAGL_RUN_LOG" --console "$YAAGL_CHECKPOINT_CONSOLE"
 ```
 
-Bridge is protocol 3, GUI subsystem, **38,912 bytes**. Old hashes `12db…`,
-`d7aa…` and intermediate `dd1ee…` are not this candidate. Selected Wine remains
-the original library; the separate R2 candidate is excluded from this comparison.
+Keep each printed evidence directory. Run it while stable before game exit and
+again after cleanup/normal launcher exit. If there is no new game log, preserve
+the console and full profile `neutralinojs.log`; do not select an older run as a
+substitute. Full Wine logs can grow by gigabytes; if space becomes insufficient,
+stop the test normally and report it without deleting evidence.
 
-## 2. Enabled 60: startup, worker and automatic cleanup first
+The collector reads sources and creates a new evidence directory. It sends no
+process/protocol/cleanup commands. It records missing/changing files explicitly.
+Preserve `.bridge.log`, `.wine.log`, `.steam.log`, ordinary game log if present,
+terminal/DXMT output, crash reports/dumps and retained request/registry/journal
+files. Missing write lines do not establish that no other component wrote memory.
+Do not distribute unrelated credentials or private game/profile contents.
 
-The fresh disabled control you already completed is recorded as a separate pass
-with logged restoration. Another disabled run is not required for this checkpoint.
-Set **FPS unlocking ON, target 60**, verify Steam Patch ON / Launch Fix OFF,
-record wall-clock time and press **Launch once**.
+## 6. Required cleanup gates for each game stage
 
-Reach the login/start screen. Start the **30-second** observation after loading
-and transitions finish; do not count a loading, blank or white screen as stable
-login. Record the numerical Metal HUD FPS. While it is stable, collect live evidence with step 4.
-This run's `.bridge.log` must show:
+For the same request and game PID, require:
 
-- `Steam bootstrap retained parent=32 image=C:\windows\system32\steam.exe`;
-- `desktop prepared` before `Steam direct creation`, with both job membership
-  fields zero and error zero;
-- `Steam ready ... retained direct child ... totalProcesses=2` and `game adopted`
-  matching the game PID/token in this request's launcher status;
-- `worker start requested generation=1 ... target=60`, `worker applying`, and a
-  successful `read ... value=60 target=60 action=equal`. If the initial value
-  differs, a preceding four-byte `write end ... ok=1 written=4` is expected.
-
-The request status must show generation at least 1, workerState 2 while applying,
-and workerError/launchError/steamError/diagnosticError zero. Generation 0 or login
-alone is not a worker pass. Compare-equal at 60 without a write is also correct.
-Quit the game normally, wait for step 5's complete automatic cleanup, then close
-the launcher normally and retain the final capture. **Do not proceed to 120
-unless startup, worker and cleanup all pass without intervention.**
-
-## 3. Enabled 120: actual above-60 gameplay
-
-Reopen using step 1. Change only the FPS target to **120**, leaving unlocking ON.
-Record time and Launch once. Require the same identity, desktop and worker gates
-with target 120. The bridge's game DXMT configuration must show
-`d3d11.preferredMaxFrameRate=0`.
-
-Enter the game world. Observe a stationary, repeatable scene for **60 seconds**.
-Record the numerical Metal HUD FPS minimum/typical/maximum and a screenshot or
-short recording. Require FPS sustained above 60 while the worker applies, a
-successful four-byte write when needed, and subsequent
-`read ... value=120 target=120 action=equal`.
-
-Login-screen FPS, a displayed target or a successful memory write alone is not
-an above-60 gameplay pass. If achieved FPS stays at/below 60, report it as
-unverified and keep the other settings unchanged. Capture live evidence, quit
-normally, and require step 5. Do not try 61, additional targets or repeat a failed
-attempt. The original Wine has a separately documented post-write protection
-hazard; a new fault after a recorded write is different evidence from the old
-generation-0 crash. Preserve it and stop.
-
-## 4. Preserve live and final evidence
-
-In the second terminal, run this while the game is stable before normal exit,
-or immediately after a failure/guard:
-
-```sh
-cd /Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher
-python3 scripts/collect-hk4e-launch-evidence.py
-```
-
-Keep its printed path. The collector reads sources, copies full logs and retained
-request/journal/registry files into fresh evidence, and records missing/changing
-files. It sends no protocol or process commands and uploads nothing. Run it again
-after cleanup; step 1 does that automatically with the exact console directory.
-Full Wine exception logs can grow quickly; collect promptly and finish the stated
-observation period instead of leaving the game idle for an extended session.
-
-This read-only summary selects the newest run, including bridge-only logs:
-
-```sh
-cd /Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher
-python3 - <<'PYCODE'
-from pathlib import Path
-import re
-logs = Path('yaaglwdos/logs')
-epochs = [int(m.group(1)) for p in logs.glob('game_*.log*')
-          if (m := re.fullmatch(r'game_(\d+)\.log(?:\.(?:wine|steam|bridge)\.log)?', p.name))]
-assert epochs, 'No game evidence found'
-base = logs / f'game_{max(epochs)}.log'
-print('Latest run:', base)
-for p in [base, Path(str(base)+'.steam.log'), Path(str(base)+'.wine.log'), Path(str(base)+'.bridge.log')]:
- print('LOG', p, 'bytes', p.stat().st_size if p.exists() else 'missing')
- if p.name.endswith('.bridge.log') and p.exists():
-  print(p.read_text(errors='replace'))
-p = Path('yaaglwdos/neutralinojs.log')
-print('Recent launcher records; correlate the exact token and game PID:')
-for line in p.read_text(errors='replace').splitlines()[-160:]:
- if re.search(r'FPS request|cleanup|restoration|supervisor|Wine wait', line):
-  print(line)
-PYCODE
-```
-
-Retain full launcher/game/Steam/**Wine and bridge** logs, terminal/DXMT output,
-new game/macOS crash reports, request responses, cleanup acknowledgements,
-journal preimages and registry snapshots. Absent/empty directly created GUI game
-output can be normal; it does not replace `.wine.log` or `.bridge.log`. Missing
-write lines do not prove no writes by other components.
-
-## 5. Cleanup and restoration gate after each stage
-
-For the same request token/game PID, require all of these, without recovery:
-
-- Known normal game exit code 0, workerDone 1, game job active 0, steamActive 0,
-  shimExited 1 and released 1.
-- Foreground Wine supervisor confirmed, first request-owned Wine wait completed,
-  registry restoration acknowledged, second Wine wait completed, then
+- Known normal game exit 0, workerDone 1, game job active 0, Steam job active 0,
+  shimExited 1 and released 1. A crash code is a failed game run even if all
+  subsequent restoration succeeds.
+- Foreground Wine supervisor completion; first owned Wine wait; acknowledged
+  registry restoration; second Wine wait; file-journal restoration and final
   `registry/file restoration and private resource cleanup completed`.
-- Normal launcher close available, no unresolved lifetime guard or patch warning.
+- No unresolved guard or lingering patch warning, and normal launcher close.
+  Retain the live preimages and final capture so restoration can be independently
+  compared. Logs alone cannot replace missing preimages for that comparison.
 
-Keep the live preimages and final capture for independent restoration comparison.
-Do not delete remaining snapshots. Return each stage's start/exit times, evidence
-paths, login and worker result, HUD range, full visible error and cleanup result.
+The primary worker/game failure must remain visible. A repeated retained worker
+error should no longer appear falsely under “Earlier cleanup errors”; actual
+cleanup errors must still be retained even after later successful restoration.
+Launch Fix is OFF in this checkpoint, so no privileged-operation acknowledgement
+is expected. If it unexpectedly runs or an elevation prompt appears, cancel the
+prompt normally, collect evidence and stop.
 
-## Actual packaged deliverable: separate profile, separate checkpoint
-
-`/Users/david/Library/Application Support/YAAGL Local Builds/fps-validated-delivery-20260913T233733Z/package/Yaagl OS.app`
-
-This Global bundle contains the matching ARM64 native runtime, x64 bridge,
-unchanged signed Steam pair, all Sophon resources, manifests and licenses. The
-outer app is unsigned/not notarized; native retains its existing ad-hoc signature.
-Intel helpers require Rosetta. No Wine, private profile or game data is bundled.
-The existing signed xdelta3 requires the unavailable Intel
-`/usr/local/opt/xz/lib/liblzma.5.dylib`, limiting legacy xdelta updates; Sophon is
-independent and its packaged health is checked.
-
-The wrapper uses `~/Library/Application Support/Yaagl OS FPS Review`.
-**Do not open/configure this separate profile for the development comparison
-above.** Packaged gameplay remains unrun and needs its own runtime/profile
-preparation after development results are reviewed. Building the bundle is not
-a gameplay pass. The offline runtime candidate and diagnostic recovery helpers
-are not included or authorized installation steps in this checkpoint.
+Return each stage's console/evidence paths, exact times, login/worker result,
+HUD measurements, full errors and cleanup result. Earlier operator successes and
+the previous enabled-120 91.72–106.78 FPS observation remain separate from the
+later packaged target-150 failure and this new unrun candidate. Enabled 61 remains
+unaccepted. No stage here is executed automatically by the assistant.
