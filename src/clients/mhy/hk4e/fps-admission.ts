@@ -33,7 +33,7 @@ export async function admitFpsLaunch(
     );
   if (!settings.value.enabled) return undefined;
   const { config, wine, server, gameDir, gameExecutable } = input;
-  if (native.os !== "Darwin" || native.version !== "4.11.0-yaagl-owned2")
+  if (native.os !== "Darwin" || native.version !== "4.11.0-yaagl-owned3")
     throw new Error(
       "FPS unlocking requires the local HK4E runtime with normal-quit protection; run scripts/build-hk4e-native.py"
     );

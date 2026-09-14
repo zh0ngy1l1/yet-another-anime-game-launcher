@@ -58,7 +58,16 @@ termination = '''    ((void (*)(id, SEL, id))objc_msgSend)("NSApp"_cls, "termina
 '''
 if text.count(termination) != 1:
     raise SystemExit("Native explicit-exit patch context changed")
-webview.write_text(text.replace(termination, ""))
+text = text.replace(termination, "")
+# Upstream orders a zero-size window before Neutralino can apply hidden=true.
+# Do not briefly order any window during construction: __createWindow below
+# owns the initial visibility, and hidden bootstrap shows only after DOM ready.
+initial_order = '''    ((void (*)(id, SEL, id))objc_msgSend)(m_window, "makeKeyAndOrderFront:"_sel,
+                                          nullptr);
+'''
+if text.count(initial_order) != 1:
+    raise SystemExit("Native initial-window ordering patch context changed")
+webview.write_text(text.replace(initial_order, ""))
 # macOS 26 enforces AppKit window teardown on the main thread. The RPC thread
 # must enqueue the existing close rather than invoking AppKit directly.
 window_source = source / "api/window/window.cpp"
@@ -87,6 +96,13 @@ if router_text.count(router_anchor) != 1:
     raise SystemExit("Native bootstrap router patch context changed")
 router_source.write_text(router_text.replace(router_anchor, router_anchor + '\n    {"custom.bootstrap", custom::controllers::bootstrap},'))
 window_text = window_source.read_text()
+initial_visibility = '''    if(windowProps.hidden)
+        window::hide();'''
+if window_text.count(initial_visibility) != 1:
+    raise SystemExit("Native configured-window visibility patch context changed")
+window_text = window_text.replace(initial_visibility, initial_visibility + '''
+    else
+        window::show();''')
 close_event = "        case WEBVIEW_WINDOW_CLOSE:"
 if window_text.count(close_event) != 1:
     raise SystemExit("Native bootstrap close patch context changed")
@@ -121,7 +137,7 @@ for directory in config["include"]["*"]:
 for pattern in config["source"]["*"] + config["source"]["darwin"]:
     args.extend(sorted(glob.glob(str(source / pattern), recursive=True)))
 for definition in config["definitions"]["*"] + config["definitions"]["darwin"]:
-    definition = definition.replace(chr(92) + chr(34), chr(34)).replace("${BZ_VERSION}", "4.11.0-yaagl-owned2").replace("${BZ_COMMIT}", REVISION)
+    definition = definition.replace(chr(92) + chr(34), chr(34)).replace("${BZ_VERSION}", "4.11.0-yaagl-owned3").replace("${BZ_COMMIT}", REVISION)
     args.append("-D" + definition)
 for option in config["options"]["darwin"]:
     args.extend(option.split())
@@ -130,7 +146,7 @@ print("Building local HK4E normal-close runtime:", target, flush=True)
 subprocess.run(args, cwd=source, env={**os.environ, "MACOSX_DEPLOYMENT_TARGET": "11.0"}, check=True)
 subprocess.run(["/usr/bin/codesign", "--force", "--sign", "-", str(target)], check=True)
 record = {"upstreamRevision": REVISION, "archiveSha256": ARCHIVE_HASH,
-          "version": "4.11.0-yaagl-owned2", "architecture": arch,
+          "version": "4.11.0-yaagl-owned3", "architecture": arch,
           "compiler": subprocess.check_output(["/usr/bin/clang++", "--version"], text=True).splitlines()[0],
           "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
           "recipeSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),

@@ -71,7 +71,7 @@ The FPS signature/branch-resolution adaptation comes from `Fork/unlockfps/FpsPat
 - Bridge protocol/artifact version: **3**; `fps-bridge.exe`, **38912 bytes**.
 - SHA-256: **be4b09a0dea1aca9252a1297f1a0c26a46a67d564b9027f547e64b2bb71faa25**.
 - Local compiler: `x86_64-w64-mingw32-gcc (GCC) 16.2.0`; existing `/opt/homebrew/bin/x86_64-w64-mingw32-gcc`.
-- Native compiler: Apple clang 21.0.0 (`clang-2100.1.1.101`); Python 3.13.14. Native recipe/source/binary hashes are written to `bin/hk4e-neutralino-arm64.json` (or `x86_64.json`). Version: `4.11.0-yaagl-owned2`; the added [native bootstrap clock/watchdog](../bootstrap/README.md) retains the existing foreground dispatch and normal-close gate.
+- Native compiler: Apple clang 21.0.0 (`clang-2100.1.1.101`); Python 3.13.14. Native recipe/source/binary hashes are written to `bin/hk4e-neutralino-arm64.json` (or `x86_64.json`). Version: `4.11.0-yaagl-owned3`; the added [native bootstrap clock/watchdog](../bootstrap/README.md) retains the existing foreground dispatch and normal-close gate.
 
 From the repository root:
 

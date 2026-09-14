@@ -1,4 +1,42 @@
-> Historical investigation: the visible "Starting launcher…" implementation and runtime commands below describe the earlier candidate. The current hidden-startup implementation, native clock, guarded failure panel and validation limits are documented in [native/bootstrap/README.md](../native/bootstrap/README.md). Those historical runtime commands were not executed for the current revision.
+> Historical investigation: the visible "Starting launcher…" implementation and runtime commands below describe the earlier candidate. The current hidden-startup implementation, native clock, guarded failure panel and validation limits are documented in [native/bootstrap/README.md](../native/bootstrap/README.md). The current harness was subsequently replaced with guarded isolated hidden-startup fixtures; the owned3 evidence and discovered WebKit scheduling defect are described in that current document. The historical commands below do not describe the current harness.
+
+## Current owned3 correction (2026-09-14)
+
+The hidden-bootstrap owned2 delivery (`237dfcaf…`) was tested in an isolated
+native fixture using the real entry point and Sophon retry, with no application
+setup, sidecars, Wine or game. A short retry passed. Permanent unavailability
+stalled after three requests at about six seconds even though the retry delay
+was native: hidden WebKit also suspended JavaScript receipt of RPC results and
+normal-close events. The native failure panel remained responsive. This is a
+newly demonstrated limitation of the owned2 implementation, distinct from the
+historical visible-window candidate below.
+
+[Owned3 bootstrap](../native/bootstrap/bootstrap.cpp) selects the public
+[WebKit inactive-scheduling policy](https://developer.apple.com/documentation/webkit/wkpreferences/inactiveschedulingpolicy-swift.property)
+`None` before navigation, preserving JavaScript progress through initialization
+and guarded failure/cancellation. It restores the previous policy after accepted
+DOM readiness shows the main window. The [native build recipe](../scripts/build-hk4e-native.py)
+also removes the upstream constructor's early zero-size window ordering;
+configured visible windows still show normally. Hidden startup requires macOS14+;
+the older-OS native failure fallback has not been runtime-tested.
+
+The revised [native fixture harness](../scripts/test-bootstrap.cjs) requires a
+separate prepare step and hash-verified explicit run. DOM timers and animation
+callbacks are frozen. It requires no initial onscreen window, hidden retries,
+initialized DOM before showing, visible native failures, ordinary close vetoes,
+cleanup acknowledgements and native exit0. Source/fixture checks complement
+sampled window metadata; they do not themselves rule out every sub-frame visual
+artifact or establish actual packaged-app/gameplay behavior.
+
+Evidence remains under:
+`/Users/david/Library/Application Support/YAAGL Local Builds/fps-autonomous-validation-20260914T130005Z`.
+`bootstrap-native-gG74wv` preserves the failed owned2 run. Its debugger recovery
+failed before the requested lookup/show executed and coincided with process exit
+without an application cleanup acknowledgement; normal cleanup is **not** claimed.
+`bootstrap-native-WHfMHQ` identifies the intermediate constructor's zero-size
+onscreen record and acknowledged cancellation. `bootstrap-native-ueg1bw` contains
+the corrected native cases and their exact per-case results. See the
+[native bootstrap record](../native/bootstrap/README.md) for current validation.
 
 # Step 7.5: Sophon healthy, launcher hidden
 

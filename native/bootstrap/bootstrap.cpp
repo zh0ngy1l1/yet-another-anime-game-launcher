@@ -1,6 +1,7 @@
 // Local macOS startup clock and visible failure fallback. This code runs in
 // the native process; hidden WKWebView timers and painting are not involved.
 #import <Cocoa/Cocoa.h>
+#import <WebKit/WebKit.h>
 #include <chrono>
 #include <algorithm>
 #include <condition_variable>
@@ -22,6 +23,35 @@ const std::string deadlineMessage = "Startup did not finish within 90 seconds. S
 NSPanel *failurePanel = nil;
 NSTextField *failureText = nil;
 id failureController = nil;
+WKPreferences *bootstrapPreferences = nil;
+NSInteger previousSchedulingPolicy = 0;
+
+bool keepBootstrapRunnable() {
+    // Native timers alone are insufficient: WebKit may suspend delivery of
+    // their RPC responses and the guarded windowClose event while hidden.
+    // This is the public macOS 14 API, with no private preference or window
+    // visibility workaround. Keep it through failed/cancelled cleanup too.
+    if (@available(macOS 14.0, *)) {
+        WKWebView *view = (WKWebView *)[(NSWindow *)window::getWindowHandle() contentView];
+        if (![view isKindOfClass:[WKWebView class]]) return false;
+        bootstrapPreferences = [[view configuration].preferences retain];
+        previousSchedulingPolicy = bootstrapPreferences.inactiveSchedulingPolicy;
+        bootstrapPreferences.inactiveSchedulingPolicy = WKInactiveSchedulingPolicyNone;
+        debug::log(debug::LogTypeInfo, "Bootstrap inactive scheduling disabled while initialization/cleanup is pending");
+        return true;
+    }
+    return false;
+}
+
+void restoreSchedulingAfterReady() {
+    if (@available(macOS 14.0, *)) {
+        if (!bootstrapPreferences) return;
+        bootstrapPreferences.inactiveSchedulingPolicy = (WKInactiveSchedulingPolicy)previousSchedulingPolicy;
+        [bootstrapPreferences release];
+        bootstrapPreferences = nil;
+        debug::log(debug::LogTypeInfo, "Bootstrap inactive scheduling restored after showing initialized window");
+    }
+}
 
 json status() {
     std::lock_guard<std::mutex> lock(stateMutex);
@@ -127,6 +157,10 @@ void armBootstrap() {
         phase = "starting";
         startupDeadline = Clock::now() + std::chrono::milliseconds(deadlineMilliseconds);
     }
+    if (!keepBootstrapRunnable()) {
+        fail("Hidden startup requires the public WebKit inactive-scheduling API (macOS 14 or later).");
+        return;
+    }
     debug::log(debug::LogTypeInfo, "Bootstrap watchdog armed deadlineMs=90000");
     // Arm before navigation, so even missing JS/a disconnected WebView gets a
     // visible native failure. Late readiness cannot revive a failed startup.
@@ -172,6 +206,7 @@ json bootstrap(const json &input) {
             if (show) {
                 debug::log(debug::LogTypeInfo, "Bootstrap DOM ready; showing launcher once");
                 window::show();
+                restoreSchedulingAfterReady();
             }
         });
     } else if (op == "fail" || op == "cancel") {

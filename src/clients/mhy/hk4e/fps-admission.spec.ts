@@ -76,7 +76,7 @@ it("disabled Steam does not inspect FPS-specific environment/capabilities", asyn
   ).toBeUndefined();
   expect(environment).not.toHaveBeenCalled();
 });
-const native = { os: "Darwin", version: "4.11.0-yaagl-owned2" } as const;
+const native = { os: "Darwin", version: "4.11.0-yaagl-owned3" } as const;
 function input() {
   return {
     server: "hk4e_global",

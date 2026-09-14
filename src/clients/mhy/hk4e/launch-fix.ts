@@ -70,7 +70,7 @@ const native = {
   async directory() {
     if (
       window.NL_OS !== "Darwin" ||
-      window.NL_VERSION !== "4.11.0-yaagl-owned2"
+      window.NL_VERSION !== "4.11.0-yaagl-owned3"
     )
       throw new Error(
         "Launch Fix requires the local HK4E runtime with concurrent foreground execution and close protection"

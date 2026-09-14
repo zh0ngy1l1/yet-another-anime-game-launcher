@@ -35,6 +35,7 @@ Neutralino.init();
 Neutralino.events.on('windowClose', async () => { await Neutralino.filesystem.appendFile(NL_PATH+'/close-events','veto\\n'); });
 (async()=>{
  await Neutralino.filesystem.writeFile(NL_PATH+'/connected','connected');
+ await Neutralino.filesystem.writeFile(NL_PATH+'/visible',JSON.stringify(await Neutralino.window.isVisible()));
  const first=Neutralino.os.execCommand(${JSON.stringify(command("first"))},{});
  const second=Neutralino.os.execCommand(${JSON.stringify(
    command("second")
@@ -68,8 +69,37 @@ async function until(predicate) {
   );
   assert.equal(
     fs.readFileSync(path.join(dir, "ready"), "utf8"),
-    "4.11.0-yaagl-owned2"
+    "4.11.0-yaagl-owned3"
   );
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dir, "visible"))), true);
+  const windowScript = `ObjC.import('CoreGraphics'); JSON.stringify(ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1,0))).filter(w=>w.kCGWindowOwnerPID===${child.pid}&&w.kCGWindowLayer===0));`;
+  const windows = JSON.parse(
+    cp.execFileSync(
+      "/usr/bin/osascript",
+      ["-l", "JavaScript", "-e", windowScript],
+      { encoding: "utf8" }
+    )
+  );
+  fs.writeFileSync(
+    path.join(dir, "visible-windows.json"),
+    JSON.stringify(windows, null, 2)
+  );
+  const visible = windows.find(
+    w =>
+      w.kCGWindowName === "YAAGL RPC/close fixture (no game)" &&
+      w.kCGWindowBounds.Width > 0 &&
+      w.kCGWindowBounds.Height > 0
+  );
+  assert.ok(
+    visible,
+    "Configured visible window must be onscreen with nonzero dimensions"
+  );
+  cp.execFileSync("/usr/sbin/screencapture", [
+    "-x",
+    "-l",
+    String(visible.kCGWindowNumber),
+    path.join(dir, "visible.png"),
+  ]);
   cp.execFileSync("osascript", [
     "-l",
     "JavaScript",
@@ -99,9 +129,17 @@ async function until(predicate) {
     dir
   );
 })().catch(async error => {
-  // Cooperative stop for only these two harmless commands, then fixture exit.
-  for (const name of ["first-stop", "second-stop", "finish"])
+  // Cooperatively stop only these harmless commands. Even this fixture must
+  // retain an unresolved acknowledgement rather than exit over a live command.
+  for (const name of ["first-stop", "second-stop"])
     fs.writeFileSync(path.join(dir, name), "");
+  try {
+    await until(() => exists("first-result") && exists("second-result"));
+    fs.writeFileSync(path.join(dir, "finish"), "");
+    await until(() => child.exitCode !== null);
+  } catch (cleanup) {
+    console.error("RETAINED native fixture", child.pid, dir, cleanup);
+  }
   console.error(error);
   process.exitCode = 1;
 });

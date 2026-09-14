@@ -15,7 +15,7 @@ let current = false;
 try {
   const record = JSON.parse(fs.readFileSync(binary + ".json"));
   current =
-    record.version === "4.11.0-yaagl-owned2" &&
+    record.version === "4.11.0-yaagl-owned3" &&
     record.recipeSha256 === hash("scripts/build-hk4e-native.py") &&
     record.bootstrapSourceSha256 === hash("native/bootstrap/bootstrap.cpp") &&
     record.sha256 === hash(binary);

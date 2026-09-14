@@ -58,7 +58,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("window", {
     NL_OS: "Darwin",
-    NL_VERSION: "4.11.0-yaagl-owned2",
+    NL_VERSION: "4.11.0-yaagl-owned3",
     NL_CWD: "/app",
     NL_PATH: ".",
   });
