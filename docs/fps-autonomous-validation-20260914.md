@@ -34,4 +34,36 @@ Commit `ec0958d` adds optional independent APFS descriptor clones for large full
 
 Steam Patch stays ON, Launch Fix/block hosts OFF and Timeout Fix ON for actual crash tests. No host-blocking command or privileged network change is executed. Existing inert Launch Fix integration evidence remains separate from untested real-game compatibility. Complete Sophon resources are bundled; the existing Intel xdelta liblzma prerequisite remains unavailable, so legacy xdelta updates are limited. Outer packages remain unsigned/not notarized, with ARM64 native ad-hoc signatures and Intel helpers requiring Rosetta. A packaged app does not install the separate Wine correction.
 
-Actual game results and final delivery identities will be appended after the authorized runs. At this recording point, no game has been launched in this task; prior manual successes and the additional delayed failure remain distinct.
+## Completed observations and stopping point
+
+The user requested wrap-up before candidate gameplay. No further game attempt was made. Original successful observations remain recorded; this task does not accept the delayed crash as fixed.
+
+| Configuration | Observation | Worker / writes / FPS | Exit, cleanup and restoration |
+| --- | --- | --- | --- |
+| Final packaged launcher, original isolated profile | First visible frame already contains complete artwork; no white/partial frame in 52 dense samples. Exact title, hidden Sophon retries, settings persistence and normal quit verified. | No game during presentation checks. | Native exit0; owned aria2/Sophon PIDs subsequently absent. Individual Sophon exit status not captured. |
+| Original Wine, FPS OFF, stored60 | Game created at13:51:12.588UTC; stable login observed from13:52:06.738. Normal visible quit confirmed at14:08:08.439. Desktop lock and operator interference extended this run; this is not continuous gameplay coverage. | No FPS worker expected. Numerical login HUD60.00; no in-world FPS or graphics/VSync inspection. | Request `MaEql3YNUp` cleanup acknowledgement14:08:14.607; native exit0 at14:09:17.626. All28 captured path states and both typed registry values independently match. Main Windows game PID/exit code were not directly captured. A shutdown nested-exception trace remains separate. |
+| R2 Wine, enabled60 prepared | Package UI and saved settings verified; preimages and watcher ready. AX Launch action returned6 because no unique matching button was available. No Wine/game process or game log was created. User requested wrap-up before retry. | **Unrun; no worker/write/FPS pass.** | Normal Quit menu; native exit0 at14:15:43.873. aria2/Sophon subsequently absent. All28+2 preimages unchanged. |
+| R2 Wine, enabled120 /150 | **Unrun.** | No real-game claim. | Not applicable. |
+| R2 Wine, harmless direct / Steam bridge fixtures | Both completed using fresh fixture prefixes, never the actual game/prefix. | Targets1/60/61/120/360;120 write/readback with allocation80/current08 mismatch. | All9 direct and20 Steam requests released with empty jobs and workerDone1; Wine waits and fixture registry restoration passed. |
+
+The final artwork evidence is `E/launcher-artwork-01/independent-review/review.json`. First visible frame652 at11.375s is complete; preceding frame651 at11.358333s is desktop. The largest adjacent video gap is33.334ms, so this is a finite captured observation, not proof that no shorter flash can ever occur. Commit `4e396b1cc4f2e1bc4637b8a44a75752ee9a71c57` supplies the decode/readiness correction.
+
+The control's full22,323,920,394-byte Wine log is preserved as an independent stable APFS clone in `E/runs/original-disabled60/final-capture`, SHA-256 `83dbdc254588a9c60c93e47b50e566c9a22d61a28bda70f44230b8b7726dd64d`. Live request versions and preimages precede normal journal removal. Missing separate `.wine.log`/bridge/Steam streams for this disabled route are explicit; its main `.log` is the Wine stream. The package's configuration is inside resources.neu, rather than a loose profile neutralino.config.json. Profile-root DXMT logs were preserved separately. Handled SIGSYS/SEH traffic is not classified as a fatal game crash. The final nested exception on Wine's signal stack is retained as a shutdown finding; no connection to the earlier delayed gameplay fault is established.
+
+The original log grew around21MB/s. At wrap-up approximately14GB remained available, insufficient for all remaining runs plus a ten-minute150 trace and video. No original was truncated, removed or compressed in place; logging verbosity and process creation were unchanged. The user was asked for additional storage before requesting wrap-up. The temporary idle-prevention assertion was ended; no security preference changed. No discovery/WM_CLOSE helper was executed: the control exited using the visible game power button and confirmation.
+
+## Validation and deliverable
+
+Pinned Node16.20.2/pnpm7.33.7: **2042 Vitest tests pass in27 files**, type/format checks pass, lint has the same nine warnings and zero errors. Ten collector regressions,12 isolated evidence-tool regressions, the owned-supervisor fixtures, portable memory diagnostics with sanitizers and four negative mutations,8003 Wine source assertions, the four native bootstrap fixtures and both R2 bridge suites pass. These are source/fixture results; enabled candidate gameplay, above60 gameplay, target150 sustained play and real Launch Fix compatibility remain unrun.
+
+Actual final Global app: `E/package/Yaagl OS.app`, built from `4e396b1cc4f2e1bc4637b8a44a75752ee9a71c57`. Later report-only commits do not change its source/artifact binding. All511 packaged files,16 ASAR members,19 Sophon files, manifests, licenses, modes and identities were checked. macOS14+; ARM64 native, x64 bridge/Steam and Intel helpers requiring Rosetta. Native ad-hoc signature verifies; outer app is unsigned/not notarized. Existing xdelta's Intel liblzma dependency remains missing. Sophon health passed in the actual packaged UI.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| Native owned3 | `c67e7eabd572ca7c96dd1ab547a67faa0bac8e08e4fb50e95dd1850af6571939` |
+| resources.neu | `99e6f56cccb348b7f23cdbbc78b0c1298c77ae393b403edcd9c430dae4753a4d` |
+| Bridge protocol3,41984bytes | `59ae7f9e1b753499386cfe5336c9f4a4d911c39c69ce3447712c4522ccbe7c95` |
+| Signed Steam64 shim | `0424339444c54bf1f9fdbadf12e4e2c90ceef41d987fe573b93f5f2ebfd8a657` |
+| R2 ntdll.so,620688bytes | `eef64f611ae9033261a70f46ec0be38d58823717f14e80331946c6d0cd3c85f7` |
+
+The exact fixture-tested Wine runtime is **`E/profiles/candidate/wine`**, with source/binary/provenance records in `E/runtime-review` and the strict baseline parity audit in `E/profile-parity-audit`. The earlier development-derived `E/runtime-candidate/wine` is a comparison copy, not the selected fixture runtime. Neither R2 copy has passed real-game testing. The app contains no Wine or private profile/game data and does not install R2. Its wrapper's default `Yaagl OS FPS Review owned3` profile was not the invocation used in these tests. Working installation activation remains outside authorization.
