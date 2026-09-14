@@ -97,7 +97,9 @@ class Capture:
                 self.copy(Path(directory) / name)
 
 
-def collect(profile, output, consoles=()):
+def collect(profile, output, consoles=(), run_log=None):
+    if run_log is not None and not re.fullmatch(r'game_\d+\.log', run_log):
+        raise ValueError('Run log must be the exact game_<timestamp>.log basename')
     profile = profile.resolve()
     output = output.resolve()
     if output == profile or profile in output.parents:
@@ -116,7 +118,13 @@ def collect(profile, output, consoles=()):
     references = request_paths(text)
     for reference in references:
         capture.tree(Path(reference))
-    game_logs = sorted((profile / 'logs').glob('game_*.log*'))
+    game_logs = sorted((profile / 'logs').glob((run_log + '*') if run_log else 'game_*.log*'))
+    if run_log:
+        # An explicit missing run is preserved as missing, never replaced by an
+        # older/latest run. Copy every associated stream without duplicating
+        # unrelated multi-gigabyte game logs on each live/final capture.
+        for suffix in ('', '.wine.log', '.bridge.log', '.steam.log'):
+            capture.copy(profile / 'logs' / (run_log + suffix))
     for path in game_logs:
         capture.copy(path)
     # Millisecond epoch in the launcher filename anchors crash-report correlation.
@@ -124,7 +132,8 @@ def collect(profile, output, consoles=()):
     for epoch in set(epochs):
         # Explicitly record an absent ordinary log instead of inventing output.
         capture.copy(profile / 'logs' / f'game_{round(epoch * 1000)}.log')
-    anchor = max(epochs) if epochs else datetime.datetime.now().timestamp()
+    anchor = (game_log_epoch(Path(run_log)) if run_log else
+              max(epochs) if epochs else datetime.datetime.now().timestamp())
     window = (anchor - 3600, anchor + 3600)
     for name in SETTINGS:
         capture.copy(profile / '.storage' / (name + '.neustorage'))
@@ -179,7 +188,7 @@ def collect(profile, output, consoles=()):
         result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True)
         git[name] = {'exitCode': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr}
     manifest = dict(createdUTC=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    profile=str(profile), git=git, identities=identities,
+                    profile=str(profile), runLog=run_log, git=git, identities=identities,
                     requestPaths=references, crashWindowEpoch=window,
                     files=list(capture.entries.values()),
                     notes=['Source files were only read; no Wine/process/protocol/cleanup actions.',
@@ -194,6 +203,7 @@ def main():
     parser.add_argument('--profile', type=Path, default=Path(__file__).resolve().parents[1] / 'yaaglwdos')
     parser.add_argument('--output', type=Path, help='New directory outside the profile; never overwritten')
     parser.add_argument('--console', type=Path, action='append', default=[], help='Exact console capture directory/file; repeatable')
+    parser.add_argument('--run-log', help='Exact game_<timestamp>.log basename; include all its streams and the full launcher log')
     args = parser.parse_args()
     os.umask(0o077)
     if args.output is None:
@@ -202,7 +212,7 @@ def main():
         # Reserve a unique parent, leaving the actual output nonexistent.
         parent = Path(tempfile.mkdtemp(prefix='manual-evidence-' + datetime.datetime.now().strftime('%Y%m%dT%H%M%S') + '-', dir=base))
         args.output = parent / 'capture'
-    print(collect(args.profile, args.output, args.console))
+    print(collect(args.profile, args.output, args.console, args.run_log))
 
 
 if __name__ == '__main__':

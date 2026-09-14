@@ -107,6 +107,31 @@ class EvidenceTest(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 collector.collect(profile, Path(name))
 
+    def test_explicit_run_keeps_all_streams_without_substituting_newer_run(self):
+        with tempfile.TemporaryDirectory(prefix='yaagl-evidence-test-') as name:
+            root = Path(name).resolve()
+            profile = root / 'profile'
+            logs = profile / 'logs'
+            logs.mkdir(parents=True)
+            (profile / 'neutralinojs.log').write_text('full launcher history')
+            (logs / 'game_100000.log.bridge.log').write_text('selected bridge')
+            (logs / 'game_200000.log.wine.log').write_text('different run')
+            with patch.object(collector.Path, 'home', return_value=root):
+                collector.collect(profile, root / 'capture', run_log='game_100000.log')
+            result = json.loads((root / 'capture/manifest.json').read_text())
+            entries = {entry['source']: entry for entry in result['files']}
+            self.assertEqual(result['runLog'], 'game_100000.log')
+            self.assertEqual(result['crashWindowEpoch'], [-3500, 3700])
+            self.assertTrue(entries[str(logs / 'game_100000.log.bridge.log')]['copied'])
+            self.assertTrue(entries[str(profile / 'neutralinojs.log')]['copied'])
+            for suffix in ('', '.wine.log', '.steam.log'):
+                self.assertIn('error', entries[str(logs / ('game_100000.log' + suffix))])
+            self.assertNotIn(str(logs / 'game_200000.log.wine.log'), entries)
+            for invalid in ('../game_100000.log', 'game_100000.log*', 'game_100000.log.wine.log'):
+                with self.assertRaises(ValueError):
+                    collector.collect(profile, root / 'bad', run_log=invalid)
+            self.assertFalse((root / 'bad').exists())
+
 
 if __name__ == '__main__':
     unittest.main()
