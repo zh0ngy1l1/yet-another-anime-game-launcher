@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import sys
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('collector', Path(__file__).with_name('collect-hk4e-launch-evidence.py'))
@@ -13,6 +14,66 @@ spec.loader.exec_module(collector)
 
 
 class EvidenceTest(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'darwin', 'APFS descriptor cloning is macOS-specific')
+    def test_apfs_clone_is_independent_complete_and_does_not_replace_existing_evidence(self):
+        with tempfile.TemporaryDirectory(prefix='yaagl-clone-evidence-test-') as name:
+            root = Path(name).resolve()
+            source = root / 'source.log'
+            source.write_bytes(b'complete\x00evidence\n')
+            out = root / 'capture'
+            out.mkdir()
+            capture = collector.Capture(out, clone_files=True)
+            capture.copy(source)
+            entry = capture.entries[str(source)]
+            self.assertTrue(entry['stable'], entry)
+            self.assertEqual(entry['copyMethod'], 'APFS clone of retained descriptor')
+            copied = out / entry['copy']
+            self.assertNotEqual(copied.stat().st_ino, source.stat().st_ino)
+            source.write_text('later source change')
+            self.assertEqual(copied.read_bytes(), b'complete\x00evidence\n')
+            again = collector.Capture(out, clone_files=True)
+            again.copy(source)
+            self.assertIn('error', again.entries[str(source)])
+            self.assertEqual(copied.read_bytes(), b'complete\x00evidence\n')
+
+    def test_clone_failure_is_visible_without_ordinary_copy_fallback(self):
+        with tempfile.TemporaryDirectory(prefix='yaagl-clone-evidence-test-') as name:
+            root = Path(name).resolve()
+            source = root / 'source.log'
+            source.write_text('keep original')
+            out = root / 'capture'
+            out.mkdir()
+            capture = collector.Capture(out, clone_files=True)
+            with patch.object(collector, 'clone_descriptor', side_effect=OSError('clone unavailable')):
+                capture.copy(source)
+            entry = capture.entries[str(source)]
+            self.assertIn('clone unavailable', entry['error'])
+            self.assertNotIn('copied', entry)
+            self.assertEqual(source.read_text(), 'keep original')
+            self.assertFalse((out / 'files' / source.relative_to('/')).exists())
+
+    @unittest.skipUnless(sys.platform == 'darwin', 'APFS descriptor cloning is macOS-specific')
+    def test_cloned_live_log_records_growth_without_claiming_atomic_source_stability(self):
+        with tempfile.TemporaryDirectory(prefix='yaagl-clone-evidence-test-') as name:
+            root = Path(name).resolve()
+            source = root / 'source.log'
+            source.write_text('before')
+            out = root / 'capture'
+            out.mkdir()
+            original_clone = collector.clone_descriptor
+            def growing_clone(fd, destination):
+                original_clone(fd, destination)
+                with source.open('a') as stream:
+                    stream.write(' after')
+            capture = collector.Capture(out, clone_files=True)
+            with patch.object(collector, 'clone_descriptor', growing_clone):
+                capture.copy(source)
+            entry = capture.entries[str(source)]
+            self.assertTrue(entry['copied'])
+            self.assertFalse(entry['stable'])
+            self.assertEqual(entry['capturedBytes'], 6)
+            self.assertEqual((out / entry['copy']).read_text(), 'before')
+
     def test_unix_only_run_supersedes_older_disabled_log(self):
         paths = [Path('game_100000.log'), Path('game_200000.log.wine.log'),
                  Path('game_200000.log.steam.log'), Path('game_300000.log.old')]

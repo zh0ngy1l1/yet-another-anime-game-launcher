@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Copy HK4E launch evidence without starting Wine or writing to source paths."""
 import argparse
+import ctypes
 import datetime
 import hashlib
 import json
@@ -9,6 +10,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 
 REQUEST = re.compile(r"/tmp/yaagl-(?:fps|owned-wine|launch-fix|launch)\.[A-Za-z0-9]{6,64}(?![A-Za-z0-9_.-])")
@@ -37,10 +39,32 @@ def digest(path):
     return h.hexdigest()
 
 
+def clone_descriptor(source_fd, destination):
+    """Clone the retained regular file into a new APFS evidence inode.
+
+    No shell, source-path reopen, overwrite, or ordinary-copy fallback: a clone
+    failure must remain visible rather than unexpectedly doubling a huge log.
+    """
+    if sys.platform != 'darwin':
+        raise OSError('APFS evidence cloning requires macOS')
+    library = ctypes.CDLL('/usr/lib/libSystem.B.dylib', use_errno=True)
+    clone = library.fclonefileat
+    clone.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
+    clone.restype = ctypes.c_int
+    directory_fd = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        if clone(source_fd, directory_fd, os.fsencode(destination.name), 0) != 0:
+            code = ctypes.get_errno()
+            raise OSError(code, os.strerror(code), str(destination))
+    finally:
+        os.close(directory_fd)
+
+
 class Capture:
-    def __init__(self, output):
+    def __init__(self, output, clone_files=False):
         self.output = output
         self.entries = {}
+        self.clone_files = clone_files
 
     def copy(self, source):
         source = Path(os.path.abspath(source))
@@ -63,23 +87,37 @@ class Capture:
             # Never read a substituted symlink or write to an existing evidence file.
             fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             h = hashlib.sha256()
-            with os.fdopen(fd, 'rb') as src, target.open('xb') as dst:
+            with os.fdopen(fd, 'rb') as src:
                 before = os.fstat(src.fileno())
                 if not stat.S_ISREG(before.st_mode):
                     raise ValueError('Source changed to non-regular file')
-                remaining = before.st_size
-                while remaining:
-                    chunk = src.read(min(1024 * 1024, remaining))
-                    if not chunk:
-                        break
-                    dst.write(chunk)
-                    h.update(chunk)
-                    remaining -= len(chunk)
+                if self.clone_files:
+                    clone_descriptor(src.fileno(), target)
+                    snapshot = target.stat()
+                    if (snapshot.st_dev, snapshot.st_ino) == (before.st_dev, before.st_ino):
+                        raise ValueError('Evidence must have an independent inode')
+                    captured = snapshot.st_size
+                    remaining = 0
+                    entry['copyMethod'] = 'APFS clone of retained descriptor'
+                    checksum = digest(target)
+                else:
+                    remaining = before.st_size
+                    with target.open('xb') as dst:
+                        while remaining:
+                            chunk = src.read(min(1024 * 1024, remaining))
+                            if not chunk:
+                                break
+                            dst.write(chunk)
+                            h.update(chunk)
+                            remaining -= len(chunk)
+                    captured = before.st_size - remaining
+                    checksum = h.hexdigest()
+                    entry['copyMethod'] = 'bounded byte copy'
                 after = os.fstat(src.fileno())
             current = source.lstat()
             identity = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns)
             entry.update(kind='file', copied=True, copy=str(target.relative_to(self.output)),
-                         capturedBytes=before.st_size - remaining, sha256=h.hexdigest(),
+                         capturedBytes=captured, sha256=checksum,
                          stable=(remaining == 0 and identity(info) == identity(before)
                                  == identity(after) == identity(current)))
             os.chmod(target, 0o600)
@@ -97,7 +135,7 @@ class Capture:
                 self.copy(Path(directory) / name)
 
 
-def collect(profile, output, consoles=(), run_log=None):
+def collect(profile, output, consoles=(), run_log=None, clone_files=False):
     if run_log is not None and not re.fullmatch(r'game_\d+\.log', run_log):
         raise ValueError('Run log must be the exact game_<timestamp>.log basename')
     profile = profile.resolve()
@@ -105,7 +143,7 @@ def collect(profile, output, consoles=(), run_log=None):
     if output == profile or profile in output.parents:
         raise ValueError('Evidence output must be outside the profile')
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
-    capture = Capture(output)
+    capture = Capture(output, clone_files)
     launcher = profile / 'neutralinojs.log'
     capture.copy(launcher)
     # Preserve the profile's deployed build record/configuration as well as the
@@ -188,7 +226,7 @@ def collect(profile, output, consoles=(), run_log=None):
         result = subprocess.run(['git', '-C', str(repo), *args], capture_output=True, text=True)
         git[name] = {'exitCode': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr}
     manifest = dict(createdUTC=datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    profile=str(profile), runLog=run_log, git=git, identities=identities,
+                    profile=str(profile), runLog=run_log, cloneFiles=clone_files, git=git, identities=identities,
                     requestPaths=references, crashWindowEpoch=window,
                     files=list(capture.entries.values()),
                     notes=['Source files were only read; no Wine/process/protocol/cleanup actions.',
@@ -204,6 +242,7 @@ def main():
     parser.add_argument('--output', type=Path, help='New directory outside the profile; never overwritten')
     parser.add_argument('--console', type=Path, action='append', default=[], help='Exact console capture directory/file; repeatable')
     parser.add_argument('--run-log', help='Exact game_<timestamp>.log basename; include all its streams and the full launcher log')
+    parser.add_argument('--clone-files', action='store_true', help='Use independent APFS file clones to preserve large logs without duplicating storage; failure is recorded, never silently copied instead')
     args = parser.parse_args()
     os.umask(0o077)
     if args.output is None:
@@ -212,7 +251,7 @@ def main():
         # Reserve a unique parent, leaving the actual output nonexistent.
         parent = Path(tempfile.mkdtemp(prefix='manual-evidence-' + datetime.datetime.now().strftime('%Y%m%dT%H%M%S') + '-', dir=base))
         args.output = parent / 'capture'
-    print(collect(args.profile, args.output, args.console, args.run_log))
+    print(collect(args.profile, args.output, args.console, args.run_log, args.clone_files))
 
 
 if __name__ == '__main__':
