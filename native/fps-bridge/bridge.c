@@ -89,14 +89,10 @@ static int open_diagnostics(void) {
     return 1;
 }
 
+#include "memory-diagnostics.c"
+
 static int read_memory(uintptr_t address, void *buffer, SIZE_T length) {
-    SIZE_T read = 0;
-    BOOL ok = ReadProcessMemory(game, (void *)address, buffer, length, &read);
-    if (!ok || read != length)
-        diagnostic("read failed game=%lu address=0x%llx requested=%llu read=%llu ok=%d error=%lu",
-            game_pid, (unsigned long long)address, (unsigned long long)length,
-            (unsigned long long)read, ok, GetLastError());
-    return ok && read == length;
+    return memory_transfer(address, buffer, length, 0).error == 0;
 }
 
 /* Resolve only the documented E8 -> E9 chain ending in mov [rip+disp32],ecx.
@@ -198,6 +194,7 @@ static DWORD WINAPI apply_fps(void *unused) {
     HANDLE waits[] = {worker_stop, game};
     DWORD wait;
     int observed = 0, previous = 0;
+    MemoryCounters counts = {0};
     while ((wait = WaitForMultipleObjects(2, waits, FALSE, 0)) == WAIT_TIMEOUT) {
         if (diagnostic_failure()) {
             InterlockedExchange(&worker_error, (LONG)diagnostic_failure());
@@ -205,8 +202,11 @@ static DWORD WINAPI apply_fps(void *unused) {
             return 1;
         }
         int current;
-        SIZE_T written = 0;
-        int ok = read_memory(address, &current, sizeof(current));
+        MemoryTransfer transfer = memory_transfer(address, &current, sizeof(current), 0);
+        counts.reads++;
+        int ok = transfer.error == 0;
+        if (ok) counts.read_ok++;
+        if (ok && current == (int)target) counts.equal++;
         if (ok && (!observed || previous != current)) {
             diagnostic("read generation=%u game=%lu address=0x%llx value=%d target=%u action=%s", generation,
                 game_pid, (unsigned long long)address, current, target, current == (int)target ? "equal" : "write");
@@ -221,18 +221,20 @@ static DWORD WINAPI apply_fps(void *unused) {
                 InterlockedExchange(&worker_state, 4);
                 return 1;
             }
-            BOOL result = WriteProcessMemory(game, (void *)address, &target, sizeof(target), &written);
-            diagnostic("write end generation=%u game=%lu ok=%d written=%llu error=%lu", generation,
-                game_pid, result, (unsigned long long)written, result ? 0 : GetLastError());
-            ok = result && written == sizeof(target);
+            transfer = memory_transfer(address, &target, sizeof(target), 1);
+            counts.writes++;
+            ok = transfer.error == 0;
+            if (ok) counts.write_ok++;
         }
         if (!ok) {
-            DWORD error = GetLastError();
-            InterlockedExchange(&worker_error, error ? (LONG)error : ERROR_WRITE_FAULT);
+            DWORD error = transfer.error;
+            InterlockedExchange(&worker_error, (LONG)error);
             InterlockedExchange(&worker_state, 4);
             diagnostic("worker read/write failed generation=%u error=%lu", generation, error);
+            memory_heartbeat(&counts, address, 1);
             return 1;
         }
+        memory_heartbeat(&counts, address, 0);
         wait = WaitForMultipleObjects(2, waits, FALSE, 200);
         if (wait != WAIT_TIMEOUT) break;
     }
@@ -240,6 +242,7 @@ static DWORD WINAPI apply_fps(void *unused) {
         InterlockedExchange(&worker_error, (LONG)GetLastError());
         InterlockedExchange(&worker_state, 4);
     } else InterlockedExchange(&worker_state, 3);
+    memory_heartbeat(&counts, address, 1);
     diagnostic("worker ended generation=%u state=%ld", generation, InterlockedCompareExchange(&worker_state, 0, 0));
     return 0;
 }

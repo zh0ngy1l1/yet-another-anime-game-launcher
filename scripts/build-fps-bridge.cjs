@@ -77,6 +77,10 @@ if (process.argv.includes("--record")) {
           .createHash("sha256")
           .update(fs.readFileSync("native/fps-bridge/steam.c"))
           .digest("hex"),
+        memoryDiagnosticsSourceSha256: crypto
+          .createHash("sha256")
+          .update(fs.readFileSync("native/fps-bridge/memory-diagnostics.c"))
+          .digest("hex"),
         steamArtifacts,
         steamUpstreamRepository: "ValveSoftware/Proton",
         steamReferenceRevision: "8c0fbeb0503d2fc9ba7736b37e383279e45062bc",

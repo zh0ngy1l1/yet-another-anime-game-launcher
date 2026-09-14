@@ -11,7 +11,7 @@ import stat
 import subprocess
 import tempfile
 
-REQUEST = re.compile(r"/tmp/yaagl-(?:fps|owned-wine|launch)\.[A-Za-z0-9]{6,64}(?![A-Za-z0-9_.-])")
+REQUEST = re.compile(r"/tmp/yaagl-(?:fps|owned-wine|launch-fix|launch)\.[A-Za-z0-9]{6,64}(?![A-Za-z0-9_.-])")
 SETTINGS = (
     "game_install_dir", "wine_tag", "wine_state", "installed_dxmt_version",
     "config_hk4e_fps_unlock_enabled", "config_hk4e_fps_unlock_target",
@@ -106,6 +106,11 @@ def collect(profile, output, consoles=()):
     capture = Capture(output)
     launcher = profile / 'neutralinojs.log'
     capture.copy(launcher)
+    # Preserve the profile's deployed build record/configuration as well as the
+    # checkout identity; packaged and development profiles need not match HEAD.
+    capture.tree(profile / "manifests")
+    capture.copy(profile / "neutralino.config.json")
+    capture.copy(profile / "BUILD-NOTES.txt")
     launcher_copy = capture.entries[str(launcher)].get('copy')
     text = (output / launcher_copy).read_text(errors='replace') if launcher_copy else ''
     references = request_paths(text)
@@ -157,7 +162,8 @@ def collect(profile, output, consoles=()):
                 capture.copy(log)
     repo = Path(__file__).resolve().parents[1]
     identities = []
-    for path in (profile / 'sidecar/fps-bridge/fps-bridge.exe',
+    for path in (profile / 'resources.neu',
+                 profile / 'sidecar/fps-bridge/fps-bridge.exe',
                  profile / 'sidecar/protonextras/steam64.exe',
                  profile / 'sidecar/protonextras/lsteamclient64.dll',
                  profile / 'wine/lib/wine/x86_64-unix/ntdll.so',

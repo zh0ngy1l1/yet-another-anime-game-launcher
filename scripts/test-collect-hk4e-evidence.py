@@ -48,8 +48,30 @@ class EvidenceTest(unittest.TestCase):
             '/tmp/yaagl-fps.123456 /tmp/yaagl-fps.123456/response '
             '/tmp/yaagl-owned-wine.Abc123 /tmp/yaagl-bridge-fixture-Abc123 '
             '/tmp/yaagl-fps.123456-other /tmp/yaagl-launch.XXXXXXXXXX '
-            '/tmp/yaagl-launch.Abc1234567/journal.json'),
-            ['/tmp/yaagl-fps.123456', '/tmp/yaagl-launch.Abc1234567', '/tmp/yaagl-owned-wine.Abc123'])
+            '/tmp/yaagl-launch.Abc1234567/journal.json '
+            '/tmp/yaagl-launch-fix.XXXXXXXXXX /tmp/yaagl-launch-fix.Def1234567/status.json '
+            '/tmp/yaagl-launch-fix.Def1234567-not-a-request'),
+            ['/tmp/yaagl-fps.123456', '/tmp/yaagl-launch-fix.Def1234567',
+             '/tmp/yaagl-launch.Abc1234567', '/tmp/yaagl-owned-wine.Abc123'])
+
+    def test_preserves_deployed_build_separately_from_checkout(self):
+        with tempfile.TemporaryDirectory(prefix='yaagl-evidence-test-') as name:
+            root = Path(name).resolve()
+            profile = root / 'profile'
+            manifests = profile / 'manifests'
+            manifests.mkdir(parents=True)
+            build = manifests / 'build.json'
+            build.write_text('{"sourceCommit":"older-deployed-build"}')
+            config = profile / 'neutralino.config.json'
+            config.write_text('{"modes":{"window":{"title":"Yaagl OS"}}}')
+            output = root / 'capture'
+            with patch.object(collector.Path, 'home', return_value=root):
+                collector.collect(profile, output)
+            capture = json.loads((output / 'manifest.json').read_text())
+            entries = {entry['source']: entry for entry in capture['files']}
+            for original in [build, config]:
+                self.assertTrue(entries[str(original)]['stable'])
+                self.assertEqual((output / entries[str(original)]['copy']).read_bytes(), original.read_bytes())
 
     def test_copy_preserves_sources_and_records_symlink_and_missing(self):
         with tempfile.TemporaryDirectory(prefix='yaagl-evidence-test-') as name:

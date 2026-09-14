@@ -756,3 +756,35 @@ it("helper scan failure remains visibly failed while observing the live game", a
     "scan/write failed"
   );
 });
+
+it("keeps delayed worker87 and game access violation primary when cleanup succeeds", async () => {
+  const rig = launch("150", true),
+    transaction = rig.start();
+  await tick(11000);
+  expect(rig.native.status.generation).toBe(1);
+  rig.native.status.workerError = 87;
+  rig.native.status.workerState = 4;
+  rig.native.status.workerDone = 1;
+  // The worker completion is observed first; the game's already-raised fault
+  // reaches its retained exit HANDLE later, as in the preserved manual run.
+  await tick(1200);
+  expect(rig.ownership.state().held).toBe(true);
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  rig.native.status.exitCode = 0xc0000005;
+  const failure = await rig.finish(transaction);
+  expect(String(failure?.primary)).toContain(
+    "FPS target scan/write failed: 87"
+  );
+  expect(failure?.observationErrors.map(String).join("; ")).toContain(
+    "0xc0000005"
+  );
+  expect(failure?.cleanupErrors).toEqual([]);
+  expect(
+    String(failure).match(/FPS target scan\/write failed: 87/g)
+  ).toHaveLength(1);
+  expect(String(failure)).toContain("Cleanup completed.");
+  expect(String(failure)).not.toContain("Earlier cleanup errors");
+  expect(rig.native.events).toContain("registry:restore");
+  expect(rig.native.events).toContain("files-restored");
+  expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
+});

@@ -152,6 +152,7 @@ export function createLaunchTransaction(
           );
         const final = await watch(helper.completion, "FPS helper completion");
         if (final.error !== undefined) problem(final.error);
+        for (const error of final.observationErrors ?? []) problem(error);
         cleanupErrors.push(...final.cleanupErrors);
         if (final.cleanup !== "confirmed") {
           // A failed adapter outcome is not evidence of termination. Production

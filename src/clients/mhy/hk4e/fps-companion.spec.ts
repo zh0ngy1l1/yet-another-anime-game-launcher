@@ -672,3 +672,57 @@ describe("FPS companion cancellation boundaries", () => {
     expect(terminate).not.toHaveBeenCalled();
   });
 });
+
+describe("execution failures remain separate from cleanup outcomes", () => {
+  it.each(["worker-first", "stop-first"])(
+    "preserves a confirmed worker error observed %s",
+    async order => {
+      const h = harness();
+      const terminal = h.controller.start();
+      await tick(10);
+      const error = new Error("FPS target scan/write failed: 87");
+      if (order === "stop-first") {
+        vi.mocked(h.helpers[0].value.stop).mockImplementation(
+          () => h.helpers[0].exit.promise
+        );
+        h.controller.stop();
+      }
+      h.helpers[0].exit.resolve({ confirmed: true, error });
+      await tick(2);
+      expect(await terminal).toMatchObject({
+        reason: "failed",
+        error,
+        cleanup: "confirmed",
+        cleanupErrors: [],
+      });
+      expect(h.helpers[0].value.stop).toHaveBeenCalledOnce();
+      expect(h.spawn).toHaveBeenCalledOnce();
+    }
+  );
+  it("retains separate primary, late worker and actual cleanup failures", async () => {
+    const h = harness();
+    const terminal = h.controller.start();
+    await tick(10);
+    const primary = new Error("game observation failed");
+    const worker = new Error("FPS target scan/write failed: 87");
+    const cleanup = new Error("mailbox cleanup failed");
+    h.isAlive.mockRejectedValueOnce(primary);
+    vi.mocked(h.helpers[0].value.stop).mockImplementation(
+      () => h.helpers[0].exit.promise
+    );
+    await tick(1);
+    h.helpers[0].exit.resolve({
+      confirmed: true,
+      error: worker,
+      cleanupError: cleanup,
+    });
+    await tick(1);
+    expect(await terminal).toMatchObject({
+      reason: "failed",
+      error: primary,
+      observationErrors: [worker],
+      cleanup: "failed",
+      cleanupErrors: [cleanup],
+    });
+  });
+});

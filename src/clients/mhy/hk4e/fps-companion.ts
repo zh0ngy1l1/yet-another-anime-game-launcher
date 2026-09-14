@@ -47,6 +47,8 @@ export type FpsCompanionTiming = {
 export interface FpsCompanionOutcome {
   readonly reason: "stopped" | "game-exited" | "failed";
   readonly error?: unknown;
+  /** Additional execution/observation failures, never restoration failures. */
+  readonly observationErrors?: readonly unknown[];
   readonly cleanup: "confirmed" | "failed" | "unresolved";
   readonly cleanupErrors: readonly unknown[];
   readonly retainedDirectories: readonly string[];
@@ -114,6 +116,16 @@ export function createFpsCompanion(
   let started = false;
   let reason: FpsCompanionOutcome["reason"] = "stopped";
   let failure: unknown;
+  const observationErrors: unknown[] = [];
+  function executionFailure(error: unknown) {
+    reason = "failed";
+    if (failure === undefined) failure = error;
+    else if (
+      String(error) !== String(failure) &&
+      !observationErrors.some(previous => String(previous) === String(error))
+    )
+      observationErrors.push(error);
+  }
   let unconfirmed = false;
 
   function track<T>(operation: Promise<T>): Promise<T> {
@@ -136,7 +148,10 @@ export function createFpsCompanion(
           if (result.retainedDirectory)
             retainedDirectories.push(result.retainedDirectory);
           if (!result.confirmed) unconfirmed = true;
-          if (result.error !== undefined) cleanupErrors.push(result.error);
+          // stop() returns the retained execution outcome. A worker failure
+          // is still primary even when first observed while stopping. Only
+          // cleanupError (or a rejected stop) describes a cleanup operation.
+          if (result.error !== undefined) executionFailure(result.error);
           if (result.cleanupError !== undefined)
             cleanupErrors.push(result.cleanupError);
           if (!result.confirmed && result.error === undefined) {
@@ -294,10 +309,7 @@ export function createFpsCompanion(
       }
     } catch (error) {
       if (error === gameExited) reason = "game-exited";
-      else if (error !== cancelled) {
-        reason = "failed";
-        failure = error;
-      }
+      else if (error !== cancelled) executionFailure(error);
     }
     cancellation.abort();
     // Start cleanup immediately; do not wait for a hung read before stopping.
@@ -311,6 +323,9 @@ export function createFpsCompanion(
       return {
         reason,
         ...(failure === undefined ? {} : { error: failure }),
+        ...(observationErrors.length
+          ? { observationErrors: [...observationErrors] }
+          : {}),
         cleanup: unconfirmed || cleanupErrors.length ? "failed" : "confirmed",
         cleanupErrors: [...cleanupErrors],
         retainedDirectories: [...retainedDirectories],
@@ -324,6 +339,9 @@ export function createFpsCompanion(
         : {
             reason,
             ...(failure === undefined ? {} : { error: failure }),
+            ...(observationErrors.length
+              ? { observationErrors: [...observationErrors] }
+              : {}),
             cleanup: "unresolved",
             cleanupErrors: [...cleanupErrors],
             retainedDirectories: [...retainedDirectories],
