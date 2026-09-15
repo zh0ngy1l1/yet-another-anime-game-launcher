@@ -3,6 +3,17 @@ import { createWine } from "../../../wine/wine";
 import { exec } from "../../../utils";
 import { disposeR2Wine, prepareR2Wine } from "./prepare-r2";
 import type { Wine } from "../../../wine/wine";
+import { build } from "../../../utils/command-builder";
+import { spawnSync } from "child_process";
+import {
+  mkdtempSync,
+  realpathSync,
+  mkdirSync,
+  writeFileSync,
+  rmSync,
+} from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 
 vi.mock("../../../utils", () => ({
   exec: vi.fn(),
@@ -74,4 +85,41 @@ it("does not prepare or select a runtime when the original Wine wait fails", asy
 it("cleanup refuses the installed runtime", async () => {
   await expect(disposeR2Wine(input())).rejects.toThrow("Refusing unknown");
   expect(exec).not.toHaveBeenCalled();
+});
+it("transports the real multiline recipe and manifest through the shell boundary", async () => {
+  const directory = realpathSync(
+    mkdtempSync(join(tmpdir(), "yaagl-r2-shell-"))
+  );
+  try {
+    mkdirSync(join(directory, "wine/lib/wine/x86_64-unix"), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(directory, "wine/lib/wine/x86_64-unix/ntdll.so"),
+      "unexpected"
+    );
+    const wine = input();
+    Object.assign(wine, {
+      executionContext: {
+        ...context,
+        loader: join(directory, "wine/bin/wine"),
+      },
+    });
+    vi.mocked(exec).mockImplementation(async command => {
+      // Replace only the evidence parent; all recipe/manifest serialization is
+      // production code. Invalid ntdll must reach the hash gate, never Wine.
+      const args = [...command];
+      args[args.length - 2] = join(directory, "prepared");
+      const result = spawnSync("/bin/bash", ["-c", build(args)], {
+        encoding: "utf8",
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Unsupported Wine ntdll bytes");
+      throw Error("verified rejection");
+    });
+    await expect(prepareR2Wine(wine)).rejects.toThrow("verified rejection");
+    expect(createWine).not.toHaveBeenCalled();
+  } finally {
+    rmSync(directory, { recursive: true });
+  }
 });

@@ -13,11 +13,12 @@ export async function prepareR2Wine(wine: Wine) {
   const { stdOut } = await exec([
     "/usr/bin/perl",
     "-e",
-    recipe,
+    "use MIME::Base64; my $code = decode_base64(shift @ARGV); eval $code; die $@ if $@;",
     "--",
+    btoa(recipe),
     dirname(dirname(context.loader)),
     parent,
-    manifest,
+    JSON.stringify(JSON.parse(manifest)),
   ]);
   const root = stdOut.replace(/\n$/, "");
   if (
