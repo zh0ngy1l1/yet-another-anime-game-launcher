@@ -23,6 +23,7 @@ jobs:
         run: |
           npm exec --yes --package=node@16.20.2 --package=pnpm@7.33.7 --call 'pnpm test && pnpm run precommit && node scripts/verify-macos-package.cjs build/hk4eos'
           python3 scripts/test-collect-hk4e-evidence.py
+          python3 scripts/test-sophon-online-info.py
       - name: Build distinct China package
         run: YAAGL_CHANNEL_CLIENT=hk4ecn ./build-macos.sh
       - name: Verify China and preserve other channel frontend coverage

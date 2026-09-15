@@ -5,6 +5,7 @@ from progress_handlers import InstallProgressHandler, RepairProgressHandler, Upd
 from models import InstallRequest, RepairRequest, UpdateRequest, TaskStatus, OnlineGameInfo
 from utils import ConnectionManager
 from sophon_api import Options, SophonClient, force_memory_release, RUN_MEMORY_HACK, WORKER_CNT
+from online_info import game_download_size
 
 
 def update_config_ini_version(gamedir: pathlib.Path, version: str):
@@ -194,11 +195,13 @@ def fetch_online_game_info(reltype: str, game: Literal["nap", "hk4e"]) -> Online
             cli = SophonClient()
             cli.initialize(options)
             cli.retrieve_API_keys()
-            cli.load_manifest("game")
+            # The summary contains the same non-deduplicated compressed total
+            # as get_chunk_download_size(False). Startup needs no chunk data.
+            download_size = game_download_size(cli.get_getBuild_json(True), cli.branches_json["tag"])
 
             online_info = {
                 "version": cli.branches_json["tag"],
-                "install_size": int(cli.get_chunk_download_size(False)),
+                "install_size": download_size,
                 "updatable_versions": cli.branches_json["diff_tags"],
                 "release_type": reltype,
             }
