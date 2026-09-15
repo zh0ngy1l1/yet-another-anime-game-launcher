@@ -27,6 +27,10 @@ python = 'cpython-3.13.15-macos-x86_64-none'
 subprocess.run(['uv', 'sync', '--frozen', '--python', python], cwd=project, check=True)
 shutil.copy2(root / 'sidecar/hpatchz/hpatchz', project / 'hpatchz')
 try:
+    distribution = project / 'build/server.dist'
+    assert not distribution.is_symlink()
+    if distribution.exists():
+        shutil.rmtree(distribution)  # Only generated output; never a profile.
     subprocess.run(['uv', 'run', '--frozen', '--python', python, 'nuitka',
                     '--standalone', '--disable-ccache', '--python-flag=isolated', '--include-data-files=./hpatchz=./hpatchz',
                     '--output-filename=sophon-server', '--output-dir=./build',

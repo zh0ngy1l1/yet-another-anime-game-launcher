@@ -2,11 +2,18 @@
 const fs = require("fs"), path = require("path"), cp = require("child_process"),
   crypto = require("crypto"), assert = require("assert/strict");
 const root = path.resolve(__dirname, "..");
+const python = process.env.YAAGL_BUILD_PYTHON || "python3.13";
 process.chdir(root);
 const run = (command, args, options = {}) => cp.execFileSync(command, args, {stdio: "inherit", ...options});
 const output = (command, args) => cp.execFileSync(command, args, {encoding: "utf8"}).trim();
 const sha = file => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const write = (file, value) => { fs.mkdirSync(path.dirname(file), {recursive:true}); fs.writeFileSync(file, JSON.stringify(value,null,2)+"\n"); };
+function copyTracked(prefix, destination) {
+  for(const file of output("git",["ls-files","--",prefix]).split("\n").filter(Boolean)) {
+    const target = path.join(destination,path.relative(prefix,file));
+    fs.mkdirSync(path.dirname(target),{recursive:true}); fs.copyFileSync(file,target);
+  }
+}
 function inventory(directory) {
   const files = [];
   function walk(current) {
@@ -40,8 +47,8 @@ async function main() {
   fs.copyFileSync(js,"neutralino.js");
   fs.writeFileSync("src/clients/secret.ts",Buffer.from(fs.readFileSync("src/clients/secret.b64","utf8"),"base64"));
   run(process.execPath,["scripts/build-fps-bridge.cjs","--build-manifest"]);
-  run("python3",["scripts/build-hk4e-native.py"]);
-  run("python3",["scripts/build-sophon.py"]);
+  run(python,["scripts/build-hk4e-native.py"]);
+  run(python,["scripts/build-sophon.py"]);
   run("pnpm",["exec","tsc"]);
   const native = JSON.parse(fs.readFileSync("bin/hk4e-neutralino-arm64.json"));
   const bridge = JSON.parse(fs.readFileSync(".tmp/build-fps-bridge-record.json"));
@@ -57,7 +64,7 @@ async function main() {
   const env = {...process.env,YAAGL_CHANNEL_CLIENT:channel,YAAGL_LOCAL_BUILD:"1"};
   run("pnpm",["exec","vite","build","--outDir",path.join(stage,"dist")],{env});
   fs.copyFileSync("neutralino.js",path.join(stage,"dist/neutralino.js"));
-  fs.cpSync("src/icons",path.join(stage,"src/icons"),{recursive:true});
+  copyTracked("src/icons",path.join(stage,"src/icons"));
   const config = JSON.parse(fs.readFileSync("neutralino.config.json"));
   config.applicationId = `com.zh0ngy1l1.yaagl.${channel}`;
   assert.equal(config.modes.window.title,"Yaagl OS"); assert.equal(config.modes.window.hidden,true);
@@ -66,13 +73,15 @@ async function main() {
   const asar = neuRequire("asar");
   await asar.createPackage(stage,path.join(resources,"resources.neu"));
   fs.copyFileSync("bin/hk4e-neutralino-arm64",path.join(mac,"Yaagl"));
-  for(const name of fs.readdirSync("sidecar")) {
-    if(name !== "sophon_server") fs.cpSync(path.join("sidecar",name),path.join(resources,"sidecar",name),{recursive:true});
+  copyTracked("sidecar",path.join(resources,"sidecar"));
+  for(const name of ["fps-bridge.exe","LICENSE.upstream","LICENSE.steam"]) {
+    const target = path.join(resources,"sidecar/fps-bridge",name);
+    fs.mkdirSync(path.dirname(target),{recursive:true}); fs.copyFileSync(path.join("sidecar/fps-bridge",name),target);
   }
   fs.cpSync("sophon_server/build/server.dist",path.join(resources,"sidecar/sophon_server"),{recursive:true});
-  fs.cpSync("native/notices",path.join(resources,"licenses"),{recursive:true});
-  fs.cpSync("native/wine-r2",path.join(resources,"runtime-r2"),{recursive:true});
-  fs.cpSync("native/xdelta",path.join(resources,"sources/xdelta"),{recursive:true});
+  copyTracked("native/notices",path.join(resources,"licenses"));
+  copyTracked("native/wine-r2",path.join(resources,"runtime-r2"));
+  copyTracked("native/xdelta",path.join(resources,"sources/xdelta"));
   fs.copyFileSync("scripts/build-xdelta.py",path.join(resources,"sources/xdelta/build-xdelta.py"));
   const profile = channel === "hk4eos" ? "Yaagl OS R2" : "Yaagl China R2";
   fs.writeFileSync(path.join(mac,"parameterized"),`#!/bin/bash
@@ -102,7 +111,7 @@ PATH_LAUNCH="$(dirname -- "$CONTENTS_DIR")" exec "$SCRIPT_DIR/Yaagl" --path="$PR
   write(path.join(resources,"manifests/fps-bridge-build.json"),bridge);
   write(path.join(resources,"manifests/sophon-files.json"),inventory(path.join(resources,"sidecar/sophon_server")));
   write(path.join(resources,"manifests/sidecar-files.json"),inventory(path.join(resources,"sidecar")));
-  const members = asar.listPackage(path.join(resources,"resources.neu")).filter(name=>!asar.statFile(path.join(resources,"resources.neu"),name).files).map(name=>({path:name,sha256:crypto.createHash("sha256").update(asar.extractFile(path.join(resources,"resources.neu"),name)).digest("hex")}));
+  const members = asar.listPackage(path.join(resources,"resources.neu")).map(name=>name.replace(/^\//, "")).filter(name=>!asar.statFile(path.join(resources,"resources.neu"),name).files).map(name=>({path:name,sha256:crypto.createHash("sha256").update(asar.extractFile(path.join(resources,"resources.neu"),name)).digest("hex")}));
   write(path.join(resources,"manifests/asar-files.json"),members);
   write(path.join(resources,"manifests/build.json"),{sourceCommit:commit,channel,node:process.version,pnpm:"7.33.7",native,bridge,resourcesSha256:sha(path.join(resources,"resources.neu")),runtimeDeltaSha256:sha("native/wine-r2/delta.json"),lockfiles:{"pnpm-lock.yaml":sha("pnpm-lock.yaml"),"sophon_server/uv.lock":sha("sophon_server/uv.lock")},profile:`~/Library/Application Support/${profile}`,signing:"ad-hoc native; outer bundle unsigned, not notarized",procedureReproducible:true,byteIdenticalBuildClaim:false});
   const files = inventory(app);

@@ -8,11 +8,13 @@ macOS releases is untested. This build does not claim Intel-native, universal,
 Linux or Windows application support. Wine, Sophon and several helpers are Intel
 binaries, so Rosetta 2 must already be installed.
 
-Install Xcode Command Line Tools, Git, npm, Python 3.13 or newer, `uv`, and
+Install Xcode Command Line Tools, Git, npm, Python 3.13 (`python3.13`), `uv`, and
 `x86_64-w64-mingw32-gcc` on PATH. The tested tools are Apple Clang 21.0.0,
 MinGW GCC 16.2.0 and uv 0.12.10. Homebrew's `mingw-w64` provides the cross compiler.
 No signing certificate or paid developer account is required. Allow roughly
 10 GB for a clean build and its downloaded tool/runtime inputs, excluding game data.
+Run from a native Apple Silicon terminal. `YAAGL_BUILD_PYTHON` may select another
+explicit Python 3.13-or-newer executable.
 
 The command selects **Node 16.20.2 and pnpm 7.33.7** itself. It installs the
 JavaScript lockfile without updating it. Sophon uses its frozen uv lockfile and
