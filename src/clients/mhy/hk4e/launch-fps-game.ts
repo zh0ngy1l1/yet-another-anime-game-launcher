@@ -25,6 +25,7 @@ export function launchFpsGame(
     registryResolution: boolean;
     launchFix?: ReturnType<typeof createLaunchFix>;
     resources: (enabledFps?: boolean) => CommonUpdateProgram;
+    finishRuntime?: () => Promise<void>;
     setup: (
       capture: (path: string) => Promise<void>,
       progress: (command: CommonProgressUICommand) => void
@@ -205,6 +206,7 @@ export function launchFpsGame(
             await preparationRecovery();
             preparationRecovery = undefined;
           }
+          await input.finishRuntime?.();
           return [];
         }
         await bridge.settleRegistry();
@@ -279,6 +281,7 @@ export function launchFpsGame(
           await journal.dispose();
           journalDisposed = true;
         }
+        await input.finishRuntime?.();
         await bridge.dispose();
         void log(
           `FPS request ${bridge.token}: registry/file restoration and private resource cleanup completed`

@@ -11,6 +11,7 @@ export interface WineDistribution {
   id: string;
   displayName: string;
   remoteUrl: string;
+  archiveSha256?: string;
   attributes: Partial<WineDistributionAttributes>;
 }
 
@@ -30,6 +31,8 @@ const YAAGL_BUILTIN_WINE: WineDistribution[] = [
     displayName: "Wine 11.0 DXMT (signed, with patches)",
     remoteUrl:
       "https://github.com/yaagl/anime-game-wine/releases/download/wine-11.0-signed/wine-devel-11.0-osx64-signed.tar.xz",
+    archiveSha256:
+      "4ebba536115e937c3826fa5808dbed50cd5e91c8454999b54cbe0cd2a43d8b4c",
     attributes: {
       renderBackend: "dxmt",
       winePath: "wine",

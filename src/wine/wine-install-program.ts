@@ -33,8 +33,10 @@ export async function createWineInstallProgram({
 }) {
   async function* program(): CommonUpdateProgram {
     const wineBinaryDir = resolve("./wine");
+    const hk4e = String(import.meta.env["YAAGL_CHANNEL_CLIENT"]).startsWith(
+      "hk4e"
+    );
 
-    await rmrf_dangerously(wineAbsPrefix);
     yield ["setStateText", "DOWNLOADING_ENVIRONMENT"];
     const isXZ = wineDistro.remoteUrl.endsWith(".xz");
     const wineTarPath = resolve("./wine.tar." + (isXZ ? "xz" : "gz"));
@@ -54,6 +56,21 @@ export async function createWineInstallProgram({
     }
     yield ["setStateText", "EXTRACT_ENVIRONMENT"];
     yield ["setUndeterminedProgress"];
+    if (wineDistro.archiveSha256) {
+      const { stdOut } = await exec([
+        "/usr/bin/shasum",
+        "-a",
+        "256",
+        wineTarPath,
+      ]);
+      if (stdOut.split(" ")[0] !== wineDistro.archiveSha256)
+        throw new Error(
+          "Wine archive integrity mismatch; existing state retained"
+        );
+    }
+    // Wine upgrades can update an existing HK4E prefix in place. Never erase
+    // that user's registry/saves merely to install the R2-capable base runtime.
+    if (!hk4e) await rmrf_dangerously(wineAbsPrefix);
     await rmrf_dangerously(wineBinaryDir);
     await exec(["mkdir", "-p", wineBinaryDir]);
     if (wineDistro.attributes.winePath) {
@@ -74,12 +91,21 @@ export async function createWineInstallProgram({
     yield ["setStateText", "CONFIGURING_ENVIRONMENT"];
 
     await addCertsToWine(wineBinaryDir);
-    await xattrRemove("com.apple.quarantine", wineBinaryDir);
+    if (hk4e)
+      await exec([
+        "/usr/bin/xattr",
+        "-dr",
+        "com.apple.quarantine",
+        wineBinaryDir,
+      ]);
+    else await xattrRemove("com.apple.quarantine", wineBinaryDir);
 
     yield ["setStateText", "CONFIGURING_ENVIRONMENT"];
 
     yield ["setUndeterminedProgress"];
-    await ensureHosts(ENSURE_HOSTS);
+    // HK4E's explicit Launch Fix owns host changes and restoration per launch.
+    // Runtime installation must not silently enable it or request sudo.
+    if (!hk4e) await ensureHosts(ENSURE_HOSTS);
 
     const wine = await createWine({
       prefix: wineAbsPrefix,

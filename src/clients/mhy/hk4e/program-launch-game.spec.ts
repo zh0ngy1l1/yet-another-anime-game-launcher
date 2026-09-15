@@ -13,6 +13,12 @@ import type { Server } from "../../../constants";
 import { prepareFpsBridge } from "./fps-bridge";
 import { boundary } from "./fps-integration-fixture";
 import { createLaunchFix } from "./launch-fix";
+import { prepareR2Wine, disposeR2Wine } from "./prepare-r2";
+
+vi.mock("./prepare-r2", () => ({
+  prepareR2Wine: vi.fn(async (wine: Wine) => wine),
+  disposeR2Wine: vi.fn(async () => undefined),
+}));
 
 vi.mock("./launch-fix", () => ({
   createLaunchFix: vi.fn(() => {
@@ -132,7 +138,7 @@ it.each([false, true])(
       steam ? "C:\\windows\\system32\\steam.exe" : "cmd",
       steam ? ["Z:\\game\\GenshinImpact.exe"] : ["/c", "Z:\\app\\config.bat "],
       expect.objectContaining({
-        WINEDEBUG: "fixme-all,err-unwind,+timestamp,+seh,+loaddll",
+        WINEDEBUG: "fixme-all,err-unwind,+timestamp,err+seh,+loaddll",
         DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
         MTL_HUD_ENABLED: "1",
         WINE_ENABLE_TIMEOUT_FIX: "1",
@@ -269,9 +275,22 @@ it.each([false, true])(
       vi.mocked(prepareFpsBridge).mockImplementationOnce(input =>
         actual.prepareFpsBridge(input, native.io)
       );
+      vi.mocked(prepareR2Wine).mockImplementationOnce(async wine => ({
+        ...wine,
+        executionContext: {
+          ...wine.executionContext,
+          loader: "/prepared/bin/wine",
+        },
+      }));
       const running = drain(launchGameProgram(request));
       await vi.advanceTimersByTimeAsync(11000);
       expect(native.events).toContain("fps:60");
+      expect(
+        native.io.start.mock.calls.every(
+          call => call[0].wine.loader === "/prepared/bin/wine"
+        )
+      ).toBe(true);
+      expect(disposeR2Wine).not.toHaveBeenCalled();
       expect(patchCalls).toHaveLength(1);
       expect(patchCalls[0][3]).toMatchObject({ steamPatch: steam });
       expect(captured).toContain("/app/config.bat");
@@ -455,6 +474,8 @@ it.each(
         await vi.advanceTimersByTimeAsync(100);
       }
       await running;
+      expect(prepareR2Wine).toHaveBeenCalledTimes(fps ? 1 : 0);
+      expect(disposeR2Wine).toHaveBeenCalledTimes(fps ? 1 : 0);
       expect(launchOwnership.state().held).toBe(false);
       expect(files.has("/app/config.bat")).toBe(false);
       expect(request.config.blockNet).toBe(block);

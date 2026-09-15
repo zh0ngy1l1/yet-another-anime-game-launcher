@@ -79,9 +79,12 @@ export async function* patchProgram(
 
   const system32Dir = join(wine.prefix, "drive_c", "windows", "system32");
   const syswow64Dir = join(wine.prefix, "drive_c", "windows", "syswow64");
+  const wineRoot = wine.executionContext
+    ? dirname(dirname(wine.executionContext.loader))
+    : resolve("./wine");
 
   for (const f of DXMT_FILES) {
-    const wineLibPath = resolve(`./wine/lib/wine/x86_64-windows/${f}`);
+    const wineLibPath = join(wineRoot, `lib/wine/x86_64-windows/${f}`);
     await move(wineLibPath, wineLibPath + ".bak");
     await copy(`./dxmt/${f}`, wineLibPath);
   }
@@ -89,12 +92,12 @@ export async function* patchProgram(
   // winemetal files always go to Wine lib directories
   await copy(
     `./dxmt/winemetal.dll`,
-    resolve("./wine/lib/wine/x86_64-windows/winemetal.dll")
+    join(wineRoot, "lib/wine/x86_64-windows/winemetal.dll")
   );
 
   await copy(
     `./dxmt/winemetal.so`,
-    resolve("./wine/lib/wine/x86_64-unix/winemetal.so")
+    join(wineRoot, "lib/wine/x86_64-unix/winemetal.so")
   );
 
   // winemetal.dll also to system32 for both native and builtin

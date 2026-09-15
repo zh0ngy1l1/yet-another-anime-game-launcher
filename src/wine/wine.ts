@@ -19,8 +19,10 @@ import { WineDistribution } from "./distro";
 export async function createWine(options: {
   prefix: string;
   distro: WineDistribution;
+  runtimeRoot?: string;
+  environment?: Readonly<Record<string, string>>;
 }) {
-  const loaderBin = await getCorrectWineBinary();
+  const loaderBin = await getCorrectWineBinary(options.runtimeRoot);
 
   async function cmd(command: string, args: string[]) {
     return await exec("cmd", [command, ...args]);
@@ -78,6 +80,7 @@ export async function createWine(options: {
   function getEnvironmentVariables() {
     return {
       WINEDEBUG: "fixme-all,err-unwind,+timestamp",
+      ...options.environment,
       WINEPREFIX: options.prefix,
     };
   }
@@ -181,14 +184,14 @@ reg add "HKEY_LOCAL_MACHINE\\SOFTWARE\\NVIDIA Corporation\\Global\\NGXCore" /v F
   };
 }
 
-export async function getCorrectWineBinary() {
+export async function getCorrectWineBinary(root = resolve("./wine")) {
   try {
     // use wine64 if it is presented
     // in newer version of wine (esp. WoW64 mode), only one binary `bin/wine` exists
-    await stats("./wine/bin/wine64");
-    return resolve("./wine/bin/wine64");
+    await stats(join(root, "bin/wine64"));
+    return join(root, "bin/wine64");
   } catch {
-    return resolve("./wine/bin/wine");
+    return join(root, "bin/wine");
   }
 }
 

@@ -1,4 +1,5 @@
 import { createLaunchJournal } from "./launch-journal";
+import { disposeR2Wine, prepareR2Wine } from "./prepare-r2";
 import {
   launchOwnership,
   LaunchFailure,
@@ -411,17 +412,23 @@ async function* ownedLaunchGameProgram(
   const owner = launchOwnership.claim();
   input = { ...input, config: { ...input.config } };
   let delegated = false;
+  let preparedRuntime: Wine | undefined;
   try {
-    const admitted = await admitFpsLaunch({
+    const admission = await admitFpsLaunch({
       ...input,
       server: input.server.id,
     });
     if (signal.aborted) throw new Error("Launch cancelled before preparation");
-    if (!admitted) {
+    if (!admission) {
       yield* resources();
       yield* launchGameDisabledProgram(input, owner, signal);
       return;
     }
+    preparedRuntime = await prepareR2Wine(input.wine);
+    input = { ...input, wine: preparedRuntime };
+    const admitted = { ...admission, wine: input.wine.executionContext };
+    if (signal.aborted)
+      throw new Error("Launch cancelled after R2 preparation");
     const { gameDir, gameExecutable, wine, config, server } = input;
     const transaction = launchFpsGame(
       {
@@ -430,6 +437,7 @@ async function* ownedLaunchGameProgram(
         config,
         server,
         resources,
+        finishRuntime: () => disposeR2Wine(wine),
         environment: gameEnvironment(wine, config),
         registryResolution:
           config.resolutionCustom && !!resolutionDimensions(config),
@@ -512,7 +520,10 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
       ? error
       : new LaunchFailure(String(error), error);
   } finally {
-    if (!delegated) owner.finish();
+    if (!delegated) {
+      if (preparedRuntime) await disposeR2Wine(preparedRuntime);
+      owner.finish();
+    }
   }
 }
 
