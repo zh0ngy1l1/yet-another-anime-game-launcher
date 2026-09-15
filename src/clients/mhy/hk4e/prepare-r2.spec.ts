@@ -86,6 +86,22 @@ it("cleanup refuses the installed runtime", async () => {
   await expect(disposeR2Wine(input())).rejects.toThrow("Refusing unknown");
   expect(exec).not.toHaveBeenCalled();
 });
+it("accepts and cleans up File::Temp names containing underscores", async () => {
+  const root = "/profile/fps-runtime/r2-O1_KLketXY/wine";
+  const prepared = {
+    executionContext: { ...context, loader: `${root}/bin/wine` },
+  } as unknown as Wine;
+  vi.mocked(exec).mockResolvedValue({ stdOut: `${root}\n` } as never);
+  vi.mocked(createWine).mockResolvedValue(prepared);
+  expect(await prepareR2Wine(input())).toBe(prepared);
+  await disposeR2Wine(prepared);
+  expect(exec).toHaveBeenLastCalledWith([
+    "/bin/rm",
+    "-rf",
+    "--",
+    "/profile/fps-runtime/r2-O1_KLketXY",
+  ]);
+});
 it("transports the real multiline recipe and manifest through the shell boundary", async () => {
   const directory = realpathSync(
     mkdtempSync(join(tmpdir(), "yaagl-r2-shell-"))

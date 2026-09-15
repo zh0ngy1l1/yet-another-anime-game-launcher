@@ -24,7 +24,7 @@ export async function prepareR2Wine(wine: Wine) {
   if (
     dirname(dirname(root)) !== parent ||
     basename(root) !== "wine" ||
-    !/^r2-[A-Za-z0-9]{10}$/.test(basename(dirname(root)))
+    !/^r2-[A-Za-z0-9_]{10}$/.test(basename(dirname(root)))
   )
     throw new Error(
       "Unknown R2 preparation result; retain preparation evidence"
@@ -52,7 +52,7 @@ export async function disposeR2Wine(wine: Wine) {
   const directory = dirname(dirname(dirname(wine.executionContext.loader)));
   if (
     dirname(directory) !== resolve("./fps-runtime") ||
-    !/^r2-[A-Za-z0-9]{10}$/.test(basename(directory))
+    !/^r2-[A-Za-z0-9_]{10}$/.test(basename(directory))
   )
     throw new Error("Refusing unknown prepared runtime cleanup");
   await exec(["/bin/rm", "-rf", "--", directory]);
