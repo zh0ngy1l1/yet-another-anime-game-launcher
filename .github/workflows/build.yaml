@@ -1,96 +1,38 @@
-name: "Regular CI Build"
+name: macOS HK4E build
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 60
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
-      - name: Install UV
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 16.20.2
+      - name: Build prerequisites
+        run: brew install mingw-w64 uv python@3.13
+      - name: Build Global from tracked/public inputs
+        run: ./build-macos.sh
+      - name: Source and package checks
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
-
-      - name: Sophon Build Cache
-        id: sophon-build-cache
-        uses: actions/cache@v4
-        with:
-          key: cache-key-${{ hashFiles('build-sophon.sh', 'sophon_server/*.py', 'sophon_server/uv.lock', 'sophon_server/.python-version', 'sophon_server/pyproject.toml') }}
-          path: |
-            ./sophon_server/build/
-            ./sophon_server/.cache/
-
-      - name: Sophon Build
-        if: ${{ steps.sophon-build-cache.outputs.cache-hit != 'true' }}
+          npm exec --yes --package=node@16.20.2 --package=pnpm@7.33.7 --call 'pnpm test && pnpm run precommit && node scripts/verify-macos-package.cjs build/hk4eos'
+          python3 scripts/test-collect-hk4e-evidence.py
+      - name: Build distinct China package
+        run: YAAGL_CHANNEL_CLIENT=hk4ecn ./build-macos.sh
+      - name: Verify China and preserve other channel frontend coverage
         run: |
-          ./build-sophon.sh
-
-      - name: Save Sophon Build Cache
-        if: ${{ steps.sophon-build-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
+          npm exec --yes --package=node@16.20.2 --package=pnpm@7.33.7 --call 'node scripts/verify-macos-package.cjs build/hk4ecn'
+          for channel in bh3glb hkrpgcn hkrpgos napcn napos; do
+            YAAGL_CHANNEL_CLIENT="$channel" npm exec --yes --package=node@16.20.2 --package=pnpm@7.33.7 --call "pnpm exec vite build --outDir build/frontend-$channel"
+          done
+      - uses: actions/upload-artifact@v4
         with:
-          key: cache-key-${{ hashFiles('build-sophon.sh', 'sophon_server/*.py', 'sophon_server/uv.lock', 'sophon_server/.python-version', 'sophon_server/pyproject.toml') }}
-          path: |
-            ./sophon_server/build/
-            ./sophon_server/.cache/
-
-      - name: Install Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: 16
-
-      - uses: pnpm/action-setup@v2
-        name: Install pnpm
-        id: pnpm-install
-        with:
-          version: 7
-          run_install: false
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
-
-      - uses: actions/cache@v3
-        name: Setup pnpm cache
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build app
-        run: |
-          ./configure.sh
-          pnpm run format-check
-          pnpm run lint
-          YAAGL_CHANNEL_CLIENT=hk4ecn node ./build-app.js
-          YAAGL_CHANNEL_CLIENT=hk4eos node ./build-app.js
-          YAAGL_CHANNEL_CLIENT=bh3glb node ./build-app.js
-          YAAGL_CHANNEL_CLIENT=hkrpgcn node ./build-app.js
-          YAAGL_CHANNEL_CLIENT=hkrpgos node ./build-app.js
-          YAAGL_CHANNEL_CLIENT=napcn node ./build-app.js
-          YAAGL_CHANNEL_CLIENT=napos node ./build-app.js
-
-      # - name: Tar app
-      #   run: |
-      #     tar -zcf Yaagl.tar.gz Yaagl.app
-      #     tar -zcf "Yaagl OS.tar.gz" "Yaagl OS.app"
-      #     tar -zcf "Yaagl Honkai Global.tar.gz" "Yaagl Honkai Global.app"
-      # - name: Upload artifact - app
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: app
-      #     path: Yaagl.tar.gz
-      # - name: Upload artifact - app-os
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: app-os
-      #     path: "Yaagl OS.tar.gz"
+          name: macOS-local-apps
+          path: build/hk4e*/
+          retention-days: 7

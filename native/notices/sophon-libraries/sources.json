@@ -1,0 +1,32 @@
+[
+  {
+    "name": "curl-8.12.1-COPYING",
+    "url": "https://raw.githubusercontent.com/curl/curl/curl-8_12_1/COPYING",
+    "sha256": "e18f1989333b70044b2adfb7dc2f905d0119dbdcac3bc9f4bc9d540e3a29de5b"
+  },
+  {
+    "name": "brotli-1.1.0-LICENSE",
+    "url": "https://raw.githubusercontent.com/google/brotli/v1.1.0/LICENSE",
+    "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+  },
+  {
+    "name": "openssl-3.4.1-LICENSE.txt",
+    "url": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.4.1/LICENSE.txt",
+    "sha256": "7d5450cb2d142651b8afa315b5f238efc805dad827d91ba367d8516bc9d49e7a"
+  },
+  {
+    "name": "nghttp2-1.64.0-COPYING",
+    "url": "https://raw.githubusercontent.com/nghttp2/nghttp2/v1.64.0/COPYING",
+    "sha256": "6b94f3abc1aabd0c72a7c7d92a77f79dda7c8a0cb3df839a97890b4116a2de2a"
+  },
+  {
+    "name": "libssh2-1.11.1-COPYING",
+    "url": "https://raw.githubusercontent.com/libssh2/libssh2/libssh2-1.11.1/COPYING",
+    "sha256": "f7f9633cf9ff2f1333f3d7ce46973a8716a4d2a2815ad56f30d437d5fea7bafe"
+  },
+  {
+    "name": "zlib-1.3.1-LICENSE",
+    "url": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/LICENSE",
+    "sha256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243"
+  }
+]

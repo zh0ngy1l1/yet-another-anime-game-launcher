@@ -1,0 +1,27 @@
+{
+  "sha256": "fc2d20619ad6c3d4b1c8769ab836f2d004d4898925ac5f986ffc66b439a222a5",
+  "architecture": "x86_64",
+  "minimumMacOS": "11.0",
+  "sourceArchiveSha256": "7515cf5378fca287a57f4e2fee1094aabc79569cfe60d91e06021a8fd7bae29d",
+  "flags": [
+    "-arch",
+    "x86_64",
+    "-mmacosx-version-min=11.0",
+    "-O2",
+    "-DHAVE_CONFIG_H=0",
+    "-DSIZEOF_SIZE_T=8",
+    "-DSIZEOF_UNSIGNED_INT=4",
+    "-DSIZEOF_UNSIGNED_LONG=8",
+    "-DSIZEOF_UNSIGNED_LONG_LONG=8",
+    "-DXD3_MAIN=1",
+    "-DSECONDARY_DJW=1",
+    "-DSECONDARY_FGK=1",
+    "-DHAVE_LZMA_H=1"
+  ],
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "dependencies": [
+    "\t/usr/lib/liblzma.5.dylib (compatibility version 6.0.0, current version 6.3.0)",
+    "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+  ],
+  "signing": "ad-hoc, not notarized"
+}

@@ -131,6 +131,7 @@ arch = os.environ.get("FPS_NATIVE_ARCH", platform.machine())
 if arch not in ("arm64", "x86_64"):
     raise SystemExit("Unsupported macOS architecture")
 target = ROOT / "bin" / ("hk4e-neutralino-" + arch)
+target.parent.mkdir(parents=True, exist_ok=True)
 args = ["/usr/bin/clang++", "-ObjC++", "-std=" + config["std"], "-arch", arch]
 for directory in config["include"]["*"]:
     args.extend(["-I", directory])

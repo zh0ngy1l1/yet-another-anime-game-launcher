@@ -1,5 +1,26 @@
 # Yet another anime game launcher (Yaagl)
 
+## Build this fork on Apple Silicon
+
+See [the complete macOS build instructions](docs/build-macos.md) for prerequisites,
+source/artifact verification and separate Global/China outputs. With the documented
+prerequisites installed:
+
+```sh
+git clone https://github.com/zh0ngy1l1/yet-another-anime-game-launcher.git
+cd yet-another-anime-game-launcher
+./build-macos.sh
+```
+
+Output: `build/hk4eos/Yaagl OS.app`. This local build uses an ad-hoc signed ARM64
+launcher, is not notarized, and requires Rosetta for Intel runtime/helpers.
+[FPS settings, automatic R2 preparation, cleanup and rollback](docs/fps-runtime.md)
+describe the supported route and finite gameplay evidence.
+
+The upstream installation notes below describe upstream releases; those releases
+do not include this fork's R2 delivery changes.
+
+
 ## Current Supported Game Version:
 ### GI: 5.3.0+ OS/CN **
 ### HSR: 4.3.0+ OS/CN

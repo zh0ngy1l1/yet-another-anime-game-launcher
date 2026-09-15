@@ -1,0 +1,25 @@
+{
+  "xdeltaSource": "https://github.com/jmacd/xdelta/releases/tag/v3.1.0",
+  "sourceArchiveSha256": "7515cf5378fca287a57f4e2fee1094aabc79569cfe60d91e06021a8fd7bae29d",
+  "lzmaHeaders": "XZ 5.8.3, 0BSD, headers only; links Apple system liblzma ABI 6",
+  "files": {
+    "COPYING": "204d8eff92f95aac4df6c8122bc1505f468f3a901e5a4cc08940e0ede1938994",
+    "COPYING.lzma-headers": "0b01625d853911cd0e2e088dcfb743261034a091bb379246cb25a14cc4c74bf1",
+    "include/lzma/base.h": "e6de2ae8c447f98dfb12d7fbdd7510ed2c5c0d9a7a52ba2fabab10b638b3171d",
+    "include/lzma/bcj.h": "7420ecbd1bd0e7ed726ccb4b771c92c5e99366fd98f725b57055ddd90cd6384b",
+    "include/lzma/block.h": "c99bf801dc0d771196f318f0eb2db454c8ba007fb516c1e83ece91ac079e3440",
+    "include/lzma/check.h": "a6954d5e59c87c09e000f6df9b61615125a4fb20b5014ce8cb3eea762999acff",
+    "include/lzma/container.h": "c85bd006270273ef2ca8983fc7aab928ee73dc00948616b62de0278cf9cd94fc",
+    "include/lzma/delta.h": "ff69bb02c2beb169284a50f68962006dde746e1859c31d47be0bc8e56db7a7b1",
+    "include/lzma/filter.h": "bdc89d83271fd6cfc6e345913d6c6882c4c0f9093c71ea576c64ba562233ca6b",
+    "include/lzma/hardware.h": "84a3af36971a1acc33c90305ec72f67d18bc74aa0742cef17833e023dd2992b3",
+    "include/lzma/index.h": "f87c272b613742f18177186990144fa2c70f0800656c8b1a4142c3d9f0e94c9a",
+    "include/lzma/index_hash.h": "b10127b60fedb010dad8d9c07635e73da9e995b287e823ae1838bbd302a8b260",
+    "include/lzma/lzma12.h": "863e8c4b64472c5bca2246f17e2208af6dac9a07a34386a6e0af707708abdb50",
+    "include/lzma/stream_flags.h": "192f8e6fdedcc26fabf2751128eab1f41fd6fbf976eea0d3d225a1d57b6a459c",
+    "include/lzma/version.h": "2c049e9dee694988e9747b11c38424ac8fddad40d6c84caad9d42c5260a65969",
+    "include/lzma/vli.h": "16a498e75b0f5136de11e205e36ce9641277cfddad538fff5b22b6991f4110f7",
+    "include/lzma.h": "6829350ef1ee35fae25481cc87a4f4b17c4b6c2a3df26f2b34dc1804df75c0d9",
+    "xdelta-3.1.0.tar.gz": "7515cf5378fca287a57f4e2fee1094aabc79569cfe60d91e06021a8fd7bae29d"
+  }
+}
