@@ -65,6 +65,15 @@ disabled control and enabled-150 world observation for 13 minutes including fast
 travel and late successful write/readback. All recorded game exits were 0 and
 owned cleanup/restoration completed. Sampled world throughput was 120–130 FPS.
 
+The later [Global installation check](global-installation-20260915.md) passed
+Finder startup, saved-account login, world entry and normal close in Applications.
+On first Finder launch, Wine can trigger a macOS folder-access prompt. Resolve
+the visible prompt before continuing; a long unanswered prompt can stop bridge
+progress and cause the launcher to stop its worker safely. Desktop access was
+declined in the tested configuration because the game is stored elsewhere.
+After the interrupted attempt closed and restoration completed, the repeat
+launch passed with the worker active. Do not grant broad disk access as a workaround.
+
 These finite observations do not establish universal crash-free operation.
 Process-tagged final logs identify a Wine thread-abort diagnostic inside the game
 during ordinary teardown, shortly before its retained handle reports exit 0.

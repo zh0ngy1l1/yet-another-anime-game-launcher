@@ -1,5 +1,10 @@
 # Step 7 implementation and evidence
 
+Historical development report. Its unrun status and operator-only instructions
+are superseded by [Step 8 delivery](fps-step8-delivery-20260915.md) and the
+[completed Global installation](global-installation-20260915.md). The dated
+observations below remain evidence for their original revisions.
+
 The enabled HK4E development route uses a source-built, target-bound FPS bridge. The [Steam Patch fix below](#2026-09-12-steam-patch-fix) adds an owned route through the original signed shim; keep **Enable Steam Patch on** and **Launch Fix(block hosts) off**. The earlier implementation and preflight evidence is retained with its tested revisions. Real game execution and measured FPS remain **not run** by the agent; the operator alone performs those tests. Follow the [numbered Step 7.5 checklist](step-7.5.md), starting with the disabled baseline on the final fix, then enabled 60 and review before 61/120. Packaged-app testing remains after Step 8.
 
 ## Original Step 7 checkout and scope

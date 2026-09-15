@@ -1,5 +1,10 @@
 # Step 8 delivery — 2026-09-15
 
+Later same-day update: [Global installation and cleanup](global-installation-20260915.md)
+records the subsequently authorized activation, startup correction and installed
+app test. The artifact paths and activation status below describe the earlier
+delivery; compact provenance was retained when the old build trees were removed.
+
 Status: Step 8 is complete for the supported configuration below. Normal R2
 delivery, fresh public-input builds and final isolated packaged qualification
 passed. Working-installation activation remains optional and was not performed.

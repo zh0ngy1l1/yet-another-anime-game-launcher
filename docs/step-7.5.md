@@ -1,5 +1,11 @@
 # Step 7.5 operator checklist — development mode only
 
+Historical checkpoint, no longer an active testing assignment. See the completed
+[Step 8 delivery](fps-step8-delivery-20260915.md),
+[Global installation](global-installation-20260915.md) and
+[current operation/recovery guide](fps-runtime.md). Original private paths below
+may have been removed during the subsequently authorized cleanup.
+
 **Steam Patch fix, 2026-09-12:** keep **Enable Steam Patch on** for both disabled and enabled tests. The rejection observed at `888ea8975dcabd8509d6cf90e3dc5269b17b21fc` is replaced by the [owned Steam route](../native/fps-bridge/steam-source.md). **Launch Fix(block hosts) stays off**; Timeout Fix is separate. Bootstrap/settings passed by operator report at that earlier commit, corroborated by the preflight. Existing provenance acceptance/Global manual authorization is in `.tmp/step7.5/authorization.txt`; do not overwrite or request it again. No real-game case has been run for this fix. The operator alone presses Launch.
 
 For this already-prepared checkout, **do not repeat profile copying, reset the prefix or replace Wine**. Resume with item 3 (disabled baseline), then enabled 60 only after reviewing its complete cleanup; send those two checkpoints for review before enabled 61/120. Item 1 retains the exact setup commands for reference.
