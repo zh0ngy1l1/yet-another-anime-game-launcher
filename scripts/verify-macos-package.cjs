@@ -31,9 +31,10 @@ const machos = [];
 for(const item of record.files) {
   const p = path.join(app,item.path), data = fs.readFileSync(p);
   if(data.length < 4 || !["cffaedfe","cefaedfe","cafebabe","bebafeca"].includes(data.subarray(0,4).toString("hex"))) continue;
-  const deps = cp.execFileSync("otool",["-L",p],{encoding:"utf8"}).split("\n").slice(1).filter(Boolean);
-  for(const dep of deps) assert(/^\s+(\/usr\/lib\/|\/System\/Library\/|@loader_path\/|@rpath\/|@executable_path\/)/.test(dep),`${item.path}: ${dep}`);
   const loads = cp.execFileSync("otool",["-l",p],{encoding:"utf8"});
+  // LC_ID_DYLIB is a module's own install name, not a load dependency.
+  const deps = loads.split("Load command").filter(block => /cmd LC_(?:LOAD|LOAD_WEAK|REEXPORT|LAZY_LOAD|LOAD_UPWARD)_DYLIB\b/.test(block)).map(block => block.match(/\n\s*name (.*?) \(offset/)[1]);
+  for(const dep of deps) assert(/^(\/usr\/lib\/|\/System\/Library\/|@loader_path\/|@rpath\/|@executable_path\/)/.test(dep),`${item.path}: ${dep}`);
   assert(!/path \/(Users|opt|usr\/local)\//.test(loads),item.path);
   const signature = cp.spawnSync("codesign",["-dv",p],{encoding:"utf8"});
   if(signature.status === 0) cp.execFileSync("codesign",["--verify","--strict",p]);
