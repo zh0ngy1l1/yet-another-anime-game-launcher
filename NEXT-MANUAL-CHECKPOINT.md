@@ -1,9 +1,10 @@
 # Step 8 status
 
 The earlier manual enabled-150 checkpoint is superseded by the completed
-2026-09-14 autonomous R2 runs and the ongoing normal-runtime delivery work.
+2026-09-14 autonomous R2 runs and completed 2026-09-15 normal-runtime delivery.
 No further user UI review or routine manual test assignment is required.
 
+- [Completed Step 8 delivery](docs/fps-step8-delivery-20260915.md)
 - [Recorded R2 gameplay results](docs/fps-r2-game-validation-20260914.md)
 - [Current FPS operation and recovery](docs/fps-runtime.md)
 - [Public macOS build procedure](docs/build-macos.md)

@@ -59,11 +59,18 @@ worker/job/supervisor completion, Wine waits and restoration. See the
 [dated report](fps-r2-game-validation-20260914.md) for exact artifacts and capture
 qualifications. Earlier unrun statuses remain historical, not current results.
 
-These finite observations and source/fixture tests do not establish universal
-crash-free operation. A separate Wine shutdown-thread abort occurred during
-teardown before recorded game exit and completed cleanup. Its detailed
-classification and final packaged-path results belong to the Step 8 delivery
-report; it must not be labelled harmless solely because files were restored.
+The final [Step 8 delivery](fps-step8-delivery-20260915.md) also passed normal
+fresh runtime acquisition/preparation, enabled-60 prelogin, an existing-runtime
+disabled control and enabled-150 world observation for 13 minutes including fast
+travel and late successful write/readback. All recorded game exits were 0 and
+owned cleanup/restoration completed. Sampled world throughput was 120–130 FPS.
+
+These finite observations do not establish universal crash-free operation.
+Process-tagged final logs identify a Wine thread-abort diagnostic inside the game
+during ordinary teardown, shortly before its retained handle reports exit 0.
+Worker/jobs, supervisor, Wine waits and exact restoration also confirm completion.
+The thread exception's underlying cause remains unresolved; it is not classified
+as harmless. See the delivery report for exact process, timing and exit evidence.
 
 The application requires macOS 14+; actual qualification is on Apple Silicon
 macOS 26.6.2 with Rosetta. Earlier OS gameplay, Intel-native application builds,
