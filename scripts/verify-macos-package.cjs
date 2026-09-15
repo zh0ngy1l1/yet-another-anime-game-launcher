@@ -26,7 +26,7 @@ assert.equal(config.modes.window.title,"Yaagl OS"); assert.equal(config.modes.wi
 const js = members.filter(x=>/\/assets\/.*\.js$/.test(x.path)).map(x=>asar.extractFile(archive,x.path).toString()).join("\n");
 for(const value of [build.bridge.sha256,build.native.version,"custom.bootstrap","decode", "FPS runtime prepared:","eef64f611ae9033261a70f46ec0be38d58823717f14e80331946c6d0cd3c85f7",build.channel === "hk4eos" ? "hk4e_global" : "hk4e_cn"]) assert(js.includes(value),value);
 assert(!/Starting [Ll]auncher/.test(js));
-assert(!js.includes("/Users/david/"));
+assert(!/\/Users\/[^/]+\//.test(js));
 const machos = [];
 for(const item of record.files) {
   const p = path.join(app,item.path), data = fs.readFileSync(p);
