@@ -120,6 +120,7 @@ PATH_LAUNCH="$(dirname -- "$CONTENTS_DIR")" exec "$SCRIPT_DIR/Yaagl" --path="$PR
   assert.equal(output("git",["status","--porcelain","--untracked-files=no"]),"");
   fs.renameSync(result,destination);
   fs.rmSync(temporary,{recursive:true});
+  run(process.execPath,["scripts/verify-macos-package.cjs",destination]);
   console.log(`Built ${path.join(destination,"Yaagl OS.app")} from ${commit}`);
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});
