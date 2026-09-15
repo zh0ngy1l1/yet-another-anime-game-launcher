@@ -35,7 +35,7 @@ it("verifies the system32 pair before starting the signed Steam Wine root with t
   expect(request.args).not.toContain("Z:\\tmp\\request\\steam.exe");
   expect(request.outputLog).toBe("/logs/game.log.wine.log");
   expect(request.environment.WINEDEBUG).toBe(
-    "fixme-all,err-unwind,+timestamp,err+seh,+loaddll"
+    "fixme-all,err-unwind,+timestamp,err+seh,+loaddll,+pid"
   );
   await bridge.launch();
   expect(rig.io.verify).toHaveBeenLastCalledWith(bridge.path, selected);
@@ -55,7 +55,7 @@ it("direct FPS launch requires no Steam files and retains custom Wine debug chan
   expect(request.executable).toBe("/tmp/request/fps-bridge.exe");
   expect(request.args).toHaveLength(6);
   expect(request.environment.WINEDEBUG).toBe(
-    "-all,+timestamp,err+seh,+loaddll"
+    "-all,+timestamp,err+seh,+loaddll,+pid"
   );
   await bridge.launch();
   rig.exit();

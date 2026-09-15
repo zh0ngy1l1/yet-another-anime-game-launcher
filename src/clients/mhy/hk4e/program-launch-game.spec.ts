@@ -138,7 +138,7 @@ it.each([false, true])(
       steam ? "C:\\windows\\system32\\steam.exe" : "cmd",
       steam ? ["Z:\\game\\GenshinImpact.exe"] : ["/c", "Z:\\app\\config.bat "],
       expect.objectContaining({
-        WINEDEBUG: "fixme-all,err-unwind,+timestamp,err+seh,+loaddll",
+        WINEDEBUG: "fixme-all,err-unwind,+timestamp,err+seh,+loaddll,+pid",
         DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
         MTL_HUD_ENABLED: "1",
         WINE_ENABLE_TIMEOUT_FIX: "1",
