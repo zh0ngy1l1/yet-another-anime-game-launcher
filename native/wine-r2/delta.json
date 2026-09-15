@@ -228,5 +228,15 @@
       5,
       61
     ]
-  ]
+  ],
+  "archiveDanglingLinks": {
+    "/lib/GStreamer.framework/Versions/1.0/lib/libgirepository-2.0.dylib": "libgirepository-2.0.0.dylib",
+    "/lib/GStreamer.framework/Versions/1.0/lib/libgstvalidate-default-overrides-1.0.dylib": "libgstvalidate-default-overrides-1.0.0.dylib",
+    "/lib/GStreamer.framework/Versions/1.0/lib/libharfbuzz-cairo.dylib": "libharfbuzz-cairo.0.dylib",
+    "/lib/GStreamer.framework/Versions/1.0/lib/libharfbuzz-subset.dylib": "libharfbuzz-subset.0.dylib",
+    "/lib/GStreamer.framework/Versions/1.0/lib/libpcre2-posix.dylib": "libpcre2-posix.3.dylib",
+    "/lib/GStreamer.framework/Versions/1.0/lib/libproxy.dylib": "libproxy.1.dylib",
+    "/lib/GStreamer.framework/Versions/1.0/lib/libtag_c.0.dylib": "libtag_c.0.0.0.dylib",
+    "/lib/GStreamer.framework/Versions/1.0/lib/libtag_c.dylib": "libtag_c.0.dylib"
+  }
 }

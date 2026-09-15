@@ -36,8 +36,12 @@ sub inventory {
         if (-l _) {
             my $target = readlink($p);
             my $resolved = abs_path($p);
-            die "external/broken runtime link: $p" unless defined($resolved) &&
-                index($resolved, "$root/") == 0 && $target !~ m{^/};
+            my $known_dangling = !-e $p &&
+                exists($m->{archiveDanglingLinks}{$rel}) &&
+                $m->{archiveDanglingLinks}{$rel} eq $target;
+            die "external/broken runtime link: $p" unless $target !~ m{^/} &&
+                ($known_dangling || (defined($resolved) &&
+                index($resolved, "$root/") == 0 && -e $p));
             $files{$rel} = ['link', $target];
         } elsif (-d _) { $files{$rel} = ['directory', $s[2] & 07777]; }
         elsif (-f _) { $files{$rel} = ['file', $s[2] & 07777, $s[7], hash_file($p)]; }

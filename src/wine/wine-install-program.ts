@@ -94,7 +94,9 @@ export async function createWineInstallProgram({
     if (hk4e)
       await exec([
         "/usr/bin/xattr",
-        "-dr",
+        // The pinned archive contains dangling optional GStreamer links.
+        // Clear attributes on links themselves; never follow their targets.
+        "-drs",
         "com.apple.quarantine",
         wineBinaryDir,
       ]);

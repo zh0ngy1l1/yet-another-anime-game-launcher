@@ -30,6 +30,12 @@ new runtime path. Existing exact R2 bytes are copied and verified without anothe
 patch. Unsupported bytes stop the launch before game mutation. Interrupted
 copies are never selected or reused. Preparation never writes the source runtime.
 
+The pinned public archive includes eight dangling optional GStreamer library
+links. The manifest records their exact relative paths and targets; only those
+known dangling links are preserved. Unknown, changed or external links fail
+preparation. Installer quarantine removal uses `xattr -drs` to act on links
+themselves without following missing targets or requiring elevated privileges.
+
 Normal cleanup waits for owned processes and restores journaled files before
 removing the private runtime. Saved backend choices, prefix and environment
 remain selected. FPS-disabled launches do not prepare R2.
