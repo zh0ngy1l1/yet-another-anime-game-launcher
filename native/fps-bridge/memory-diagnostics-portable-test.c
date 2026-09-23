@@ -15,6 +15,8 @@
 } } while (0)
 
 typedef int BOOL;
+typedef int32_t LONG;
+static LONG native_status;
 typedef unsigned long DWORD;
 typedef unsigned long long ULONGLONG;
 typedef size_t SIZE_T;
@@ -96,9 +98,14 @@ static void diagnostic(const char *format, ...) {
     SetLastError(999);
 }
 
+static LONG query_memory_status(uintptr_t address, MEMORY_BASIC_INFORMATION *info, SIZE_T *bytes) {
+    (void)address; (void)info; *bytes = 0;
+    return native_status;
+}
 #include "memory-diagnostics.c"
 
 static void reset(void) {
+    native_status = 0;
     last_error = 87;
     api_ok = query_ok = exit_ok = 1;
     transferred = 4;
@@ -151,6 +158,12 @@ int main(void) {
         result = memory_transfer(0x1452b4244ULL, &value, 4, writing);
         assert(result.error == 87 && GetLastError() == 87);
         assert(strstr(last_log, "wait=0x102 waitError=0 exitQueryOk=1 exitKnown=0 exitCode=0x00000103"));
+
+        reset();
+        api_ok = 0; transferred = 0; native_status = (LONG)0xc000010a;
+        result = memory_transfer(0x1452b4244ULL, &value, 4, writing);
+        assert(result.terminating && result.error == 87 && result.api_error == 87);
+        assert(strstr(last_log, "terminating=1"));
 
         reset();
         transferred = 3;

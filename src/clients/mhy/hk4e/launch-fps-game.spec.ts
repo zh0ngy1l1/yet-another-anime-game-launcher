@@ -788,3 +788,55 @@ it("keeps delayed worker87 and game access violation primary when cleanup succee
   expect(rig.native.events).toContain("files-restored");
   expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
 });
+
+it.each([87, 998])(
+  "does not erase live-target error %i when the game later exits successfully",
+  async workerError => {
+    const rig = launch("150", true),
+      transaction = rig.start();
+    await tick(11000);
+    Object.assign(rig.native.status, {
+      workerError,
+      workerState: 4,
+      workerDone: 1,
+    });
+    await tick(1200);
+    expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
+    const failure = await rig.finish(transaction);
+    expect(String(failure?.primary)).toContain(
+      `FPS target scan/write failed: ${workerError}`
+    );
+    expect(failure?.cleanupErrors).toEqual([]);
+    expect(rig.native.status.exitCode).toBe(0);
+  }
+);
+
+it.each([0, 0xc0000005])(
+  "clean native termination preserves independent game exit classification %i",
+  async exitCode => {
+    const rig = launch("150", true),
+      transaction = rig.start();
+    await tick(11000);
+    // Native worker has authoritative termination evidence before HANDLE signaling.
+    Object.assign(rig.native.status, {
+      workerError: 0,
+      workerState: 3,
+      workerDone: 1,
+    });
+    await tick(200);
+    rig.native.status.exitCode = exitCode;
+    const result = await rig.finish(transaction);
+    if (!exitCode) {
+      expect(result).toBeUndefined();
+      expect(rig.ownership.state()).toMatchObject({
+        held: false,
+        failed: false,
+      });
+      expect(rig.native.diagnostic).not.toHaveBeenCalled();
+    } else {
+      expect(String(result)).toContain("0xc0000005");
+      expect(String(result)).not.toContain("FPS target scan/write failed");
+    }
+    expect(rig.native.events).toContain("files-restored");
+  }
+);

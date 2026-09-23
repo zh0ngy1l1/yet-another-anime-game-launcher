@@ -60,7 +60,9 @@ if (buildManifest || process.argv.includes("--record")) {
       ");\n"
   );
   fs.writeFileSync(
-    buildManifest ? ".tmp/build-fps-bridge-record.json" : "native/fps-bridge/build-record.json",
+    buildManifest
+      ? ".tmp/build-fps-bridge-record.json"
+      : "native/fps-bridge/build-record.json",
     JSON.stringify(
       {
         ...manifest,
@@ -71,6 +73,10 @@ if (buildManifest || process.argv.includes("--record")) {
         sourceSha256: crypto
           .createHash("sha256")
           .update(fs.readFileSync("native/fps-bridge/bridge.c"))
+          .digest("hex"),
+        workerSourceSha256: crypto
+          .createHash("sha256")
+          .update(fs.readFileSync("native/fps-bridge/worker.c"))
           .digest("hex"),
         registrySourceSha256: crypto
           .createHash("sha256")

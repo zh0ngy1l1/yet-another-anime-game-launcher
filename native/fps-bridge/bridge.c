@@ -89,6 +89,15 @@ static int open_diagnostics(void) {
     return 1;
 }
 
+/* Preserve the native lifecycle result: Win32 maps PROCESS_IS_TERMINATING
+ * to ACCESS_DENIED, which alone is not evidence of termination. */
+static LONG query_memory_status(uintptr_t address, MEMORY_BASIC_INFORMATION *info, SIZE_T *bytes) {
+    typedef LONG (WINAPI *QueryMemory)(HANDLE, const void *, int, void *, SIZE_T, SIZE_T *);
+    QueryMemory query = (QueryMemory)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryVirtualMemory");
+    if (!query) return (LONG)0xc0000002; /* STATUS_NOT_IMPLEMENTED: never benign. */
+    return query(game, (const void *)address, 0, info, sizeof(*info), bytes);
+}
+
 #include "memory-diagnostics.c"
 
 static int read_memory(uintptr_t address, void *buffer, SIZE_T length) {
@@ -178,74 +187,7 @@ static uintptr_t fps_address(void) {
     return found;
 }
 
-static DWORD WINAPI apply_fps(void *unused) {
-    (void)unused;
-    diagnostic("worker scanning generation=%u game=%lu target=%u", generation, game_pid, target);
-    uintptr_t address = diagnostic_failure() ? 0 : fps_address();
-    if (!address) {
-        diagnostic("worker resolution failed generation=%u game=%lu; no FPS write issued", generation, game_pid);
-        InterlockedExchange(&worker_error, (LONG)(diagnostic_failure() ? diagnostic_failure() : ERROR_NOT_FOUND));
-        InterlockedExchange(&worker_state, 4);
-        return 1;
-    }
-    InterlockedExchange(&worker_state, 2);
-    diagnostic("worker applying generation=%u game=%lu address=0x%llx target=%u", generation, game_pid,
-        (unsigned long long)address, target);
-    HANDLE waits[] = {worker_stop, game};
-    DWORD wait;
-    int observed = 0, previous = 0;
-    MemoryCounters counts = {0};
-    while ((wait = WaitForMultipleObjects(2, waits, FALSE, 0)) == WAIT_TIMEOUT) {
-        if (diagnostic_failure()) {
-            InterlockedExchange(&worker_error, (LONG)diagnostic_failure());
-            InterlockedExchange(&worker_state, 4);
-            return 1;
-        }
-        int current;
-        MemoryTransfer transfer = memory_transfer(address, &current, sizeof(current), 0);
-        counts.reads++;
-        int ok = transfer.error == 0;
-        if (ok) counts.read_ok++;
-        if (ok && current == (int)target) counts.equal++;
-        if (ok && (!observed || previous != current)) {
-            diagnostic("read generation=%u game=%lu address=0x%llx value=%d target=%u action=%s", generation,
-                game_pid, (unsigned long long)address, current, target, current == (int)target ? "equal" : "write");
-            observed = 1; previous = current;
-        }
-        if (ok && current != (int)target) {
-            diagnostic("write begin generation=%u game=%lu address=0x%llx read=%d target=%u bytes=%llu", generation,
-                game_pid, (unsigned long long)address, current, target, (unsigned long long)sizeof(target));
-            /* Never proceed with an unrecorded FPS write after logging fails. */
-            if (diagnostic_failure()) {
-                InterlockedExchange(&worker_error, (LONG)diagnostic_failure());
-                InterlockedExchange(&worker_state, 4);
-                return 1;
-            }
-            transfer = memory_transfer(address, &target, sizeof(target), 1);
-            counts.writes++;
-            ok = transfer.error == 0;
-            if (ok) counts.write_ok++;
-        }
-        if (!ok) {
-            DWORD error = transfer.error;
-            InterlockedExchange(&worker_error, (LONG)error);
-            InterlockedExchange(&worker_state, 4);
-            diagnostic("worker read/write failed generation=%u error=%lu", generation, error);
-            memory_heartbeat(&counts, address, 1);
-            return 1;
-        }
-        memory_heartbeat(&counts, address, 0);
-        wait = WaitForMultipleObjects(2, waits, FALSE, 200);
-        if (wait != WAIT_TIMEOUT) break;
-    }
-    if (wait == WAIT_FAILED) {
-        InterlockedExchange(&worker_error, (LONG)GetLastError());
-        InterlockedExchange(&worker_state, 4);
-    } else InterlockedExchange(&worker_state, 3);
-    memory_heartbeat(&counts, address, 1);
-    diagnostic("worker ended generation=%u state=%ld", generation, InterlockedCompareExchange(&worker_state, 0, 0));
-    return 0;
-}
+#include "worker.c"
 
 static DWORD job_processes(HANDLE selected_job) {
     if (!selected_job) return 0;

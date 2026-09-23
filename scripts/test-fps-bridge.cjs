@@ -230,6 +230,27 @@ async function main() {
   console.log(
     "PASS durable diagnostics: mandatory open, concurrent lines, write/short-write/flush failures, no unrecorded worker writes"
   );
+  const scanFixture = path.join(root, "worker-scan-fixture.exe");
+  cp.execFileSync(process.env.FPS_BRIDGE_CC || "x86_64-w64-mingw32-gcc", [
+    "-std=c11",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-static",
+    "-municode",
+    "native/fps-bridge/worker-scan-fixture.c",
+    "-lpsapi",
+    "-ladvapi32",
+    "-o",
+    scanFixture,
+  ]);
+  const scanDirectory = path.join(root, "worker-scan");
+  fs.mkdirSync(scanDirectory);
+  assert.equal(await spawn(scanFixture, [win(scanDirectory)]).completion, 0);
+  console.log(
+    "PASS actual PE scanner and worker: every scan read, recurring read/write, live failure and exit/stop races"
+  );
   if (steam)
     for (const artifact of require("../native/fps-bridge/steam-artifacts.json"))
       fs.copyFileSync(
@@ -537,7 +558,7 @@ async function main() {
       `PASS ${fps}: target handle, decoy, protocol, worker restart/stop, detached lifetime, no retarget, bridge completion`
     );
   }
-  for (const mode of ["missing", "no-pattern", "ambiguous"]) {
+  for (const mode of ["missing", "no-pattern", "ambiguous", "memory-error"]) {
     const dir = path.join(root, mode);
     fs.mkdirSync(dir);
     const file = path.join(root, mode + ".exe");
@@ -548,9 +569,11 @@ async function main() {
         "-static",
         "-municode",
         ...(steam ? ["-mwindows", "-DFPS_FIXTURE_GUI"] : []),
-        mode === "no-pattern"
-          ? "-DFPS_FIXTURE_NO_PATTERN"
-          : "-DFPS_FIXTURE_AMBIGUOUS",
+        ...(mode === "no-pattern"
+          ? ["-DFPS_FIXTURE_NO_PATTERN"]
+          : mode === "ambiguous"
+          ? ["-DFPS_FIXTURE_AMBIGUOUS"]
+          : []),
         "native/fps-bridge/fixture.c",
         "-o",
         file,
@@ -596,6 +619,16 @@ async function main() {
         "negative fixture game"
       );
       assert.equal((await request("start", 1, 120)).error, 0);
+      if (mode === "memory-error") {
+        await until(
+          () => read(path.join(dir, "root-observed"))?.split(" ")[1] === "120",
+          "live memory fixture applying"
+        );
+        fs.writeFileSync(
+          path.join(dir, "memory-deny"),
+          "deny fixture page only"
+        );
+      }
       for (let i = 0; i < 200; i++) {
         s = await request("probe");
         if (s.workerDone) break;
@@ -604,7 +637,22 @@ async function main() {
       assert.equal(s.workerDone, 1);
       assert.equal(s.workerState, 4);
       assert.notEqual(s.workerError, 0);
-      assert.equal(read(path.join(dir, "root-observed")).split(" ")[1], "60");
+      assert.equal(
+        read(path.join(dir, "root-observed")).split(" ")[1],
+        mode === "memory-error" ? "-1" : "60"
+      );
+      if (mode === "memory-error") {
+        assert.equal(s.primaryExited, 0);
+        assert.ok(s.active > 0);
+        assert.match(
+          read(path.join(dir, "game.log.bridge.log")),
+          /reason=live-target-failure/
+        );
+        fs.writeFileSync(
+          path.join(dir, "live-failure-status.json"),
+          JSON.stringify(s, null, 2)
+        );
+      }
       assert.equal(
         read(path.join(decoyDir, "root-observed")).split(" ")[1],
         "60"

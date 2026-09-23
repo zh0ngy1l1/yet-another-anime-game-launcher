@@ -4,6 +4,7 @@ typedef struct {
     BOOL api_ok;
     SIZE_T transferred;
     DWORD api_error, error;
+    int terminating;
 } MemoryTransfer;
 
 typedef struct {
@@ -16,7 +17,7 @@ typedef struct {
 } MemoryCounters;
 
 static void memory_failure_probe(const char *operation, uintptr_t address, SIZE_T length,
-                                 const MemoryTransfer *result) {
+                                 MemoryTransfer *result) {
     DWORD saved_error = GetLastError();
     DWORD wait = WaitForSingleObject(game, 0);
     DWORD wait_error = wait == WAIT_FAILED ? GetLastError() : 0;
@@ -25,12 +26,15 @@ static void memory_failure_probe(const char *operation, uintptr_t address, SIZE_
     DWORD exit_error = exit_query_ok ? 0 : GetLastError();
     int exit_known = wait == WAIT_OBJECT_0 && exit_query_ok;
     MEMORY_BASIC_INFORMATION info = {0};
+    SIZE_T native_bytes = 0;
+    LONG query_status = query_memory_status(address, &info, &native_bytes);
+    result->terminating = query_status == (LONG)0xc000010a;
     SIZE_T queried = VirtualQueryEx(game, (void *)address, &info, sizeof(info));
     DWORD query_error = queried ? 0 : GetLastError();
-    diagnostic("memory failure probe generation=%u game=%lu operation=%s address=0x%llx requested=%llu apiOk=%d transferred=%llu apiError=%lu error=%lu wait=0x%lx waitError=%lu exitQueryOk=%d exitKnown=%d exitCode=0x%08lx exitError=%lu queryBytes=%llu queryError=%lu region=0x%llx size=%llu state=0x%lx allocation=0x%lx current=0x%lx type=0x%lx; observation after failure",
+    diagnostic("memory failure probe generation=%u game=%lu operation=%s address=0x%llx requested=%llu apiOk=%d transferred=%llu apiError=%lu error=%lu wait=0x%lx waitError=%lu exitQueryOk=%d exitKnown=%d exitCode=0x%08lx exitError=%lu queryBytes=%llu queryError=%lu queryStatus=0x%08lx terminating=%d region=0x%llx size=%llu state=0x%lx allocation=0x%lx current=0x%lx type=0x%lx; observation after failure",
         generation, game_pid, operation, (unsigned long long)address, (unsigned long long)length,
         result->api_ok, (unsigned long long)result->transferred, result->api_error, result->error,
-        wait, wait_error, exit_query_ok, exit_known, exit_code, exit_error, (unsigned long long)queried, query_error,
+        wait, wait_error, exit_query_ok, exit_known, exit_code, exit_error, (unsigned long long)queried, query_error, (unsigned long)(DWORD)query_status, result->terminating,
         (unsigned long long)(uintptr_t)info.BaseAddress, (unsigned long long)info.RegionSize,
         info.State, info.AllocationProtect, info.Protect, info.Type);
     SetLastError(saved_error);

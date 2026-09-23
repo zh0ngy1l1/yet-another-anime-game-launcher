@@ -56,7 +56,9 @@ static int parent_retains_self(DWORD parent_pid) {
     CloseHandle(parent);
     return found;
 }
-volatile int fixture_fps = 60;
+/* Dedicated fixture page permits a real live-target read denial without
+ * corrupting other globals or terminating the cooperative fixture. */
+volatile int fixture_fps __attribute__((section(".fpsvar"), aligned(4096))) = 60;
 #ifdef FPS_FIXTURE_AMBIGUOUS
 volatile int fixture_second = 60;
 __asm__(".section il2cpp,\"xr\"\n"
@@ -121,6 +123,9 @@ int wmain(int argc, wchar_t **argv) {
     int want_child = !child && GetEnvironmentVariableW(L"FPS_FIXTURE_DETACH", detach, 2) && detach[0] == L'1';
     int child_gate = GetEnvironmentVariableW(L"FPS_FIXTURE_CHILD_GATE", gate, 2) && gate[0] == L'1';
     swprintf(create, 32768, L"%ls\\child-create", directory);
+    int memory_denied = 0;
+    wchar_t deny_memory[32768];
+    swprintf(deny_memory, 32768, L"%ls\\memory-deny", directory);
     while (GetFileAttributesW(stop) == INVALID_FILE_ATTRIBUTES) {
         /* A real window exercises Wine's lazy explorer desktop creation. The
          * controller opens this fixture-only gate after target admission. */
@@ -149,11 +154,16 @@ int wmain(int argc, wchar_t **argv) {
             CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
             child_created = 1;
         }
+        if (!memory_denied && GetFileAttributesW(deny_memory) != INVALID_FILE_ATTRIBUTES) {
+            DWORD old;
+            if (!VirtualProtect((void *)&fixture_fps, sizeof(fixture_fps), PAGE_NOACCESS, &old)) return 10;
+            memory_denied = 1;
+        }
         wchar_t temporary[32768]; swprintf(temporary, 32768, L"%ls.tmp", output);
         FILE *f = _wfopen(temporary, L"w");
         if (f) {
             wchar_t dxmt[32768]; GetEnvironmentVariableW(L"DXMT_CONFIG", dxmt, 32768);
-            fwprintf(f, L"%lu %d %ls\n", GetCurrentProcessId(), fixture_fps, dxmt);
+            fwprintf(f, L"%lu %d %ls\n", GetCurrentProcessId(), memory_denied ? -1 : fixture_fps, dxmt);
             fclose(f);
             if (!MoveFileExW(temporary, output, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return 7;
         }
