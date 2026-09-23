@@ -16,6 +16,8 @@ Output: `build/hk4eos/Yaagl OS.app`. This local build uses an ad-hoc signed ARM6
 launcher, is not notarized, and requires Rosetta for Intel runtime/helpers.
 [FPS settings, automatic R2 preparation, cleanup and rollback](docs/fps-runtime.md)
 describe the supported route and finite gameplay evidence.
+[Repository validation](docs/validation.md) lists reproducible source, native,
+Sophon and bundle checks.
 
 The upstream installation notes below describe upstream releases; those releases
 do not include this fork's R2 delivery changes.

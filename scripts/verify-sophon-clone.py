@@ -3,7 +3,8 @@
 
 Reads only clone/original/manifest inputs; writes one external JSON result.
 Imports generated protobuf definitions, never the updater implementation.
-Requires protobuf and grpcio-tools (the probe's Python environment provides both).
+Requires the locked Sophon Python environment and pinned compiler prepared by
+`python3 scripts/build-sophon.py --proto-only`.
 """
 from __future__ import annotations
 
@@ -67,7 +68,8 @@ def inventory(root):
 
 def protobuf_module(directory):
     source = Path(__file__).resolve().parents[1] / "sophon_server" / "manifest.proto"
-    subprocess.run([sys.executable, "-m", "grpc_tools.protoc", "-I", str(source.parent),
+    protoc = source.parent.parent / ".tmp/protoc-build/protoc"
+    subprocess.run([str(protoc), "-I", str(source.parent),
                     "--python_out=" + str(directory), str(source)], check=True)
     spec = importlib.util.spec_from_file_location("manifest_pb2", directory / "manifest_pb2.py")
     module = importlib.util.module_from_spec(spec)

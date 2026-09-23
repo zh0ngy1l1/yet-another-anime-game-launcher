@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Read-only global Genshin Sophon metadata probe; never applies an update.
 
-Requires certifi, zstandard, protobuf and grpcio-tools. All output goes under
+Requires the locked Sophon environment and `build-sophon.py --proto-only`.
+All output goes under
 --output, which must be outside --game-dir. Credentials are held only in memory;
 API responses are sanitized before writing. No updater modules are imported.
 """
@@ -77,7 +78,7 @@ def main():
     proto.mkdir(exist_ok=True)
     repo = pathlib.Path(__file__).resolve().parents[1]
     subprocess.run(
-        [sys.executable, "-m", "grpc_tools.protoc", "-I", str(repo / "sophon_server"),
+        [str(repo / ".tmp/protoc-build/protoc"), "-I", str(repo / "sophon_server"),
          f"--python_out={proto}", str(repo / "sophon_server/manifest.proto"),
          str(repo / "sophon_server/manifest_ldiff.proto")],
         check=True,

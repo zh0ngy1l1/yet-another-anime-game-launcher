@@ -1,4 +1,3 @@
-import { gt } from "semver";
 import { dirname, join } from "path-browserify";
 import { CommonUpdateProgram } from "@common-update-ui";
 import { Server } from "@constants";
@@ -18,9 +17,8 @@ import {
   xdelta3,
 } from "@utils";
 import { Config } from "@config";
-import { disableUnityFeature } from "./unity";
 import { Wine } from "@wine";
-import { DXMT_FILES, DXVK_FILES } from "src/downloadable-resource";
+import { DXMT_FILES } from "src/downloadable-resource";
 
 export async function putLocal(url: string, dest: string) {
   return await writeBinary(dest, await (await fetch(url)).arrayBuffer());
@@ -173,7 +171,6 @@ export async function* patchRevertProgram(
     }
   }
 
-  const system32Dir = join(wine.prefix, "drive_c", "windows", "system32");
   if (wine.attributes.renderBackend == "dxmt") {
     for (const f of DXMT_FILES) {
       const wineLibPath = resolve(`./wine/lib/wine/x86_64-windows/${f}`);

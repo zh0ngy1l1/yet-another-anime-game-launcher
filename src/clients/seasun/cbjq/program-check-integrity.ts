@@ -1,7 +1,7 @@
 import { join } from "path-browserify";
 import { Aria2 } from "@aria2";
 import { CommonUpdateProgram } from "@common-update-ui";
-import { log, md5, stats, readAllLines, setKey } from "@utils";
+import { log, md5, stats, setKey } from "@utils";
 import { LauncherResourceData } from "./launcher-info";
 import { Server } from "../server";
 

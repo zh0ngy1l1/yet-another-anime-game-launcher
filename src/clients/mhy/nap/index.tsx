@@ -8,7 +8,6 @@ import { Server } from "../../../constants";
 import { Locale } from "../../../locale";
 import {
   assertValueDefined,
-  exec,
   getFreeSpace,
   getKey,
   getKeyOrDefault,
@@ -32,7 +31,6 @@ import { Aria2 } from "@aria2";
 import { Wine } from "@wine";
 import {
   checkAndDownloadDXMT,
-  checkAndDownloadDXVK,
   checkAndDownloadReshade,
 } from "../../../downloadable-resource";
 import createPatchOff from "./config/patch-off";

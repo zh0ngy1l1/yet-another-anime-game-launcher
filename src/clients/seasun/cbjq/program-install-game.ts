@@ -2,14 +2,7 @@ import { join, basename, dirname } from "path-browserify";
 import { Aria2 } from "@aria2";
 import { CommonUpdateProgram } from "@common-update-ui";
 import { Server } from "../server";
-import {
-  humanFileSize,
-  log,
-  mkdirp,
-  removeFile,
-  stats,
-  writeFile,
-} from "@utils";
+import { humanFileSize, log, mkdirp, stats, writeFile } from "@utils";
 import { LauncherResourceData } from "./launcher-info";
 
 export async function* downloadAndInstallGameProgram({

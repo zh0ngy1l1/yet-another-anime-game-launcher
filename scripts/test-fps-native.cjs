@@ -5,7 +5,7 @@ const fs = require("fs"),
   cp = require("child_process"),
   assert = require("assert/strict");
 const repo = path.resolve(__dirname, "..");
-const root = fs.mkdtempSync(path.join(os.tmpdir(), "yaagl-memory-unit-"));
+const root = fs.mkdtempSync(path.join(os.tmpdir(), "yaagl-native-unit-"));
 const cc = process.env.FPS_MEMORY_TEST_CC || "clang";
 const source = fs.readFileSync(
   path.join(repo, "native/fps-bridge/memory-diagnostics.c"),
@@ -40,14 +40,7 @@ const cases = [
     false,
   ],
 ];
-for (const [name, contents, expected] of cases) {
-  if (!expected)
-    assert.notEqual(contents, source, "mutation must change source");
-  const directory = path.join(root, name);
-  fs.mkdirSync(directory);
-  fs.writeFileSync(path.join(directory, "memory-diagnostics.c"), contents);
-  fs.writeFileSync(path.join(directory, "test.c"), fixture);
-  const binary = path.join(directory, "inert-memory-unit");
+function check(source, binary, expected) {
   cp.execFileSync(
     cc,
     [
@@ -59,32 +52,37 @@ for (const [name, contents, expected] of cases) {
       "-Werror",
       "-fsanitize=address,undefined",
       "-fno-omit-frame-pointer",
-      path.join(directory, "test.c"),
+      source,
       "-o",
       binary,
     ],
     { stdio: "pipe" }
   );
   const result = cp.spawnSync(binary, [], { encoding: "utf8" });
-  fs.writeFileSync(
-    path.join(directory, "result.json"),
-    JSON.stringify(
-      {
-        status: result.status,
-        signal: result.signal,
-        stdout: result.stdout,
-        stderr: result.stderr,
-      },
-      null,
-      2
-    )
-  );
-  assert.equal(
-    result.signal,
-    null,
-    "unit must exit normally, including mutants"
-  );
+  assert.equal(result.signal, null, result.stdout + result.stderr);
   assert.equal(result.status, expected ? 0 : 1, result.stdout + result.stderr);
-  console.log(`${expected ? "PASS" : "REJECTED"} ${name}`);
 }
-console.log("Inert unit evidence:", root);
+try {
+  check(
+    path.join(repo, "native/fps-bridge/worker-portable-test.c"),
+    path.join(root, "worker"),
+    true
+  );
+  console.log("PASS production worker lifecycle");
+  for (const [name, contents, expected] of cases) {
+    if (!expected)
+      assert.notEqual(contents, source, "mutation must change source");
+    const directory = path.join(root, name);
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, "memory-diagnostics.c"), contents);
+    fs.writeFileSync(path.join(directory, "test.c"), fixture);
+    check(
+      path.join(directory, "test.c"),
+      path.join(directory, "memory"),
+      expected
+    );
+    console.log(`${expected ? "PASS" : "REJECTED"} ${name}`);
+  }
+} finally {
+  fs.rmSync(root, { recursive: true, force: true });
+}

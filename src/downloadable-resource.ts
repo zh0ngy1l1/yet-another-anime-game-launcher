@@ -52,48 +52,8 @@ export async function* checkAndDownloadMoltenVK(
     ];
   }
   setKey("installed_moltenvk_version", CURRENT_MVK_VERSION);
-}
-
-export const DXVK_FILES = [
-  "d3d9.dll",
-  "d3d10core.dll",
-  "d3d11.dll",
-  "dxgi.dll",
-];
-const CURRENT_DXVK_VERSION = "1.10.4-alpha.20230402"; // there is no 1.10.4! I have to make up something greater than 1.10.3
+} // there is no 1.10.4! I have to make up something greater than 1.10.3
 const CURRENT_JADEITE_VERSION = "4.1.0";
-
-export async function* checkAndDownloadDXVK(aria2: Aria2): CommonUpdateProgram {
-  if (
-    eq(
-      CURRENT_DXVK_VERSION,
-      await getKeyOrDefault("installed_dxvk_version", "0.0.0")
-    )
-  ) {
-    return;
-  }
-
-  await mkdirp("./dxvk");
-  yield ["setStateText", "DOWNLOADING_ENVIRONMENT"];
-  for (const file of DXVK_FILES) {
-    for await (const progress of aria2.doStreamingDownload({
-      uri: `https://github.com/3Shain/winecx/releases/download/gi-wine-1.0/${file}`,
-      absDst: resolve(`./dxvk/${file}`),
-    })) {
-      yield [
-        "setProgress",
-        Number((progress.completedLength * BigInt(100)) / progress.totalLength),
-      ];
-      yield [
-        "setStateText",
-        "DOWNLOADING_ENVIRONMENT_SPEED",
-        `${humanFileSize(Number(progress.downloadSpeed))}`,
-      ];
-    }
-  }
-
-  setKey("installed_dxvk_version", CURRENT_DXVK_VERSION);
-}
 
 export async function* checkAndDownloadJadeite(
   aria2: Aria2
@@ -137,13 +97,6 @@ export async function* checkAndDownloadJadeite(
 }
 
 export const DXMT_FILES = ["d3d10core.dll", "d3d11.dll", "dxgi.dll"];
-
-const DXMT_FILES_WITH_UNIXLIB = [
-  ...DXMT_FILES,
-  "winemetal.dll",
-  "winemetal.so",
-  "nvngx.dll",
-];
 
 const CURRENT_DXMT_VERSION = "0.80.0";
 

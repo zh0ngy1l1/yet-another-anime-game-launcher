@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """Locked standalone Sophon build; no launcher/profile inputs."""
+import argparse
 import hashlib
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import zipfile
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--proto-only", action="store_true", help="Generate schemas with the pinned compiler, without building the server")
+args = parser.parse_args()
 
 root = Path(__file__).resolve().parent.parent
 os.chdir(root)
@@ -23,6 +28,8 @@ with zipfile.ZipFile(archive) as z:
 protoc.chmod(0o755)
 project = root / 'sophon_server'
 subprocess.run([protoc, '--python_out=.', 'manifest.proto', 'manifest_ldiff.proto'], cwd=project, check=True)
+if args.proto_only:
+    raise SystemExit(0)
 python = 'cpython-3.13.15-macos-x86_64-none'
 subprocess.run(['uv', 'sync', '--frozen', '--python', python], cwd=project, check=True)
 shutil.copy2(root / 'sidecar/hpatchz/hpatchz', project / 'hpatchz')

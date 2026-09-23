@@ -57,8 +57,8 @@ TypeScript production behavior is intentionally unchanged: an actual workerError
 
 ## Regression validation
 
-- `node scripts/test-fps-memory.cjs`: production helper under ASan/UBSan, immediate API error capture, successful-short normalization, exact native termination evidence, Win32 probes/counters; four deliberate mutations rejected.
-- `node scripts/test-fps-worker.cjs`: actual production worker with inert deterministic API scheduling. Live read and write error 87 stay FAILED; explicit stop and game exit during read/write become clean; native terminating state before signaling becomes clean; ordinary access-denied is not termination; genuine scan miss and diagnostic failure remain visible.
+- `node scripts/test-fps-native.cjs`: production helper under ASan/UBSan, immediate API error capture, successful-short normalization, exact native termination evidence, Win32 probes/counters; four deliberate mutations rejected.
+- `node scripts/test-fps-native.cjs`: actual production worker with inert deterministic API scheduling. Live read and write error 87 stay FAILED; explicit stop and game exit during read/write become clean; native terminating state before signaling becomes clean; ordinary access-denied is not termination; genuine scan miss and diagnostic failure remain visible.
 - `worker-scan-fixture.c`: actual compiled PE scanner against its own harmless image. Each of 25 header/section/signature/candidate reads is failed in turn, then recurring read and write, with a live target, simulated signaled retained HANDLE, and explicit stop. No process is killed. All cases pass.
 - `scripts/test-fps-bridge.cjs` direct and `--steam`: ownership, decoy, restart/stop, detached jobs, protocol, logging, registry, Steam handoff and abnormal-exit regressions retained. New `memory-error` fixture first reaches FPS 120, then marks only its dedicated FPS page PAGE_NOACCESS while continuing to run. Actual ReadProcessMemory returns 998; query succeeds with PAGE_NOACCESS and no terminating status. The bridge publishes workerState 4/workerError 998/primaryExited 0. Cooperative fixture exit later returns 0 and does not clear the failure.
 - TypeScript launcher tests exercise both 87 and the real fixture's 998 against a live target, then successful game exit and cleanup: launch completion still reports the FPS failure. Clean native termination plus normal exit returns no launch failure; abnormal exit remains reported. Existing cleanup-failure/retry tests remain unchanged.
@@ -95,7 +95,7 @@ Modified/added files:
 
 - Production: `native/fps-bridge/bridge.c`, `worker.c`, `memory-diagnostics.c`.
 - Build identity: `scripts/build-fps-bridge.cjs`, `native/fps-bridge/build-record.json`, `src/clients/mhy/hk4e/fps-bridge-manifest.ts`.
-- Native tests: `native/fps-bridge/fixture.c`, `memory-diagnostics-portable-test.c`, `worker-portable-test.c`, `worker-scan-fixture.c`, `scripts/test-fps-worker.cjs`, `scripts/test-fps-bridge.cjs`.
+- Native tests: `native/fps-bridge/fixture.c`, `memory-diagnostics-portable-test.c`, `worker-portable-test.c`, `worker-scan-fixture.c`, `scripts/test-fps-native.cjs`, `scripts/test-fps-bridge.cjs`.
 - TypeScript regression: `src/clients/mhy/hk4e/launch-fps-game.spec.ts`.
 - Documentation: this report, `native/fps-bridge/README.md`, and the separate authenticated-evidence addendum in `docs/genshin-runtime-validation-20260922.md`.
 
@@ -103,8 +103,7 @@ Reproduction commands (run from the repository root):
 
 ```sh
 node scripts/build-fps-bridge.cjs
-node scripts/test-fps-memory.cjs
-node scripts/test-fps-worker.cjs
+node scripts/test-fps-native.cjs
 FPS_TEST_WINE='/Users/david/Library/Application Support/YAAGL Runtime Validation/20260922/profile/wine/bin/wine' node scripts/test-fps-bridge.cjs
 FPS_TEST_WINE='/Users/david/Library/Application Support/YAAGL Runtime Validation/20260922/profile/wine/bin/wine' node scripts/test-fps-bridge.cjs --steam
 ./node_modules/.bin/vitest run src/clients/mhy/hk4e/fps-*.spec.ts src/clients/mhy/hk4e/launch-fps-game.spec.ts src/clients/mhy/hk4e/config/fps-*.spec.ts --threads=false

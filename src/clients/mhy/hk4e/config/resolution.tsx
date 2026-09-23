@@ -4,9 +4,6 @@ import {
   Box,
   Checkbox,
   Input,
-  InputGroup,
-  InputAddon,
-  InputLeftAddon,
   HStack,
   VStack,
 } from "@hope-ui/solid";

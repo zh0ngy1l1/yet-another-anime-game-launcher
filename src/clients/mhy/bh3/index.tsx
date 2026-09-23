@@ -31,7 +31,6 @@ import { Aria2 } from "@aria2";
 import { Wine } from "@wine";
 import {
   checkAndDownloadDXMT,
-  checkAndDownloadDXVK,
   checkAndDownloadJadeite,
   checkAndDownloadReshade,
 } from "../../../downloadable-resource";

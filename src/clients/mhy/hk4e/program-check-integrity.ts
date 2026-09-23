@@ -1,7 +1,7 @@
-import { basename, join } from "path-browserify";
+import { basename } from "path-browserify";
 import { Sophon } from "@sophon";
 import { CommonUpdateProgram } from "@common-update-ui";
-import { log, md5, stats, readAllLines, setKey, humanFileSize } from "@utils";
+import { log, humanFileSize } from "@utils";
 import { showUpdateProgress } from "./program-update-game";
 
 export async function* checkIntegrityProgram({

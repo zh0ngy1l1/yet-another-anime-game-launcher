@@ -93,17 +93,6 @@ export function assertValueDefined<V>(
   }
 }
 
-export function arrayFind<T>(
-  array: Array<T>,
-  predict: (value: T) => boolean
-): T {
-  const ret = array.find(predict);
-  if (ret === undefined) {
-    throw new Error("Assertation failed: can not find element in array");
-  }
-  return ret;
-}
-
 export function binaryPatternSearch(view: Uint8Array, pattern: number[]) {
   retry: for (let i = 0; i < view.byteLength - pattern.length; i++) {
     for (let j = 0; j < pattern.length; j++) {

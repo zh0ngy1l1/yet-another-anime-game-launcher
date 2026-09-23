@@ -146,14 +146,6 @@ export interface HoyoConnectGameBackground {
   type: HoyoConnectGameBackgroundType;
 }
 
-export interface HoyoConnectGetGamesResponse {
-  retcode: number;
-  message: string;
-  data: {
-    games: (HoyoConnectGameId & HoyoConnectGameDisplay)[];
-  };
-}
-
 export interface HoyoConnectGetAllGameBasicInfoResponse {
   retcode: number;
   message: string;

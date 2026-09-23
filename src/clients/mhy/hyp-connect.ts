@@ -8,7 +8,6 @@ import {
   HoyoConnectGetGamePackagesResponse,
 } from "./launcher-info";
 import { exec } from "@utils";
-import { sort } from "semver";
 
 async function fetch(url: string) {
   const { stdOut } = await exec(["curl", url]);

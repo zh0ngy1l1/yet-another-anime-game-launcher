@@ -14,8 +14,6 @@ import {
   OS_EXECUTABLE,
   CN_COMPANY_NAME,
   OS_PRODUCT_NAME,
-  DLL1,
-  DLL2,
   OS_CUSTOM_HOSTS,
 } from "./secret";
 

@@ -1,24 +1,10 @@
 import { join } from "path-browserify";
 import { CommonUpdateProgram } from "@common-update-ui";
 import { Server } from "../server";
-import {
-  mkdirp,
-  removeFile,
-  writeFile,
-  resolve,
-  log,
-  wait,
-  forceMove,
-  stats,
-  exec,
-} from "@utils";
+import { mkdirp, removeFile, writeFile, resolve, log } from "@utils";
 import { Wine } from "@wine";
 import { Config } from "@config";
-import {
-  patchProgram,
-  patchRevertProgram,
-  putLocal,
-} from "./program-patch-game";
+import { patchProgram, patchRevertProgram } from "./program-patch-game";
 
 export async function* launchGameProgram({
   gameDir,

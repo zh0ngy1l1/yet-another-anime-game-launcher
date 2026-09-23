@@ -1,7 +1,6 @@
 const execa = require("execa");
 const fs = require("fs-extra");
 const path = require("path");
-const { rimraf } = require("rimraf");
 const { IconIcns } = require("@shockpkg/icon-encoder");
 
 (async () => {
@@ -78,7 +77,6 @@ const { IconIcns } = require("@shockpkg/icon-encoder");
   );
   try {
     await execa("pnpm", ["exec", "tsc"]); // do typecheck first
-    await execa("rm", ["-rf", "./.tmp"]);
     await execa("pnpm", ["exec", "vite", "build"]);
     await execa("cp", ["./neutralino.js", "./dist/neutralino.js"]);
     // run neu build command
@@ -97,7 +95,7 @@ const { IconIcns } = require("@shockpkg/icon-encoder");
   // read package.json
   const pkg = await fs.readJSON(path.resolve(process.cwd(), "package.json"));
   // remove old app folder
-  await rimraf(path.resolve(process.cwd(), `${appDistributionName}.app`));
+  await fs.remove(path.resolve(process.cwd(), `${appDistributionName}.app`));
   // create app folder
   await fs.mkdir(path.resolve(process.cwd(), `${appDistributionName}.app`));
   await fs.mkdir(

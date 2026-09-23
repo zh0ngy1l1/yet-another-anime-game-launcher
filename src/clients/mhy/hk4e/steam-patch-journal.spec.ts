@@ -12,7 +12,6 @@ import type { Server } from "../../../constants";
 // resource copies are injected. Every destination is under a disposable root.
 vi.mock("src/downloadable-resource", () => ({
   DXMT_FILES: ["d3d10core.dll", "d3d11.dll", "dxgi.dll"],
-  DXVK_FILES: [],
 }));
 vi.mock("@utils", () => ({
   resolve: (path: string) => join(root, path),

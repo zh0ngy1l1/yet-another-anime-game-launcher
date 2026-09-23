@@ -1,23 +1,18 @@
-import { dirname, join } from "path-browserify";
+import { join } from "path-browserify";
 import { CommonUpdateProgram } from "@common-update-ui";
 import {
   writeBinary,
   forceMove,
-  removeFile,
-  log,
   getKey,
   setKey,
   cp,
   resolve,
   removeFileIfExists,
-  fileOrDirExists,
   getKeyOrDefault,
-  mkdirp,
-  xdelta3,
 } from "@utils";
 import { Config } from "@config";
 import { Wine } from "@wine";
-import { DXMT_FILES, DXVK_FILES } from "src/downloadable-resource";
+import { DXMT_FILES } from "src/downloadable-resource";
 
 export async function putLocal(url: string, dest: string) {
   return await writeBinary(dest, await (await fetch(url)).arrayBuffer());

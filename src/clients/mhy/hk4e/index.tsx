@@ -8,7 +8,6 @@ import {
 import { Server } from "@constants";
 import { Locale } from "@locale";
 import {
-  assertValueDefined,
   exec,
   getFreeSpace,
   getKey,
@@ -33,19 +32,15 @@ import { downloadAndInstallGameProgram } from "./program-install-game";
 import { launchGameProgram } from "./program-launch-game";
 import { patchRevertProgram } from "../patch";
 import { Aria2 } from "@aria2";
-import { Sophon, createSophonRetry } from "@sophon";
+import { createSophonRetry } from "@sophon";
 import { Wine } from "@wine";
 import {
   checkAndDownloadDXMT,
-  checkAndDownloadDXVK,
   checkAndDownloadReshade,
 } from "../../../downloadable-resource";
 import { getInstalledGameVersion } from "./installed-version";
-import {
-  VoicePackNames,
-  HoyoConnectGameBackgroundType,
-} from "../launcher-info";
-import { getLatestAdvInfo, getLatestVersionInfo } from "../hyp-connect";
+import { HoyoConnectGameBackgroundType } from "../launcher-info";
+import { getLatestAdvInfo } from "../hyp-connect";
 
 // no need to check supported version
 // const CURRENT_SUPPORTED_VERSION = "4.8.0";
@@ -65,7 +60,7 @@ export async function createHK4EChannelClient({
 }): Promise<ChannelClient> {
   const {
     background: { url: background },
-    icon: { url: icon, link: icon_link },
+    icon: { link: icon_link },
     video: { url: video_url },
     theme: { url: theme_url },
     type: bg_type,
@@ -77,7 +72,7 @@ export async function createHK4EChannelClient({
   const sophon_host = "127.0.0.1";
 
   const pid = (await exec(["echo", rawString("$PPID")])).stdOut.split("\n")[0];
-  const { pid: spid } = await spawn(["./sidecar/sophon_server/sophon-server"], {
+  await spawn(["./sidecar/sophon_server/sophon-server"], {
     TERMINATE_WITH_PID: pid,
     SOPHON_PORT: sophon_port.toString(),
     SOPHON_HOST: sophon_host,

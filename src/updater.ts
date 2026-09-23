@@ -5,7 +5,6 @@ import { CURRENT_YAAGL_VERSION } from "./constants";
 import {
   env,
   forceMove,
-  log,
   resolve,
   rmrf_dangerously,
   mkdirp,
@@ -86,10 +85,6 @@ export async function createUpdater(deps: { github: Github; aria2: Aria2 }) {
     };
   }
 }
-
-export type Updater = ReturnType<typeof createUpdater> extends Promise<infer T>
-  ? T
-  : never;
 
 export async function* downloadProgram(
   aria2: Aria2,

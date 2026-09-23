@@ -1,10 +1,4 @@
-import {
-  createIcon,
-  FormControl,
-  FormLabel,
-  Input,
-  InputGroup,
-} from "@hope-ui/solid";
+import { FormControl, FormLabel, Input, InputGroup } from "@hope-ui/solid";
 import { createEffect, createSignal } from "solid-js";
 import { Locale } from "../locale";
 import { Config, NOOP } from "./config-def";

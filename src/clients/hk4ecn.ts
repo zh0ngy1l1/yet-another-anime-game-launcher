@@ -15,8 +15,6 @@ import {
   CN_EXECUTABLE,
   CN_COMPANY_NAME,
   CN_PRODUCT_NAME,
-  DLL1,
-  DLL2,
   CN_CUSTOM_HOSTS,
 } from "./secret";
 

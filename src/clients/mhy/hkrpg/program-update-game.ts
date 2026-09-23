@@ -5,22 +5,17 @@ import { Server } from "@constants";
 import {
   mkdirp,
   humanFileSize,
-  doStreamUnzip,
   removeFile,
   writeFile,
   hpatchz,
-  forceMove,
   readAllLinesIfExists,
   removeFileIfExists,
   getKey,
   stats,
   setKey,
-  exec,
   getKeyOrDefault,
-  fileOrDirExists,
   extract7z,
 } from "@utils";
-import { gte } from "semver";
 
 //https://stackoverflow.com/a/69399958
 const sha1sum = async (message: string) => {

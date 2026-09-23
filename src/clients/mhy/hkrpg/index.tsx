@@ -8,7 +8,6 @@ import { Server } from "@constants";
 import { Locale } from "@locale";
 import {
   assertValueDefined,
-  exec,
   getFreeSpace,
   getKey,
   getKeyOrDefault,
@@ -31,7 +30,6 @@ import { Aria2 } from "@aria2";
 import { Wine } from "@wine";
 import {
   checkAndDownloadDXMT,
-  checkAndDownloadDXVK,
   checkAndDownloadJadeite,
   checkAndDownloadReshade,
 } from "../../../downloadable-resource";
@@ -60,7 +58,7 @@ export async function createHKRPGChannelClient({
 }): Promise<ChannelClient> {
   const {
     background: { url: background },
-    icon: { url: icon, link: icon_link },
+    icon: { link: icon_link },
     video: { url: video_url },
     theme: { url: theme_url },
     type: bg_type,

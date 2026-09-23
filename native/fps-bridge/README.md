@@ -73,8 +73,9 @@ The FPS signature/branch-resolution adaptation comes from `Fork/unlockfps/FpsPat
 
 `build-record.json` records source hashes, exact compiler command, upstream revision and the built artifact:
 
-- Bridge protocol/artifact version: **3**; `fps-bridge.exe`, **38912 bytes**.
-- SHA-256: **be4b09a0dea1aca9252a1297f1a0c26a46a67d564b9027f547e64b2bb71faa25**.
+- Protocol version, size and SHA-256 are generated together in `build-record.json`
+  and `src/clients/mhy/hk4e/fps-bridge-manifest.ts`; consult those records for the
+  current artifact identity.
 - Local compiler: `x86_64-w64-mingw32-gcc (GCC) 16.2.0`; existing `/opt/homebrew/bin/x86_64-w64-mingw32-gcc`.
 - Native compiler: Apple clang 21.0.0 (`clang-2100.1.1.101`); Python 3.13.14. Native recipe/source/binary hashes are written to `bin/hk4e-neutralino-arm64.json` (or `x86_64.json`). Version: `4.11.0-yaagl-owned3`; the added [native bootstrap clock/watchdog](../bootstrap/README.md) retains the existing foreground dispatch and normal-close gate.
 
@@ -100,4 +101,4 @@ through the actual native RPC server. These fixtures are distinct from the
 
 The shared worker failure boundary in `worker.c` rechecks the retained game and stop HANDLEs after failed scanning or memory transfer. Wine can lose memory access before its process HANDLE signals: an explicit `NtQueryVirtualMemory` result of `STATUS_PROCESS_IS_TERMINATING` is also authoritative termination evidence. Generic access denial and error 87 alone are not. Failure diagnostics retain the original API error and the native query status even when the worker ends cleanly. Game exit status and cleanup failures remain independently reported by the launcher. See [the failing-run timeline and repeated live validation](../../docs/fps-normal-exit-race-20260923.md).
 
-Run `node scripts/test-fps-worker.cjs` for inert deterministic worker races and `node scripts/test-fps-memory.cjs` for transfer/probe regressions. The opt-in `scripts/test-fps-bridge.cjs` suite additionally exercises the actual PE scanner at every read boundary and a real memory-protection failure against a still-running harmless fixture.
+Run `node scripts/test-fps-native.cjs` for inert deterministic worker races and transfer/probe regressions. The opt-in `scripts/test-fps-bridge.cjs` suite additionally exercises the actual PE scanner at every read boundary and a real memory-protection failure against a still-running harmless fixture.

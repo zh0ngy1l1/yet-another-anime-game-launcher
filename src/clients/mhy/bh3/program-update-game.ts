@@ -15,11 +15,8 @@ import {
   getKey,
   stats,
   setKey,
-  exec,
   getKeyOrDefault,
-  fileOrDirExists,
 } from "@utils";
-import { gte } from "semver";
 
 //https://stackoverflow.com/a/69399958
 const sha1sum = async (message: string) => {

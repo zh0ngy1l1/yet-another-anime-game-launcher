@@ -1,7 +1,7 @@
-import { join, basename } from "path-browserify";
+import { basename } from "path-browserify";
 import { SophonClient } from "@sophon";
 import { CommonUpdateProgram } from "@common-update-ui";
-import { Server } from "@constants";
+
 import { humanFileSize, log } from "@utils";
 
 export async function* downloadAndInstallGameProgram({

@@ -10,7 +10,6 @@ vi.mock("@utils", () => ({ getKey: vi.fn(), setKey: vi.fn() }));
 vi.mock("./unity", () => ({}));
 vi.mock("src/downloadable-resource", () => ({
   DXMT_FILES: [],
-  DXVK_FILES: [],
 }));
 const wine = {
   prefix: "/isolated-fixture",

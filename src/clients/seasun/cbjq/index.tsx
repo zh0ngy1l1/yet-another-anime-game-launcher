@@ -7,11 +7,8 @@ import {
 import { Server } from "../server";
 import { Locale } from "@locale";
 import {
-  assertValueDefined,
   exec,
-  getFreeSpace,
   getKey,
-  getKeyOrDefault,
   log,
   readFile,
   setKey,
@@ -26,6 +23,11 @@ import { Config } from "@config";
 //   predownloadGameProgram,
 //   updateGameProgram,
 // } from "./program-update-game";
+// import { checkIntegrityProgram } from "../program-check-integrity";
+// import {
+//   predownloadGameProgram,
+//   updateGameProgram,
+// } from "./program-update-game";
 import { downloadAndInstallGameProgram } from "./program-install-game";
 import { launchGameProgram } from "./program-launch-game";
 import { patchRevertProgram } from "./program-patch-game";
@@ -33,10 +35,10 @@ import { Aria2 } from "@aria2";
 import { Wine } from "@wine";
 import {
   checkAndDownloadDXMT,
-  checkAndDownloadDXVK,
   checkAndDownloadJadeite,
   checkAndDownloadReshade,
 } from "../../../downloadable-resource";
+// import { getGameVersion } from "../unity";
 // import { getGameVersion } from "../unity";
 import { LauncherResourceData } from "./launcher-info";
 import { checkIntegrityProgram } from "./program-check-integrity";

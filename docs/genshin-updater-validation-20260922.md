@@ -4,7 +4,7 @@ The starting checkout was clean `main` at `f843d493878fc5ddc544311f3b83ac40f6304
 
 ## Evidence and protocol decision
 
-[Live investigation](genshin-update-investigation-20260922.md) separates direct service observations, local file evidence and unresolved hypotheses. [Reference research](sophon-protocol-references.md) records public source commits, relevant YAAGL PRs/issues, and licenses. Implementation is original Python/TypeScript; no unlicensed external implementation was copied.
+[Protocol findings and references](sophon-protocol-references.md) record the durable service observations, public source commits, relevant YAAGL PRs/issues, and licenses. Implementation is original Python/TypeScript; no unlicensed external implementation was copied.
 
 The current global service returns both ordinary full builds (`getBuild` target 7.1.0 and explicit source `tag=7.0.0`). It also still serves the legacy patch transition, whose sections contain both HDiff and raw Copy-Over bytes. Thus full manifests are sufficient; a claim that the service has entirely removed patch builds would be incorrect. Baseline unconditional HDiff dispatch is incompatible with raw sections. Basename collisions, size-only repair skipping, early deletion and failed-patch publication are separate confirmed code defects. Historical logs do not preserve the exact exception that interrupted this user's previous update; a valid unpublished staged audio file provides direct interruption evidence without establishing the exception.
 
@@ -29,7 +29,7 @@ Genshin now uses full manifests for update, predownload and reliable repair. It 
 
 The separate optional WPF editor archive is not installed in the user's game and is not downloaded. Mandatory BeyondUGC assets are ordinary game-manifest entries. This implementation detects an installed WPF editor and fails closed rather than silently committing an inconsistent editor version; updating that optional ZIP package is not implemented. The current global selection is live validated; CN/BB request routing is implemented but has not been validated on an installed CN/BB game. Future unknown category/encoding semantics require explicit support.
 
-The retained Persistent cache has its own game-managed inventory: 33 English cache files differ from the corresponding current full-package assets, and its ScriptVersion remains 7.0.0. The full-package manifests require the canonical StreamingAssets paths. Maintained full-package installation and dispatcher-based in-game repair are separate flows; the reviewed installer does not invalidate that cache. This update verifies the canonical packages and preserves the cache. Current hotfix ownership and runtime precedence have not been verified, so this report does not claim that every Persistent cache entry is current. The investigation records the exact observations and source references.
+The retained Persistent cache has its own game-managed inventory: 33 English cache files differ from the corresponding current full-package assets, and its ScriptVersion remains 7.0.0. The full-package manifests require the canonical StreamingAssets paths. Maintained full-package installation and dispatcher-based in-game repair are separate flows; the reviewed installer does not invalidate that cache. This update verifies the canonical packages and preserves the cache. Current hotfix ownership and runtime precedence have not been verified, so this report does not claim that every Persistent cache entry is current. The later runtime report records the automatic game-managed cache transition.
 
 ## Automated validation
 
@@ -120,27 +120,6 @@ The original `/Users/david/.gimpact` remains untouched. Only the independent clo
 - `7839703` — launcher completion handling, interrupted-version detection, progress integration and UI tests.
 - `51c825c` — independent clone verification, compiled REST/WebSocket verification, stronger development clone/auxiliary-path guards, and final evidence/commands.
 
-## Changed files
-
-| Files | Purpose |
-| --- | --- |
-| `sophon_server/full_update.py` | Independent streaming assembler, verification, staging, journal, cancellation, atomic publication and quarantine |
-| `sophon_server/sophon_full.py` | Verified TLS API/chunk transport, source/target builds, manifest validation, package selection and source fallback |
-| `sophon_server/manifest.proto` | 64-bit sizes and compressed-MD5 field 7 |
-| `sophon_server/sophon_api.py` | Share verified assembly with install/legacy repair; fix basename and same-size corruption; stream hashes; isolate/repair legacy patch dispatch and metadata transport |
-| `sophon_server/tasks.py` | Route Genshin update/repair through full manifests; finalize installs only after verification; advertise capability |
-| `sophon_server/{server,utils,models,progress_handlers}.py` | Typed REST operations, serialization, terminal status delivery, bounded replay and stage events |
-| `sophon_server/{pyproject.toml,uv.lock}` | Add certifi and xxhash with locked dependencies; existing dependency versions unchanged |
-| `scripts/build-sophon.py` | Explicitly bundle the CA certificate file for verified standalone HTTPS |
-| `src/sophon.ts` | Confirm operation completion, recover progress via REST status and expose capability |
-| `src/clients/mhy/hk4e/{index.tsx,installed-version.ts,program-update-game.ts,program-check-integrity.ts}` | Resume-aware version detection, full-manifest eligibility, stage rendering and remove pretransaction file migration |
-| `src/sophon.spec.ts`, `src/clients/mhy/hk4e/{installed-version,program-update-game}.spec.ts` | Completion, cancellation, version-anchor and UI tests |
-| `scripts/test-sophon-{full-update,legacy,service,server,bundle}.py` | Synthetic protocol/engine/REST regression tests and isolated standalone smoke test |
-| `scripts/probe-sophon.py`, `scripts/sophon-update.py` | Reproducible metadata-only probe and guarded clone update/verification CLI |
-| `scripts/verify-sophon-clone.py`, `scripts/test-sophon-clone-verifier.py` | Independent saved-manifest audit, original provenance checks and eight deterministic verifier tests |
-| `scripts/sophon_clone_guard.py`, `scripts/test-sophon-clone-{guard,rest}.py` | Shared clone/auxiliary-path isolation guards, eleven guard tests, and compiled-service reliable repair validation driver |
-| Three Sophon investigation/reference/validation documents | Evidence, attribution, implementation decisions, commands, results and limits |
-
 ## Runtime follow-up
 
-The [Persistent cache and runtime report](genshin-runtime-validation-20260922.md) records the clone's automatic cache transition, rendered 7.1.0 title/login panel, normal exit, and successful targeted post-launch verification. Authentication and sustained gameplay remain unqualified pending authorization for the updated legal agreements. No updater change was indicated; the original installation and installed launcher remain untouched.
+The [Persistent cache and runtime report](genshin-runtime-validation-20260922.md) records the clone's automatic cache transition, rendered 7.1.0 title/login panel, normal exit, and successful targeted post-launch verification. Its September 23 addendum records subsequent authenticated gameplay; see that report for the finite qualification. No updater change was indicated; the original installation and installed launcher remain untouched.

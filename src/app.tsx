@@ -12,12 +12,7 @@ import {
 } from "./utils";
 import { assertBootstrapActive } from "./bootstrap-clock";
 import { createAria2Retry } from "./aria2";
-import {
-  checkWine,
-  createWine,
-  createWineInstallProgram,
-  getCorrectWineBinary,
-} from "./wine";
+import { checkWine, createWine, createWineInstallProgram } from "./wine";
 import { createGithubEndpoint } from "./github";
 import { createLauncher } from "./launcher";
 import "./app.css";

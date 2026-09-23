@@ -77,5 +77,3 @@ export interface GithubReleaseAssetsInfo {
   name: string;
   content_type: string;
 }
-
-export type GithubReleases = GithubReleaseInfo[];

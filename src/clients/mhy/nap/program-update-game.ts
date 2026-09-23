@@ -15,12 +15,9 @@ import {
   getKey,
   stats,
   setKey,
-  exec,
   getKeyOrDefault,
-  fileOrDirExists,
   sha1sum,
 } from "@utils";
-import { gte } from "semver";
 
 //https://stackoverflow.com/a/69399958
 

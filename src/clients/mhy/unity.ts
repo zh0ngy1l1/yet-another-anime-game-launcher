@@ -63,22 +63,3 @@ export async function getGameVersion2019(gameDataDir: string) {
     throw new Error("Falied to parse version");
   }
 }
-
-export async function disableUnityFeature(ggmPath: string) {
-  const view = new Uint8Array(await readBinary(ggmPath));
-  const index = binaryPatternSearch(
-    view,
-    [
-      0x69, 0x63, 0x2e, 0x61, 0x70, 0x70, 0x2d, 0x63, 0x61, 0x74, 0x65, 0x67,
-      0x6f, 0x72, 0x79, 0x2e,
-    ]
-  );
-  if (index == -1) {
-    throw new Error("pattern not found"); //FIXME
-  } else {
-    const len = index + 24;
-    const v = new DataView(view.buffer);
-    v.setInt32(len, 0, true);
-    return view.buffer;
-  }
-}
