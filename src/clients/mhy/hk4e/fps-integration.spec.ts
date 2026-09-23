@@ -2,7 +2,6 @@ import { boundary } from "./fps-integration-fixture";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseBridgeStatus } from "./fps-bridge";
 import { createFpsCompanion } from "./fps-companion";
-import { buildFpsRuntimePlan } from "./fps-runtime";
 import { validateFpsUnlockDraft } from "./config/fps-unlock-state";
 import { createLaunchTransaction } from "./launch-transaction";
 import {
@@ -70,32 +69,17 @@ async function companion(
   initializationMs = 0
 ) {
   const validated = validateFpsUnlockDraft({ enabled: true, target: fps });
-  if (!validated.ok) throw Error("invalid fixture");
-  const plan = buildFpsRuntimePlan(
-    validated.value,
-    { renderBackend: "dxmt" },
-    "other=kept;"
-  );
-  if (!plan.ok || !plan.value.companion) throw Error("invalid plan fixture");
+  if (!validated.ok || !validated.value.enabled) throw Error("invalid fixture");
+  const target = validated.value.target;
   const bridge = await rig.prepare();
   await bridge.boot();
   await bridge.launch();
   const controller = createFpsCompanion(
     {
-      verifiedExecutable: bridge.path,
-      companion: plan.value.companion,
-      wine: rig.wine,
+      startWorker: () => bridge.spawnWorker(target),
       game: bridge.game,
     },
     {
-      spawn: request => {
-        expect(request.args).toEqual([fps]);
-        expect(request.environment.DXMT_CONFIG).toBe(
-          plan.value.companion?.dxmtConfig
-        );
-        expect(request.wine).toEqual(rig.wine);
-        return bridge.spawnWorker(Number(request.args[0]));
-      },
       clock: {
         now: () => Date.now(),
         setTimeout: (fn, ms) => setTimeout(fn, ms),

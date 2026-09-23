@@ -1,4 +1,3 @@
-import { join } from "path-browserify";
 import type {
   CommonProgressUICommand,
   CommonUpdateProgram,
@@ -176,28 +175,11 @@ export function launchFpsGame(
       companion: () =>
         createFpsCompanion(
           {
-            verifiedExecutable: preparedBridge().path,
-            companion,
-            wine: context,
+            startWorker: () =>
+              preparedBridge().spawnWorker(companion.fpsArgument),
             game: preparedBridge().game,
           },
-          {
-            ...dependencies.companion,
-            spawn: request => {
-              if (
-                request.executable !== preparedBridge().path ||
-                request.wine.loader !== context.loader ||
-                request.wine.prefix !== context.prefix ||
-                request.environment.DXMT_CONFIG !== companion.dxmtConfig ||
-                request.args.length !== 1 ||
-                request.args[0] !== String(companion.fpsArgument)
-              )
-                throw new Error(
-                  "FPS controller request disagrees with admitted launch"
-                );
-              return preparedBridge().spawnWorker(companion.fpsArgument);
-            },
-          }
+          dependencies.companion
         ),
       async cleanup(phase) {
         await input.launchFix?.finish();

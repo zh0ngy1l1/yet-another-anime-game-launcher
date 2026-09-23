@@ -46,11 +46,10 @@ export type FpsRuntimeResult =
   | { readonly ok: false; readonly error: "dxmt-unsupported" };
 
 /**
- * Pure contract only; intentionally unused by the launcher. Callers supply the
- * validated Step 3 value, Wine's existing backend attribute and upstream config.
+ * Admission supplies validated settings, Wine backend attributes and upstream config.
  * Disabled preserves even an absent config, without supplying today's 60 limit.
  * Only immutable strings/numbers are shared; every output record is new/frozen.
- * The companion argument stays numeric until a future execution boundary.
+ * The worker target stays numeric until the bridge protocol boundary.
  */
 export function buildFpsRuntimePlan(
   config: FpsUnlockConfig,

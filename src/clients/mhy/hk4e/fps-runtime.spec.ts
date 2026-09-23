@@ -13,7 +13,7 @@ vi.mock("../../../wine/distro", () => {
 vi.mock("../../../utils/neu", () => {
   throw new Error("Runtime native dependency");
 });
-vi.mock("./fps-unlocker", () => {
+vi.mock("./fps-artifact", () => {
   throw new Error("Runtime artifact acquisition dependency");
 });
 vi.mock("./program-launch-game", () => {

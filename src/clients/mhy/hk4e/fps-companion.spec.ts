@@ -1,14 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createFpsCompanion, FPS_COMPANION_TIMING } from "./fps-companion";
-import { buildFpsRuntimePlan } from "./fps-runtime";
-import { validateFpsUnlockDraft } from "./config/fps-unlock-state";
 import type { OperationClock } from "../../../utils/operation";
 import type {
   OwnedExecutionOutcome,
   OwnedWineExecution,
 } from "../../../wine/owned-execution";
 
-vi.mock("./fps-unlocker", () => {
+vi.mock("./fps-artifact", () => {
   throw new Error("Acquisition imported");
 });
 vi.mock("./program-launch-game", () => {
@@ -39,21 +37,6 @@ const timing = {
   cleanupTimeoutMs: 10,
 };
 
-function plan(target: number) {
-  const config = validateFpsUnlockDraft({
-    enabled: true,
-    target: String(target),
-  });
-  if (!config.ok) throw new Error("Test target invalid");
-  const result = buildFpsRuntimePlan(
-    config.value,
-    { renderBackend: "dxmt" },
-    "unrelated=kept;"
-  );
-  if (!result.ok || !result.value.companion)
-    throw new Error("Test plan invalid");
-  return result.value.companion;
-}
 function helper() {
   const exit = deferred<OwnedExecutionOutcome>();
   const started = deferred<void>();
@@ -68,7 +51,7 @@ function helper() {
   };
   return { value, exit, started };
 }
-function harness(target = 150) {
+function harness() {
   let alive = true;
   let visible = true;
   const isAlive = vi.fn(async () => alive);
@@ -81,20 +64,10 @@ function harness(target = 150) {
     return next.value;
   });
   const input = Object.freeze({
-    verifiedExecutable: "/verified cache/it's $fps/unlockfps.exe",
-    companion: plan(target),
-    wine: Object.freeze({
-      loader: "/Wine Root/bin/wine64",
-      prefix: "/Launch Prefix",
-      environment: Object.freeze({
-        KEEP: "yes",
-        EMPTY: "",
-        DXMT_CONFIG: "old=1;",
-      }),
-    }),
+    startWorker: spawn,
     game: { discover },
   });
-  const controller = createFpsCompanion(input, { spawn, clock, timing });
+  const controller = createFpsCompanion(input, { clock, timing });
   return {
     controller,
     input,
@@ -123,7 +96,7 @@ afterEach(() => {
 });
 
 describe("FPS companion discovery and initialization", () => {
-  it("uses the legacy timing defaults", () => {
+  it("uses the validated timing defaults", () => {
     expect(FPS_COMPANION_TIMING).toMatchObject({
       discoveryTimeoutMs: 90000,
       initializationMs: 10000,
@@ -538,25 +511,6 @@ describe("FPS companion races and unresolved cleanup", () => {
 });
 
 describe("FPS companion contract propagation", () => {
-  it.each([1, 60, 61, 150, 360])(
-    "passes verified path and authoritative target %i unchanged",
-    async target => {
-      const h = harness(target);
-      const snapshot = JSON.stringify(h.input);
-      h.controller.start();
-      await tick(10);
-      expect(h.spawn).toHaveBeenCalledWith({
-        executable: h.input.verifiedExecutable,
-        args: [String(target)],
-        environment: {
-          DXMT_CONFIG: `unrelated=kept;d3d11.preferredMaxFrameRate=${target};`,
-        },
-        wine: h.input.wine,
-      });
-      await h.controller.stop();
-      expect(JSON.stringify(h.input)).toBe(snapshot);
-    }
-  );
   it("rejects timing that could busy-spin or never expire", () => {
     const h = harness();
     for (const value of [0, -1, NaN, Infinity]) {
@@ -662,7 +616,7 @@ describe("FPS companion cancellation boundaries", () => {
     };
     const controller = createFpsCompanion(
       { ...h.input, game },
-      { spawn: h.spawn, clock, timing }
+      { clock, timing }
     );
     controller.start();
     await tick(10);

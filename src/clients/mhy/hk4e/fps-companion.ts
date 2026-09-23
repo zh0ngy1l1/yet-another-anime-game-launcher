@@ -1,10 +1,4 @@
-import type { FpsRuntimeResult } from "./fps-runtime";
-import {
-  startOwnedWineExecution,
-  OwnedWineContext,
-  OwnedWineExecution,
-  OwnedWineRequest,
-} from "../../../wine/owned-execution";
+import type { OwnedWineExecution } from "../../../wine/owned-execution";
 import {
   deferred,
   delay,
@@ -13,12 +7,8 @@ import {
   OperationClock,
 } from "../../../utils/operation";
 
-export type FpsCompanionPlan = NonNullable<
-  Extract<FpsRuntimeResult, { ok: true }>["value"]["companion"]
->;
-
 /**
- * Step 7 binds discovery to this launch, never merely a name/shared prefix.
+ * Discovery is bound to this launch, never merely a name/shared prefix.
  * Once returned, isAlive observes ONLY that incarnation. Exit is irreversible;
  * a reused PID or a later game must return false. Neither operation may kill.
  * Abort releases observation subscriptions; in-flight requests may settle late.
@@ -58,7 +48,7 @@ const cancelled = Symbol("companion cancelled");
 const gameExited = Symbol("game exited");
 
 /**
- * Single-use controller; Step 7 supplies its target-bound worker adapter.
+ * Single-use controller for the bridge's target-bound worker.
  * start() starts once and returns the terminal outcome (not spawn acknowledgement).
  * stop() prevents new work and returns that SAME promise, after a bounded cleanup
  * observation. Stop before start is terminal. Neither public promise rejects.
@@ -68,22 +58,18 @@ const gameExited = Symbol("game exited");
  */
 export function createFpsCompanion(
   input: {
-    /** Caller precondition: resolved Step 4 verified path; no verification here. */
-    readonly verifiedExecutable: string;
-    readonly companion: FpsCompanionPlan;
-    readonly wine: OwnedWineContext;
+    readonly startWorker: () =>
+      | OwnedWineExecution
+      | Promise<OwnedWineExecution>;
     readonly game: FpsGameObserver;
   },
   dependencies: {
-    spawn?: (
-      request: OwnedWineRequest
-    ) => OwnedWineExecution | Promise<OwnedWineExecution>;
     clock?: OperationClock;
     timing?: Partial<FpsCompanionTiming>;
   } = {}
 ) {
   const clock = dependencies.clock ?? operationClock;
-  const spawn = dependencies.spawn ?? startOwnedWineExecution;
+  const startWorker = input.startWorker;
   const timing = { ...FPS_COMPANION_TIMING, ...dependencies.timing };
   for (const [key, value] of Object.entries(timing)) {
     if (
@@ -94,15 +80,6 @@ export function createFpsCompanion(
       throw new Error(`Invalid FPS companion timing: ${key}`);
     }
   }
-  const request: OwnedWineRequest = Object.freeze({
-    executable: input.verifiedExecutable,
-    args: Object.freeze([String(input.companion.fpsArgument)]),
-    environment: Object.freeze({ DXMT_CONFIG: input.companion.dxmtConfig }),
-    wine: Object.freeze({
-      ...input.wine,
-      environment: Object.freeze({ ...input.wine.environment }),
-    }),
-  });
   const game = input.game;
   const cancellation = new AbortController();
   const signal = cancellation.signal;
@@ -258,7 +235,7 @@ export function createFpsCompanion(
         const spawning = Promise.resolve()
           .then(() => {
             if (signal.aborted) throw cancelled;
-            return spawn(request);
+            return startWorker();
           })
           .then(
             helper => {

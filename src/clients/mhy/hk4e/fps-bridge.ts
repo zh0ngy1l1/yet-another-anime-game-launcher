@@ -6,8 +6,7 @@ import {
   OwnedWineExecution,
   startOwnedWineExecution,
 } from "../../../wine/owned-execution";
-import { acquireFpsUnlocker } from "./fps-unlocker";
-import { fpsUnlockerIO } from "./fps-unlocker-io";
+import { stageFpsArtifact, fpsArtifactIO } from "./fps-artifact";
 import { FPS_BRIDGE_MANIFEST } from "./fps-bridge-manifest";
 import type { FpsGameObserver } from "./fps-companion";
 import { hk4eWineDebug } from "./launch-diagnostics";
@@ -136,39 +135,21 @@ const bridgeIO = {
   read: readFile,
   async command(directory: string, text: string) {
     await writeFile(join(directory, "command.tmp"), text);
-    await fpsUnlockerIO.promote(
+    await fpsArtifactIO.promote(
       join(directory, "command.tmp"),
       join(directory, "command")
     );
   },
   async stage(directory: string, steamPatch = false) {
     const source = resolve("./sidecar/fps-bridge/fps-bridge.exe");
-    const artifact = { ...FPS_BRIDGE_MANIFEST, tag: "bridge-3", url: source };
-    const path = await acquireFpsUnlocker(
-      {
-        ...fpsUnlockerIO,
-        cacheDirectory: () => directory,
-        download: async (from, to) => {
-          await exec(["/bin/cp", "--", from, to]);
-        },
-      },
-      artifact
-    );
+    const path = await stageFpsArtifact(directory, source, FPS_BRIDGE_MANIFEST);
     await exec(["/bin/chmod", "400", path]);
     if (steamPatch)
       for (const artifact of FPS_STEAM_ARTIFACTS) {
-        const staged = await acquireFpsUnlocker(
-          {
-            ...fpsUnlockerIO,
-            cacheDirectory: () => directory,
-            download: async (from, to) => {
-              await exec(["/bin/cp", "--", from, to]);
-            },
-          },
-          {
-            ...artifact,
-            url: resolve(`./sidecar/protonextras/${artifact.resource}`),
-          }
+        const staged = await stageFpsArtifact(
+          directory,
+          resolve(`./sidecar/protonextras/${artifact.resource}`),
+          artifact
         );
         await exec(["/bin/chmod", "400", staged]);
       }
@@ -176,7 +157,7 @@ const bridgeIO = {
   },
   async verify(path: string, steamDirectory?: string) {
     if (
-      (await fpsUnlockerIO.sha256(path, FPS_BRIDGE_MANIFEST.size)) !==
+      (await fpsArtifactIO.sha256(path, FPS_BRIDGE_MANIFEST.size)) !==
       FPS_BRIDGE_MANIFEST.sha256
     )
       throw new Error("FPS bridge execution artifact changed");
@@ -186,7 +167,7 @@ const bridgeIO = {
         const selected = join(steamDirectory, artifact.filename);
         try {
           if (
-            (await fpsUnlockerIO.sha256(selected, artifact.size)) !==
+            (await fpsArtifactIO.sha256(selected, artifact.size)) !==
             artifact.sha256
           )
             throw new Error("SHA-256 mismatch");

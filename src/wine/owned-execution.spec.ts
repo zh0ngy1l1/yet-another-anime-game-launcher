@@ -520,50 +520,6 @@ describe("owned Wine command and input propagation", () => {
   });
 });
 
-describe("controller using the production owned Wine adapter", () => {
-  it("retains a pending native stop past the public deadline and handles eventual exit", async () => {
-    const { createFpsCompanion } = await import(
-      "../clients/mhy/hk4e/fps-companion"
-    );
-    const { buildFpsRuntimePlan } = await import(
-      "../clients/mhy/hk4e/fps-runtime"
-    );
-    const { validateFpsUnlockDraft } = await import(
-      "../clients/mhy/hk4e/config/fps-unlock-state"
-    );
-    const validated = validateFpsUnlockDraft({ enabled: true, target: "61" });
-    if (!validated.ok) throw new Error("Invalid fixture");
-    const plan = buildFpsRuntimePlan(validated.value, {
-      renderBackend: "dxmt",
-    });
-    if (!plan.ok || !plan.value.companion)
-      throw new Error("Missing fixture companion");
-    const h = nativeHarness();
-    h.holdStop();
-    const controller = createFpsCompanion(
-      {
-        verifiedExecutable: request.executable,
-        companion: plan.value.companion,
-        wine: request.wine,
-        game: { discover: async () => ({ isAlive: async () => true }) },
-      },
-      { clock, timing: { initializationMs: 0, pollMs: 1, cleanupTimeoutMs: 5 } }
-    );
-    controller.start();
-    await tick();
-    expect(h.launched).toHaveLength(1);
-    const stopped = controller.stop();
-    await tick(5);
-    expect((await stopped).cleanup).toBe("unresolved");
-    expect(h.files.get(h.launched[0].directory + "/stop")).toBe("stop");
-    h.launched[0].exit.resolve(nativeResult());
-    await tick();
-    expect((await controller.completion).cleanup).toBe("confirmed");
-    expect(h.files.size).toBe(0);
-    expect(h.forbidden).not.toHaveBeenCalled();
-  });
-});
-
 describe("owned Wine finalization races", () => {
   it("seals mailbox writes before awaiting a late acknowledgement read", async () => {
     const h = nativeHarness();
