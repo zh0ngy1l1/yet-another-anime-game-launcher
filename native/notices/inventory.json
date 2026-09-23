@@ -409,9 +409,6 @@
   "neutralino/lib/asio/LICENSE_1_0.txt": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
   "neutralino/lib/asio/COPYING": "73217f94e4d10db741243b1f313b453db4186a1ad636178ecfafe028a8f24c0e",
   "neutralino/lib/infoware/LICENSE": "36ffd9dc085d529a7e60e1276d73ae5a030b020313e6c5408593a6ae2af39673",
-  "neutralino/source-notices/lib/webview/webview.h": "3c77cd8eecaf954c8a4976e2ec6d7de13fb9f09bb2cfc961e4f66fb7ca23590c",
-  "neutralino/source-notices/lib/easylogging/easylogging++.h": "39722f651a59d0ebee2babaa8b72c686e8bc89159c2cdc321787632113e684e7",
-  "neutralino/source-notices/lib/json/json.hpp": "e832d339d9e0c042e7dff807754769d778cf5d6ae9730ce21eed56de99cb5e86",
   "sophon-python/idna-3.10.dist-info/LICENSE.md": "a59f0b0ef3635874109a4461ca44ff7a70d50696e814767bfaf721d4c9b0db0f",
   "sophon-python/zstandard-0.23.0.dist-info/LICENSE": "788fe85e53724a40b299051c4abc9cf74d42b27e7968325b80891c25f79adb4b",
   "sophon-python/protobuf-6.31.1.dist-info/LICENSE": "6e5e117324afd944dcf67f36cf329843bc1a92229a8cd9bb573d7a83130fea7d",
@@ -441,5 +438,6 @@
   "sophon-python/anyio-4.11.0.dist-info/licenses/LICENSE": "5361ac9dc58f2ef5fd2e9b09c68297c17f04950909bbc8023bdb82eacf22c2b0",
   "sophon-python/typing_inspection-0.4.1.dist-info/licenses/LICENSE": "804b59b25f2c31bd278f9202a19ae49a3945aa2664387e2d0a128c7cacc61ec3",
   "sophon-python/pydantic-2.11.9.dist-info/licenses/LICENSE": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3",
-  "sophon-python/pydantic_core-2.33.2.dist-info/licenses/LICENSE": "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a"
+  "sophon-python/pydantic_core-2.33.2.dist-info/licenses/LICENSE": "2afdd30d54b4d62b6f488a6bcc1546e84ec5061f13f4209c03d012348783795a",
+  "neutralino/THIRD-PARTY-NOTICES.txt": "856582c59822c433e2d096df3dd4cbfefde7aa2376f37196fb67ea1cef329b48"
 }

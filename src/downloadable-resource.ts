@@ -7,7 +7,6 @@ import {
   humanFileSize,
   setKey,
   getKeyOrDefault,
-  fileOrDirExists,
   doStreamUnzip,
   forceMove,
   readBinary,
@@ -19,40 +18,6 @@ import {
 } from "@utils";
 import { Wine } from "@wine";
 import { join } from "path-browserify";
-
-const CURRENT_MVK_VERSION = "1.2.2";
-
-export async function* checkAndDownloadMoltenVK(
-  aria2: Aria2
-): CommonUpdateProgram {
-  if (
-    (await fileOrDirExists("./moltenvk/libMoltenVK.dylib")) &&
-    eq(
-      CURRENT_MVK_VERSION,
-      await getKeyOrDefault("installed_moltenvk_version", "0.0.0")
-    )
-  ) {
-    return;
-  }
-
-  await mkdirp("./moltenvk");
-  yield ["setStateText", "DOWNLOADING_ENVIRONMENT"];
-  for await (const progress of aria2.doStreamingDownload({
-    uri: "https://github.com/3Shain/winecx/releases/download/gi-wine-1.0/libMoltenVK.dylib",
-    absDst: resolve("./moltenvk/libMoltenVK.dylib"),
-  })) {
-    yield [
-      "setProgress",
-      Number((progress.completedLength * BigInt(100)) / progress.totalLength),
-    ];
-    yield [
-      "setStateText",
-      "DOWNLOADING_ENVIRONMENT_SPEED",
-      `${humanFileSize(Number(progress.downloadSpeed))}`,
-    ];
-  }
-  setKey("installed_moltenvk_version", CURRENT_MVK_VERSION);
-} // there is no 1.10.4! I have to make up something greater than 1.10.3
 const CURRENT_JADEITE_VERSION = "4.1.0";
 
 export async function* checkAndDownloadJadeite(

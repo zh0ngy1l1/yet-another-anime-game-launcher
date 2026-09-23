@@ -106,19 +106,6 @@ export interface HoyoConnectGameId {
   id: string;
 }
 
-export interface HoyoConnectGameDisplay {
-  display: {
-    language: string;
-    name: string;
-    subtitle: string;
-    background: HoyoConnectImage;
-    thumbnail: HoyoConnectImage;
-    logo: HoyoConnectImage;
-    icon: HoyoConnectImage;
-  };
-  display_status: string;
-}
-
 export enum HoyoConnectGameBackgroundType {
   BACKGROUND_TYPE_UNSPECIFIED = "BACKGROUND_TYPE_UNSPECIFIED",
   BACKGROUND_TYPE_VIDEO = "BACKGROUND_TYPE_VIDEO",
