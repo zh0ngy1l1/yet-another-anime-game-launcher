@@ -41,6 +41,7 @@ export interface SophonOnlineGameInfo {
   pre_download: boolean;
   pre_download_version?: string;
   error?: string;
+  full_manifest_update?: boolean;
 }
 
 export class SophonClient {
@@ -88,6 +89,9 @@ export class SophonClient {
     }
 
     const result: SophonOperationResponse = await response.json();
+    if (!result.task_id || !["pending", "running"].includes(result.status)) {
+      throw new Error(result.message || "Sophon did not start the operation");
+    }
     return result.task_id;
   }
 
@@ -107,73 +111,99 @@ export class SophonClient {
     taskId: string
   ): AsyncGenerator<SophonProgressEvent> {
     const ws = new WebSocket(`${this.wsUrl}/ws/${taskId}`);
-
     const messageQueue: SophonProgressEvent[] = [];
-    let isConnected = false;
-    let isCompleted = false;
-    let error: string | null = null;
-    let messageResolver: ((value: unknown) => void) | null = null;
-
-    ws.onopen = () => {
-      isConnected = true;
-    };
+    let wake: (() => void) | undefined;
+    let malformedMessage = false;
+    let nextStatusCheck = 0;
 
     ws.onmessage = event => {
-      const message = JSON.parse(event.data) as SophonProgressEvent;
-      messageQueue.push(message);
-
-      if (messageResolver) {
-        messageResolver(null);
-      }
-
-      if (
-        message.type === "job_end" ||
-        message.type === "job_error" ||
-        message.type === "error"
-      ) {
-        isCompleted = true;
-        if (message.type === "job_error" || message.type === "error") {
-          error = message.error || "Unknown error";
+      try {
+        const message = JSON.parse(event.data) as SophonProgressEvent;
+        if (
+          !message ||
+          typeof message.type !== "string" ||
+          message.task_id !== taskId
+        ) {
+          throw new Error("Invalid progress event");
         }
+        messageQueue.push(message);
+      } catch {
+        malformedMessage = true;
       }
+      wake?.();
+    };
+    // A transport failure never means the operation succeeded. REST status
+    // continues tracking the worker when the WebSocket cannot deliver events.
+    ws.onerror = ws.onclose = () => {
+      nextStatusCheck = 0;
+      wake?.();
     };
 
-    ws.onerror = event => {
-      error = "WebSocket connection error";
-      isCompleted = true;
-    };
-
-    ws.onclose = () => {
-      isCompleted = true;
-    };
-
-    // Wait for connection
-    while (!isConnected && !error) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-
-    if (error) {
-      throw new Error(error);
-    }
-
-    while (!isCompleted || messageQueue.length > 0) {
-      if (messageQueue.length > 0) {
-        // Array is not empty. message is not null.
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        const message = messageQueue.shift()!;
-        yield message;
-
-        if (message.type === "error" || message.type === "job_error") {
-          throw new Error(message.error || "Operation failed");
+    try {
+      while (true) {
+        if (malformedMessage)
+          throw new Error("Invalid Sophon progress message");
+        while (messageQueue.length) {
+          const message = messageQueue.shift() as SophonProgressEvent;
+          if (message.type === "error" || message.type === "job_error") {
+            throw new Error(message.error || "Operation failed");
+          }
+          yield message;
+          if (message.type === "completed") return;
+          // job_end precedes worker cleanup and is not authoritative success.
+          if (message.type === "job_end") nextStatusCheck = 0;
         }
-      } else {
-        await new Promise(resolve => {
-          messageResolver = resolve;
+
+        if (Date.now() >= nextStatusCheck) {
+          const abort = new AbortController();
+          const timeout = setTimeout(() => abort.abort(), 10000);
+          let status: { task_id: string; status: string; error?: string };
+          try {
+            const response = await fetch(
+              `${this.baseUrl}/api/tasks/${taskId}/status`,
+              {
+                signal: abort.signal,
+              }
+            );
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            status = await response.json();
+          } catch {
+            throw new Error(
+              "Cannot confirm Sophon operation status; the update may still be running"
+            );
+          } finally {
+            clearTimeout(timeout);
+          }
+          if (status.task_id !== taskId)
+            throw new Error("Invalid Sophon task status");
+          if (status.status === "completed") {
+            yield { type: "completed", task_id: taskId };
+            return;
+          }
+          if (status.status !== "pending" && status.status !== "running") {
+            throw new Error(
+              status.error || `Sophon operation ${status.status || "not found"}`
+            );
+          }
+          nextStatusCheck = Date.now() + 2000;
+        }
+        if (messageQueue.length) continue;
+        await new Promise<void>(resolve => {
+          const timer = setTimeout(
+            () => wake?.(),
+            Math.max(0, nextStatusCheck - Date.now())
+          );
+          wake = () => {
+            clearTimeout(timer);
+            wake = undefined;
+            resolve();
+          };
         });
       }
+    } finally {
+      ws.onmessage = ws.onclose = ws.onerror = null;
+      ws.close();
     }
-
-    ws.close();
   }
 
   async cancelOperation(taskId: string): Promise<void> {
@@ -200,7 +230,11 @@ export class SophonClient {
       throw new Error(`Failed to get game info: ${response.statusText}`);
     }
 
-    return response.json();
+    const result: SophonOnlineGameInfo = await response.json();
+    if (result.error || !result.version) {
+      throw new Error(result.error || "Sophon returned no target version");
+    }
+    return result;
   }
 }
 

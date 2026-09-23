@@ -1,191 +1,92 @@
 import { join, basename } from "path-browserify";
-import { Sophon } from "@sophon";
+import { Sophon, SophonProgressEvent } from "@sophon";
 import { CommonUpdateProgram } from "@common-update-ui";
-import { Server } from "@constants";
-import { mkdirp, humanFileSize, setKey, exec, fileOrDirExists } from "@utils";
-import { gte } from "semver";
+import { humanFileSize, setKey } from "@utils";
 
-//https://stackoverflow.com/a/69399958
-
-async function* downloadAndPatch(
-  sophon: Sophon,
-  gameDir: string
+export async function* showUpdateProgress(
+  progress: SophonProgressEvent
 ): CommonUpdateProgram {
-  // Predownload downloads diffs without applying,
-  // doesn't delete any files, and download new files
-  // We don't have to check about predownloads as the
-  // update progress should skip already downloaded files
-  // and delete, patch, and download necessary files.
-  const downloadTmp = join(gameDir, ".tmp");
+  if (progress.type === "update_stage") {
+    const completed = Number(progress.completed_files || 0);
+    const total = Number(progress.total_files || 0);
+    if (progress.stage === "verifying") {
+      yield [
+        "setStateText",
+        "SCANNING_FILES",
+        String(completed),
+        String(total),
+      ];
+    } else if (progress.stage === "downloading") {
+      const downloadTotal = progress.overall_progress?.total_size;
+      if (downloadTotal) {
+        yield [
+          "setStateText",
+          "DOWNLOADING_FILE_PROGRESS",
+          basename(progress.filename || ""),
+          humanFileSize(progress.overall_progress?.download_speed || 0),
+          humanFileSize(progress.downloaded_bytes || 0),
+          humanFileSize(downloadTotal),
+        ];
+      } else {
+        // Missing chunks depend on the verified local data; do not invent a
+        // total before the engine has established it.
+        yield ["setStateText", "DOWNLOADING_UPDATE_FILE"];
+      }
+    } else if (["reusing", "assembling", "deleting"].includes(progress.stage)) {
+      yield ["setStateText", "PATCHING"];
+    } else {
+      yield ["setStateText", "UPDATING"];
+    }
+    if (total > 0)
+      yield ["setProgress", Math.min(100, (completed * 100) / total)];
+    else yield ["setUndeterminedProgress"];
+  } else if (
+    ["chunk_progress", "ldiff_download_complete"].includes(progress.type)
+  ) {
+    yield [
+      "setStateText",
+      "DOWNLOADING_FILE_PROGRESS",
+      basename(progress.filename),
+      humanFileSize(progress.overall_progress.download_speed),
+      humanFileSize(progress.overall_progress.downloaded_size),
+      humanFileSize(progress.overall_progress.total_size),
+    ];
+    yield ["setProgress", Number(progress.overall_progress.overall_percent)];
+  } else if (["delete_file", "delete_ldiff_file"].includes(progress.type)) {
+    yield ["setStateText", "PATCHING"];
+    yield ["setProgress", Number(progress.overall_progress.overall_percent)];
+  }
+}
+
+async function* update(
+  sophon: Sophon,
+  gameDir: string,
+  predownload: boolean
+): CommonUpdateProgram {
   const taskId = await sophon.startUpdate({
     gamedir: gameDir,
     game_type: "hk4e",
-    tempdir: downloadTmp,
-    predownload: false,
+    tempdir: join(gameDir, ".tmp"),
+    predownload,
   });
   yield ["setUndeterminedProgress"];
-  yield ["setStateText", "ALLOCATING_FILE"];
+  yield ["setStateText", "UPDATING"];
   for await (const progress of sophon.streamOperationProgress(taskId)) {
-    switch (progress.type) {
-      case "delete_file":
-        yield ["setStateText", "PATCHING"];
-        yield [
-          "setProgress",
-          Number(progress.overall_progress.overall_percent),
-        ];
-        break;
-
-      case "ldiff_download_complete":
-        yield [
-          "setStateText",
-          "DOWNLOADING_FILE_PROGRESS",
-          basename(progress.filename),
-          humanFileSize(progress.overall_progress.download_speed),
-          humanFileSize(progress.overall_progress.downloaded_size),
-          humanFileSize(progress.overall_progress.total_size),
-        ];
-        yield [
-          "setProgress",
-          Number(progress.overall_progress.overall_percent),
-        ];
-        break;
-
-      case "chunk_progress":
-        yield [
-          "setStateText",
-          "DOWNLOADING_FILE_PROGRESS",
-          basename(progress.filename),
-          humanFileSize(progress.overall_progress.download_speed),
-          humanFileSize(progress.overall_progress.downloaded_size),
-          humanFileSize(progress.overall_progress.total_size),
-        ];
-        yield [
-          "setProgress",
-          Number(progress.overall_progress.overall_percent),
-        ];
-        break;
-
-      case "delete_ldiff_file":
-        yield ["setStateText", "PATCHING"];
-        yield [
-          "setProgress",
-          Number(progress.overall_progress.overall_percent),
-        ];
-        break;
-    }
+    yield* showUpdateProgress(progress);
   }
-  yield ["setUndeterminedProgress"];
 }
 
 export async function* updateGameProgram({
   sophon,
   gameDir,
-  server,
-  updatedGameVersion,
 }: {
   sophon: Sophon;
   gameDir: string;
-  server: Server;
-  updatedGameVersion: string;
 }): CommonUpdateProgram {
-  yield ["setStateText", "UPDATING"];
-  // 3.6.0
-  if (gte(updatedGameVersion, "3.6.0")) {
-    if (
-      await fileOrDirExists(
-        join(
-          gameDir,
-          server.dataDir,
-          "StreamingAssets",
-          "Audio",
-          "GeneratedSoundBanks",
-          "Windows"
-        )
-      )
-    ) {
-      await mkdirp(
-        join(gameDir, server.dataDir, "StreamingAssets", "AudioAssets")
-      );
-      await exec([
-        "/bin/cp",
-        "-R",
-        "-f",
-        join(
-          gameDir,
-          server.dataDir,
-          "StreamingAssets",
-          "Audio",
-          "GeneratedSoundBanks",
-          "Windows"
-        ) + "/.",
-        join(gameDir, server.dataDir, "StreamingAssets", "AudioAssets"),
-      ]);
-      await exec([
-        "rm",
-        "-rf",
-        join(
-          gameDir,
-          server.dataDir,
-          "StreamingAssets",
-          "Audio",
-          "GeneratedSoundBanks",
-          "Windows"
-        ),
-      ]);
-    }
-  }
-
-  yield* downloadAndPatch(sophon, gameDir);
-  await setKey(`predownloaded_all`, null);
-  // Writing config.ini is done in python script
-}
-
-async function* predownload(
-  sophon: Sophon,
-  gameDir: string
-): CommonUpdateProgram {
-  const downloadTmp = join(gameDir, ".tmp");
-  const taskId = await sophon.startUpdate({
-    gamedir: gameDir,
-    game_type: "hk4e",
-    tempdir: downloadTmp,
-    predownload: true,
-  });
-  yield ["setUndeterminedProgress"];
-  yield ["setStateText", "ALLOCATING_FILE"];
-  for await (const progress of sophon.streamOperationProgress(taskId)) {
-    switch (progress.type) {
-      case "ldiff_download_complete":
-        yield [
-          "setStateText",
-          "DOWNLOADING_FILE_PROGRESS",
-          basename(progress.filename),
-          humanFileSize(progress.overall_progress.download_speed),
-          humanFileSize(progress.overall_progress.downloaded_size),
-          humanFileSize(progress.overall_progress.total_size),
-        ];
-        yield [
-          "setProgress",
-          Number(progress.overall_progress.overall_percent),
-        ];
-        break;
-
-      case "chunk_progress":
-        yield [
-          "setStateText",
-          "DOWNLOADING_FILE_PROGRESS",
-          basename(progress.filename),
-          humanFileSize(progress.overall_progress.download_speed),
-          humanFileSize(progress.overall_progress.downloaded_size),
-          humanFileSize(progress.overall_progress.total_size),
-        ];
-        yield [
-          "setProgress",
-          Number(progress.overall_progress.overall_percent),
-        ];
-        break;
-    }
-  }
+  // File migration, verification and version metadata belong to the updater's
+  // transaction. The UI must never move/delete source files before it starts.
+  yield* update(sophon, gameDir, false);
+  await setKey("predownloaded_all", null);
 }
 
 export async function* predownloadGameProgram({
@@ -194,7 +95,7 @@ export async function* predownloadGameProgram({
 }: {
   sophon: Sophon;
   gameDir: string;
-}) {
-  yield* predownload(sophon, gameDir);
-  await setKey(`predownloaded_all`, "true");
+}): CommonUpdateProgram {
+  yield* update(sophon, gameDir, true);
+  await setKey("predownloaded_all", "true");
 }

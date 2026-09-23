@@ -1,107 +1,105 @@
-import threading, queue, asyncio, json, time
-from typing import Dict, Any
+import asyncio
+import json
+import threading
+from collections import OrderedDict
+from typing import Dict
+
 from fastapi import WebSocket
 from models import TaskStatus
 
+
 class ConnectionManager:
+    """Deliver ordered events and retain a bounded snapshot for late clients.
+
+    All socket/queue state lives on the server event loop. Slow clients may miss
+    intermediate progress, but terminal state is retained for reconnects and is
+    independently available from the task status endpoint.
+    """
     def __init__(self, event_loop: asyncio.AbstractEventLoop):
-        self.active_connections: Dict[str, Any] = {}  # client_id -> websocket
-        self._queue = queue.Queue()
-        self._worker_thread = None
-        self._stop_event = threading.Event()
-        self._lock = threading.Lock()
-        self._started = False
+        self.active_connections = {}
+        self._queues = {}
+        self._writers = {}
+        self._snapshots = {}
         self._event_loop = event_loop
 
-    def connect(self, client_id: str, websocket):
-        with self._lock:
-            self.active_connections[client_id] = websocket
-            self._start_worker_if_needed()
-
-    def disconnect(self, client_id: str):
-        with self._lock:
-            if client_id in self.active_connections:
-                print(f"Disconnecting client {client_id}")
-                del self.active_connections[client_id]
-
-    def _start_worker_if_needed(self):
-        if not self._started:
-            self._started = True
-            self._stop_event.clear()
-            self._worker_thread = threading.Thread(target=self._message_worker, daemon=True)
-            self._worker_thread.start()
-            print("Global message worker started")
-
-    def _send_message(self, message: Dict[str, Any], websocket: WebSocket):
-        asyncio.run_coroutine_threadsafe(
-            websocket.send_text(json.dumps(message)),
-            self._event_loop
-        )
-        # Due to the way websockets library is designed
-        # we need a asyncio.sleep() after sending a message
-        # for the message to be sent properly
-        asyncio.run_coroutine_threadsafe(
-            asyncio.sleep(0),
-            self._event_loop
+    def connect(self, client_id: str, websocket: WebSocket):
+        self.disconnect(client_id)
+        self.active_connections[client_id] = websocket
+        messages = asyncio.Queue(maxsize=128)
+        self._queues[client_id] = messages
+        for message in self._snapshots.get(client_id, {}).values():
+            messages.put_nowait(message)
+        self._writers[client_id] = self._event_loop.create_task(
+            self._write_messages(client_id, websocket, messages)
         )
 
-    def _message_worker(self):
-        print("Message worker running...")
-        while not self._stop_event.is_set():
-            try:
-                message, client_id = self._queue.get(block=True, timeout=None)
+    def disconnect(self, client_id: str, websocket=None):
+        if websocket is not None and self.active_connections.get(client_id) is not websocket:
+            return
+        self.active_connections.pop(client_id, None)
+        self._queues.pop(client_id, None)
+        writer = self._writers.pop(client_id, None)
+        if writer is not None and writer is not asyncio.current_task():
+            writer.cancel()
 
-                with self._lock:
-                    websocket: WebSocket = self.active_connections.get(client_id)
-                    if websocket:
-                        try:
-                            self._send_message(message, websocket)
-                        except Exception as e:
-                            print(f"Error sending message to {client_id}: {e}")
-                            self.disconnect(client_id)
-                    else:
-                        print(f"Client {client_id} not found, message discarded")
+    async def _write_messages(self, client_id, websocket, messages):
+        try:
+            while True:
+                message = await messages.get()
+                await websocket.send_text(json.dumps(message))
+        except (Exception, asyncio.CancelledError):
+            self.disconnect(client_id, websocket)
 
-            except queue.Empty:
-                continue
-            except Exception as e:
-                print(f"Worker error: {e}")
-                time.sleep(1)
+    def _publish(self, message, client_id):
+        snapshot = self._snapshots.setdefault(client_id, OrderedDict())
+        if "completed" in snapshot or "error" in snapshot:
+            return
+        kind = message["type"]
+        snapshot.pop(kind, None)
+        snapshot[kind] = message
+        while len(snapshot) > 32:
+            snapshot.popitem(last=False)
+        messages = self._queues.get(client_id)
+        if messages is not None:
+            if messages.full():
+                messages.get_nowait()
+            messages.put_nowait(message)
 
     def send_message_threadsafe(self, message: dict, client_id: str):
-        try:
-            self._queue.put_nowait((message, client_id))
-        except queue.Full:
-            print(f"Message queue full for client {client_id}")
+        self._event_loop.call_soon_threadsafe(self._publish, dict(message), client_id)
 
     def stop_worker(self):
-        self._stop_event.set()
-        if self._worker_thread and self._worker_thread.is_alive():
-            self._worker_thread.join(timeout=5.0)
+        for client_id in list(self.active_connections):
+            self.disconnect(client_id)
 
-def run_task_in_thread(manager: ConnectionManager, tasks: Dict[str, TaskStatus], task_id: str, operation_func, *args):
+
+def run_task_in_thread(manager: ConnectionManager, tasks: Dict[str, TaskStatus],
+                       task_id: str, operation_func, *args,
+                       operation_lock=None, cancel_event=None):
     def task_runner():
         try:
             tasks[task_id].status = "running"
+            if cancel_event is not None and cancel_event.is_set():
+                raise InterruptedError("Operation cancelled")
             result = operation_func(*args)
-
-            manager.send_message_threadsafe({
-                "type": "completed",
-                "task_id": task_id,
-                "result": result
-            }, task_id)
-
+            if cancel_event is not None and cancel_event.is_set():
+                raise InterruptedError("Operation cancelled")
+            # Publish authoritative status before announcing completion.
             tasks[task_id].status = "completed"
-
-        except Exception as e:
             manager.send_message_threadsafe({
-                "type": "error",
-                "task_id": task_id,
-                "error": str(e)
+                "type": "completed", "task_id": task_id, "result": result,
             }, task_id)
-
-            tasks[task_id].status = "failed"
-            tasks[task_id].error = str(e)
+        except Exception as error:
+            cancelled = cancel_event is not None and cancel_event.is_set()
+            tasks[task_id].status = "cancelled" if cancelled else "failed"
+            tasks[task_id].error = str(error)
+            manager.send_message_threadsafe({
+                "type": "error", "task_id": task_id, "error": str(error),
+            }, task_id)
+        finally:
+            if operation_lock is not None:
+                operation_lock.release()
 
     thread = threading.Thread(target=task_runner, daemon=True)
     thread.start()
+    return thread

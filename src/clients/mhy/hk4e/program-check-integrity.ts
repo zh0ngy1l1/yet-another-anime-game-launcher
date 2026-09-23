@@ -2,6 +2,7 @@ import { basename, join } from "path-browserify";
 import { Sophon } from "@sophon";
 import { CommonUpdateProgram } from "@common-update-ui";
 import { log, md5, stats, readAllLines, setKey, humanFileSize } from "@utils";
+import { showUpdateProgress } from "./program-update-game";
 
 export async function* checkIntegrityProgram({
   sophon,
@@ -20,6 +21,10 @@ export async function* checkIntegrityProgram({
 
   for await (const progress of sophon.streamOperationProgress(taskId)) {
     switch (progress.type) {
+      case "update_stage":
+        yield* showUpdateProgress(progress);
+        break;
+
       case "check_file":
         yield [
           "setStateText",

@@ -22,7 +22,7 @@ import {
   waitImageReady,
 } from "@utils";
 import { join } from "path-browserify";
-import { gt, lt, SemVer } from "semver";
+import { gt, lt } from "semver";
 import { Config } from "@config";
 import { checkIntegrityProgram } from "./program-check-integrity";
 import {
@@ -40,7 +40,7 @@ import {
   checkAndDownloadDXVK,
   checkAndDownloadReshade,
 } from "../../../downloadable-resource";
-import { getGameVersion } from "../unity";
+import { getInstalledGameVersion } from "./installed-version";
 import {
   VoicePackNames,
   HoyoConnectGameBackgroundType,
@@ -91,6 +91,7 @@ export async function createHK4EChannelClient({
   log(`Game info: ${JSON.stringify(gameInfo)}`);
   const LATEST_GAME_VERSION: string = gameInfo.version;
   const UPDATABLE_VERSIONS: string[] = gameInfo.updatable_versions;
+  const FULL_MANIFEST_UPDATE = gameInfo.full_manifest_update === true;
   const PRE_DOWNLOAD_VERSION: string = gameInfo.pre_download_version || "0.0.0";
   const PRE_DOWNLOAD_AVAILABLE: boolean = gameInfo.pre_download;
   const INSTALL_SIZE_BYTES: number = gameInfo.install_size;
@@ -166,8 +167,9 @@ export async function createHK4EChannelClient({
         await setKey("game_install_dir", selection);
         return;
       }
-      const gameVersion = await getGameVersionGI(
-        join(selection, server.dataDir)
+      const gameVersion = await getInstalledGameVersion(
+        selection,
+        server.dataDir
       );
       // if (gt(gameVersion, CURRENT_SUPPORTED_VERSION)) {
       //   await locale.alert(
@@ -179,7 +181,7 @@ export async function createHK4EChannelClient({
       // } else
       if (lt(gameVersion, LATEST_GAME_VERSION)) {
         const updatable = UPDATABLE_VERSIONS.includes(gameVersion);
-        if (!updatable) {
+        if (!FULL_MANIFEST_UPDATE && !updatable) {
           await locale.prompt(
             "UNSUPPORTED_VERSION",
             "GAME_VERSION_TOO_OLD_DESC",
@@ -218,7 +220,7 @@ export async function createHK4EChannelClient({
     },
     async *update() {
       const updatable = UPDATABLE_VERSIONS.includes(gameCurrentVersion());
-      if (!updatable) {
+      if (!FULL_MANIFEST_UPDATE && !updatable) {
         await locale.prompt(
           "UNSUPPORTED_VERSION",
           "GAME_VERSION_TOO_OLD_DESC",
@@ -235,8 +237,6 @@ export async function createHK4EChannelClient({
       yield* updateGameProgram({
         sophon,
         gameDir: _gameInstallDir(),
-        server,
-        updatedGameVersion: LATEST_GAME_VERSION,
       });
       batch(() => {
         setGameVersion(LATEST_GAME_VERSION);
@@ -301,16 +301,6 @@ export async function createHK4EChannelClient({
   };
 }
 
-async function getGameVersionGI(gameDataDir: string) {
-  try {
-    const ret = await getGameVersion(gameDataDir, 0xac);
-    await log(String(new SemVer(ret)));
-    return ret;
-  } catch {
-    return await getGameVersion(gameDataDir);
-  }
-}
-
 async function checkGameState(locale: Locale, server: Server) {
   let gameDir = "";
   try {
@@ -324,7 +314,7 @@ async function checkGameState(locale: Locale, server: Server) {
     return {
       gameInstalled: true,
       gameInstallDir: gameDir,
-      gameVersion: await getGameVersionGI(join(gameDir, server.dataDir)),
+      gameVersion: await getInstalledGameVersion(gameDir, server.dataDir),
     } as const;
   } catch {
     return {
