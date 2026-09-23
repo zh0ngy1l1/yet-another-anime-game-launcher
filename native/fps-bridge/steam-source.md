@@ -135,7 +135,7 @@ The jobs do not account for native Unix forks, another prefix or pre-existing
 services. Privileged same-user process/memory tampering remains outside the
 existing guarantee.
 
-Source and binary context are recorded in the [creation investigation](../../docs/fps-direct-steam-candidate-20260913.md).
+The inspected source and binary identities above define this creation context.
 The selected Wine double-forks child processes: persistent Unix PPID is normally
 launchd on both routes, although the originating creator differs. The direct
 shim also supplies its own ordinary Windows/Unix stream context, removing the
@@ -172,11 +172,9 @@ launchers must not concurrently mutate the same game/Wine files. There is no
 force-quit, launcher-crash or power-loss recovery promise. Packaged-app/release
 verification remains a separate Step 8 gate.
 
-The [enabled-60 follow-up](../../docs/fps-enabled60-followup-20260913.md) records
-the pre-worker driver-initialization failure and a four-arm harmless context
-comparison. It does not establish that the former private image path caused the
-game failure. Job membership, creator and standard-handle differences remain
-explicit compatibility limits; ownership and close protection are unchanged.
+A harmless four-arm context comparison did not establish that the former
+private image path caused the pre-worker driver failure. Job membership, creator
+and standard-handle differences remain explicit compatibility limits.
 
 ## Runtime desktop ordering and owned game lifetime
 
@@ -204,7 +202,5 @@ automatic cleanup pass. With desktop preparation, the same fixture's worker
 wrote 120, descendant lifetime remained guarded, and both jobs, outer Steam
 and Wine completed naturally. The production native Steam suite now includes
 the real-window case at target 60, through the normal public test entrypoint.
-The external before/after records are under
-`fps-direct-failure-20260913T204809Z/desktop-lifetime` in the local evidence root.
 An autonomous game result requiring desktop recovery must remain distinct from
 an automatic cleanup pass on the corrected candidate.

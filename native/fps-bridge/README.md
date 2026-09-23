@@ -1,10 +1,10 @@
-# Direct HK4E launch boundary (Step 7)
+# HK4E FPS bridge and ownership
 
 This development resource replaces the target-agnostic unlocker **only for enabled HK4E launches**, including Steam Patch. It is a single Windows x64 program: the process-creation/observation bridge and FPS worker live in the same executable. The worker is a thread, not another Wine process. FPS target selection uses no foreground-window lookup, executable-name process search, PID reopening, DLL injection, rediscovery of another target, or fallback to the old download.
 
 ## Attribution, lifetime and support
 
-`fps-admission.ts` reads the persisted Step 3 settings after pending edits settle. Before acquisition or preparation, it checks the selected route, complete distribution/backend metadata, local native version, existing executable/loader/prefix, and the Step 5 runtime plan. It snapshots the explicit selected Wine context. `launch-ownership.ts` reserves the primary action synchronously, before asynchronous selection/admission. That reservation identifies a transaction; it is **not** an OS process identity.
+`fps-admission.ts` reads the persisted FPS settings after pending edits settle. Before acquisition or preparation, it checks the selected route, complete distribution/backend metadata, local native version, existing executable/loader/prefix, and the DXMT runtime plan. It snapshots the explicit selected Wine context. `launch-ownership.ts` reserves the primary action synchronously, before asynchronous selection/admission. That reservation identifies a transaction; it is **not** an OS process identity.
 
 After staging, `fps-bridge.ts` gives each bridge a fresh private directory and 256-bit token. `bridge.c` creates an unnamed job without breakaway or kill-on-close flags. On the direct route’s single `launch` command it calls `CreateProcessW` for the exact executable and upstream arguments, suspended. It retains the returned process handle, assigns the process to the job, and resumes its initial thread. It can terminate only that exact **never-resumed** process if assignment/resumption fails. Normal close, cancellation, discovery failure and cleanup never terminate a running game.
 
@@ -34,7 +34,12 @@ Bridge diagnostics use the separate `game_<timestamp>.log.bridge.log`, exclusive
 
 The direct non-Steam route redirects Win32 game output to `.log`. Inner Steam output is in `.steam.log`; its directly created GUI child can have NULL standard handles, so an absent or empty `.log` is expected. Keep both `.wine.log` and `.bridge.log`: neither replaces the other. Bridge diagnostics record UTC/tick timestamps, creation/readiness/worker transitions, resolved image/target/page samples, changed read values and write begin/result records, preserving API error state. A page sample is not fault-time protection evidence. A missing write-result line does not prove zero writes; a write can succeed before logging its result fails. Diagnostic IO adds observation overhead.
 
-The [initial September 13 investigation](../../docs/fps-prelogin-investigation-20260913.md) and [enabled-60 follow-up](../../docs/fps-enabled60-followup-20260913.md) distinguish the current pre-worker protection-driver failure from the historical Wine data-page hazard. Enabled Steam now uses the same `C:\windows\system32\steam.exe` image path as disabled Steam, verifies its prepared prefix files and C: mapping, and records the retained shim image. Wine exception and module-load tracing (`+seh,+loaddll`) is appended to the existing debug configuration in the persistent `.wine.log`; disabled HK4E uses the same channels in its ordinary game log. Handled exceptions can also appear and are not by themselves fatal. This compatibility correction still requires operator game verification.
+Enabled Steam uses the canonical `C:\windows\system32\steam.exe` image path,
+verifies prepared prefix files and C: mapping, and records the retained shim
+image. Wine tracing (`+seh,+loaddll`) stays in the persistent `.wine.log`;
+disabled HK4E records the same channels in its ordinary game log. Handled
+exceptions alone do not establish failure. The qualified gameplay configuration
+and remaining limits are in [FPS operations](../../docs/fps-runtime.md).
 
 These are separate events:
 
@@ -85,9 +90,11 @@ A repeated local bridge build matched the recorded bytes. This is a same-toolcha
 
 Each enabled launch copies the local resource into a fresh mode-700 `/tmp/yaagl-fps.<nonce>` directory using the existing acquisition/verification implementation and the new manifest. The staged regular file is size/SHA-256 checked, atomically promoted, checked again and made mode 400. That exact private path is checked before bridge execution, registry execution and each worker start/restart. For Steam Patch, signed shim/DLL inputs are privately staged and verified. After journaled prefix preparation, the actual selected system32 pair is checked before boot and launch, including proof that Wine C: maps to the verified prefix drive_c. Win32 image read handles deny cooperating writers/deleters until release. The bridge continues executing from its private path; the signed shim executes at the canonical prefix path shared with the disabled route. Journal restoration still waits for the complete guarded lifetime. A same-user/administrator attacker can still replace files between verification and Wine loading or alter the running process. The implementation does not claim protection against that privilege level.
 
-The original Step 7 implementation used only locally compiled harmless fixtures; its historical verification is in [step7-verification.md](../../docs/step7-verification.md) and [step-7.5.md](../../docs/step-7.5.md). The production fixture exercises transaction/client code through the actual native RPC server with `--rpc`; it is not rendered launcher UI evidence. Existing provenance acceptance in `.tmp/step7.5/authorization.txt` remains unchanged. The operator subsequently explicitly authorized coordinated autonomous game testing for the current investigation.
-
-The [canonical-60 follow-up](../../docs/fps-canonical60-investigation-20260913.md) and [previous direct-Steam candidate](../../docs/fps-direct-steam-candidate-20260913.md) record pre-worker failures. The [current investigation](../../docs/fps-direct-creation-failure-20260913.md) identifies the PID-32 canonical Steam predicate, the separate Wine desktop lifetime cycle, controlled autonomous results and the remaining historical Wine page-protection hazard. Earlier failure/acceptance statements do not establish the final candidate's result. The [current checkpoint](../../NEXT-MANUAL-CHECKPOINT.md) identifies the exact artifact, requires enabled-60 startup/worker/automatic cleanup before enabled-120 world FPS, and keeps packaged-game testing separate.
+The harmless native fixtures cover direct and Steam creation, retained-HANDLE
+selection, descendant jobs, desktop preparation, protocol rejection, and safe
+release. `scripts/test-runtime-fixture.cjs --rpc` exercises production transactions
+through the actual native RPC server. These fixtures are distinct from the
+[recorded gameplay validation](../../docs/genshin-runtime-validation-20260922.md).
 
 ## Memory failures during shutdown
 

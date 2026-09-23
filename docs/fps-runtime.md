@@ -55,17 +55,15 @@ installed Wine and game data are not rollback targets.
 The 2026-09-14 isolated R2 results include stable enabled-60 login, enabled-120
 gameplay around 117–118 FPS, and ten minutes at target 150 with movement and fast
 travel, sampled around 110–121 FPS. Those three runs recorded game exit 0,
-worker/job/supervisor completion, Wine waits and restoration. See the
-[dated report](fps-r2-game-validation-20260914.md) for exact artifacts and capture
-qualifications. Earlier unrun statuses remain historical, not current results.
+worker/job/supervisor completion, Wine waits and restoration. These are finite observations of the pinned R2 runtime.
 
-The final [Step 8 delivery](fps-step8-delivery-20260915.md) also passed normal
+The September 15 packaged delivery also passed normal
 fresh runtime acquisition/preparation, enabled-60 prelogin, an existing-runtime
 disabled control and enabled-150 world observation for 13 minutes including fast
 travel and late successful write/readback. All recorded game exits were 0 and
 owned cleanup/restoration completed. Sampled world throughput was 120–130 FPS.
 
-The later [Global installation check](global-installation-20260915.md) passed
+The September 15 Global installation check passed
 Finder startup, saved-account login, world entry and normal close in Applications.
 On first Finder launch, Wine can trigger a macOS folder-access prompt. Resolve
 the visible prompt before continuing; a long unanswered prompt can stop bridge
@@ -79,10 +77,17 @@ Process-tagged final logs identify a Wine thread-abort diagnostic inside the gam
 during ordinary teardown, shortly before its retained handle reports exit 0.
 Worker/jobs, supervisor, Wine waits and exact restoration also confirm completion.
 The thread exception's underlying cause remains unresolved; it is not classified
-as harmless. See the delivery report for exact process, timing and exit evidence.
+as harmless. The [current shutdown analysis](fps-normal-exit-race-20260923.md) explains how
+worker termination is classified independently of game and cleanup errors.
 
 The application requires macOS 14+; actual qualification is on Apple Silicon
 macOS 26.6.2 with Rosetta. Earlier OS gameplay, Intel-native application builds,
 China gameplay, higher graphics loads and arbitrary Wine distributions remain
 outside the finite tested configuration. Native Fullscreen and Game Mode are
 outside this delivery.
+
+The [7.1.0 runtime validation](genshin-runtime-validation-20260922.md) records
+subsequent authenticated gameplay, automatic Persistent-cache transition and
+Option+Command+Q cleanup. The [bridge architecture](../native/fps-bridge/README.md)
+and [Steam source analysis](../native/fps-bridge/steam-source.md) retain the
+creation-context and desktop-lifetime findings that constrain the implementation.

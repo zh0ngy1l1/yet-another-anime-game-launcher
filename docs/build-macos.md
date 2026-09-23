@@ -94,6 +94,7 @@ Rollback is normal quit, wait for cleanup, then reopen the retained previous app
 with its own profile. Keep game data, saves and prefixes. Do not copy a running
 prefix, reset Wine, or delete a retained request/journal to bypass a guard.
 
-The [dated validation report](fps-step8-delivery-20260915.md) records the actual
-clean-checkout build and gameplay results. CI builds on an Apple Silicon macOS runner and runs source/artifact checks;
+Current [runtime validation](genshin-runtime-validation-20260922.md) and
+[shutdown classification](fps-normal-exit-race-20260923.md) record the finite
+live results. CI builds on Apple Silicon and runs source/artifact checks;
 it does not launch the game or change hosts.

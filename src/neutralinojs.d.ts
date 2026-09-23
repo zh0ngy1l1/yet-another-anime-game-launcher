@@ -1424,7 +1424,7 @@ declare namespace Neutralino {
      * Sets an icon for the native window or Dock.
      * @param icon A `200x200` PNG image file works fine on all supported operating systems.
      * @example
-     * const icon = '/resources/icons/appIcon.png';
+     * const icon = '/src/icons/Paimon.cr.png';
      * await Neutralino.window.setIcon(icon);
      */
     function setIcon(icon: string): Promise<void>;

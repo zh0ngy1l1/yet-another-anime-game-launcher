@@ -2,7 +2,7 @@
 
 Step 7 now consumes this adapter for its request-private bridge and registry
 utility. See [the bridge boundary and evidence](../../native/fps-bridge/README.md)
-and [the operator checklist](../../docs/step-7.5.md). The selected loader and prefix
+and [operator guidance](../../docs/fps-runtime.md). The selected loader and prefix
 remain explicit. A verified executable path is a caller precondition, not a
 property proved by TypeScript's `string` type. The live adapter uses a local
 same-revision native build that permits concurrent foreground RPCs and normal
