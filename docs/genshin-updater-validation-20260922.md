@@ -118,7 +118,7 @@ The original `/Users/david/.gimpact` remains untouched. Only the independent clo
 
 - `23119a6` — verified and resumable full-manifest Genshin engine, provider, legacy compatibility fixes, live research and regression tests.
 - `7839703` — launcher completion handling, interrupted-version detection, progress integration and UI tests.
-- This validation commit — independent clone verification, compiled REST/WebSocket verification, stronger development clone/auxiliary-path guards, and final evidence/commands.
+- `51c825c` — independent clone verification, compiled REST/WebSocket verification, stronger development clone/auxiliary-path guards, and final evidence/commands.
 
 ## Changed files
 
@@ -140,3 +140,7 @@ The original `/Users/david/.gimpact` remains untouched. Only the independent clo
 | `scripts/verify-sophon-clone.py`, `scripts/test-sophon-clone-verifier.py` | Independent saved-manifest audit, original provenance checks and eight deterministic verifier tests |
 | `scripts/sophon_clone_guard.py`, `scripts/test-sophon-clone-{guard,rest}.py` | Shared clone/auxiliary-path isolation guards, eleven guard tests, and compiled-service reliable repair validation driver |
 | Three Sophon investigation/reference/validation documents | Evidence, attribution, implementation decisions, commands, results and limits |
+
+## Runtime follow-up
+
+The [Persistent cache and runtime report](genshin-runtime-validation-20260922.md) records the clone's automatic cache transition, rendered 7.1.0 title/login panel, normal exit, and successful targeted post-launch verification. Authentication and sustained gameplay remain unqualified pending authorization for the updated legal agreements. No updater change was indicated; the original installation and installed launcher remain untouched.
