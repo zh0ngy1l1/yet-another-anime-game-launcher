@@ -12,7 +12,7 @@ message FileInfo {
 	string filename = 1; // Path to the file relative to the game directory
 	repeated ChunkInfo chunks = 2;
 	int32 flags = 3;     // 0 for files, 64 for directories. No other values were ever observed
-	int32 size = 4;      // Size of the entire file
+	int64 size = 4;      // Size of the entire file
 	string md5 = 5;      // MD5 checksum of the entire file
 }
 
@@ -20,7 +20,8 @@ message ChunkInfo {
 	string chunk_id = 1;
 	string md5 = 2;               // MD5 checksum of the uncompressed chunk data
 	uint64 offset = 3;            // Offset at which this chunk should be put into the resulting file
-	uint32 compressed_size = 4;   // Size of the compressed chunk
-	uint32 uncompressed_size = 5; // Size of the uncompressed chunk
-	uint64 xxhash = 6;            // Xxhash checksum of the compressed chunk data
+	uint64 compressed_size = 4;   // Size of the compressed chunk
+	uint64 uncompressed_size = 5; // Size of the uncompressed chunk
+	uint64 xxhash = 6;            // Legacy/unknown numeric field; do not use as compressed XXH64
+	string compressed_md5 = 7;    // MD5 of downloaded bytes (observed on current full manifests)
 }

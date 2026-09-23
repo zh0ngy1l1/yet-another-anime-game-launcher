@@ -75,6 +75,10 @@ from google.protobuf.json_format import MessageToJson
 import manifest_pb2 # generated
 import manifest_ldiff_pb2 # generated
 
+from full_update import (Asset, Build, Chunk, Updater, check_cancel, hash_file,
+                         matches, relative_name, safe_path, sync_dir)
+from sophon_full import Service, ServiceError, Transport, content_url
+
 from io import BytesIO
 import pycurl
 import concurrent.futures
@@ -90,7 +94,7 @@ if not HPATCHZ_APP.is_file():
 	HPATCHZ_APP = SCRIPTDIR / ".." / "hpatchz" / "hpatchz"
 if not HPATCHZ_APP.is_file():
 	HPATCHZ_APP = SCRIPTDIR / "hpatchz"
-assert HPATCHZ_APP.is_file(), f"{HPATCHZ_APP.resolve()} not found."
+# Legacy patch support is optional; the full-manifest updater needs no hpatchz.
 
 libc = ctypes.CDLL("libc.dylib")
 c_malloc_zone_pressure_relief = libc.malloc_zone_pressure_relief
@@ -108,7 +112,7 @@ RUN_MEMORY_HACK = True
 WORKER_CNT = 8
 # Worker count for verifying files
 # Do not use all cpu cores because it causes system slowdown
-WORKER_CNT_VERIFY = max(2, psutil.cpu_count(logical=False) - 4)
+WORKER_CNT_VERIFY = 2
 
 # Not needed. Only helpful for development purposes.
 EXPORT_JSON_FILES = True
@@ -200,12 +204,11 @@ def try_get_file_size(filename: pathlib.Path):
 		return -1
 
 def filename_safety_check(filename):
-	"""
-	Checks whether the path is relative AND within this tree
-	This ensures that no files are written to unpredictable locations.
-	"""
-	assert (".." not in str(filename)), f"Security alert! {filename}"
-	assert (str(filename)[0] != '/'), f"Security alert! {filename}"
+	"""Validate remote names even when Python assertions are disabled."""
+	relative_name(str(filename))
+	if OPT.gamedir is not None:
+		safe_path(OPT.gamedir, str(filename))
+
 
 def bytes_to_MiB(n: float):
 	return int(n / (1024 * 1024 / 10) + 0.5) / 10
@@ -223,61 +226,58 @@ def cmp_versions(lhs: list, rhs: list) -> int:
 	return 0
 
 def hpatchz_patch_file(oldfile: pathlib.Path, dstfile: pathlib.Path, patchfile: pathlib.Path,
-		p_offset: int, p_len: int, timeout: int = 50):
+		p_offset: int, p_len: int, timeout: int = 50, *, allow_copy_over=False,
+		expected_size=None):
+	"""Apply a bounded legacy subsection; only genuine HDIFF goes to hpatchz.
+
+	Empty-source entries can contain either raw target bytes or an HDiff patch
+	against an empty file. The caller must verify the final target hash.
 	"""
-	Patches a file, throws an exception upon failure
-	One ldiff file may contain multiple patches, thus the offset
-
-	Returns `True` on success, `False` on timeout
-	"""
-
-	pfile_in = None   # keep alive until functoin exit
-
-	# Extract the relevant patch section
-	# Note: This is also needed if `p_offset == 0`. Unlike other archiver programs or
-	# libraries, hpatchz does not allow tailing data.
-	pfile_in = patchfile.open("rb")
-	pfile_in.seek(p_offset)
-	pfile_out = tempfile.NamedTemporaryFile("wb")
-	pfile_out.write(pfile_in.read(p_len))
-	pfile_out.flush()
-
-	proc = subprocess.Popen(
-		# -f: overwrite the target (temporary) file
-		[HPATCHZ_APP, "-f", oldfile, pfile_out.name, dstfile],
-		stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-		text=True
-	)
-	# Wait for the process to exit
-	# This usually takes < 100 ms
-	try:
-		pout, perr = proc.communicate(timeout=timeout)
-	except subprocess.TimeoutExpired:
-		proc.terminate()
-		pout, perr = proc.communicate()
-		dstfile.unlink(True) # maybe stuck at writing
-		warnlog(f"hpatchz timeout ({timeout} s) reached on file '{dstfile.name}'.")
-		return False
-
-	retcode = proc.returncode
-	if retcode != 0 or perr != "":
-		dstfile.unlink(True) # hpatchz may create 0 byte files on failure. Remove it.
-		abortlog(f"Failed to patch file '{oldfile.name}' using '{patchfile.name}':"
-		         + f"\n\t Exit code: {retcode}"
-		         +  "\n\t Message:   " + perr)
-
-	#debuglog("\n", pout)
-	"""
-	Error Messages And Their Meaning
-	~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-	oldFile dataSize <integer> != diffFile saved oldDataSize <integer> ERROR!
-		Wrong diff file; it does not match the file "signature"
-	open oldFile for read ERROR!
-		Missing source file
-	patch run ERROR!
-		Patch file has an unexpected length
-	"""
+	if p_offset < 0 or p_len <= 0 or p_offset + p_len > patchfile.stat().st_size:
+		raise ValueError("Invalid or truncated patch section")
+	with patchfile.open("rb") as source:
+		source.seek(p_offset)
+		header = source.read(min(5, p_len))
+		source.seek(p_offset)
+		is_hdiff = header == b"HDIFF"
+		if not is_hdiff:
+			if not allow_copy_over or expected_size != p_len:
+				raise ValueError("Unknown patch format; raw Copy-Over requires an empty source and exact target size")
+			with dstfile.open("wb") as out:
+				remaining = p_len
+				while remaining:
+					data = source.read(min(1024 * 1024, remaining))
+					if not data:
+						raise ValueError("Truncated Copy-Over section")
+					out.write(data)
+					remaining -= len(data)
+				out.flush()
+				os.fsync(out.fileno())
+			return True
+		if not HPATCHZ_APP.is_file():
+			raise RuntimeError("Legacy HDiff support requires hpatchz; use the full-manifest updater")
+		with tempfile.NamedTemporaryFile("wb") as section, tempfile.NamedTemporaryFile("wb") as empty:
+			remaining = p_len
+			while remaining:
+				data = source.read(min(1024 * 1024, remaining))
+				if not data:
+					raise ValueError("Truncated HDiff section")
+				section.write(data)
+				remaining -= len(data)
+			section.flush()
+			input_path = empty.name if allow_copy_over else oldfile
+			proc = subprocess.Popen([str(HPATCHZ_APP), "-f", str(input_path), section.name, str(dstfile)],
+				stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+			try:
+				pout, perr = proc.communicate(timeout=timeout)
+			except subprocess.TimeoutExpired:
+				proc.kill()
+				proc.communicate()
+				dstfile.unlink(missing_ok=True)
+				return False
+			if proc.returncode != 0:
+				dstfile.unlink(missing_ok=True)
+				raise RuntimeError(f"Legacy HDiff patch failed with exit code {proc.returncode}")
 	return True
 
 
@@ -329,6 +329,19 @@ class SophonClient:
 
 	new_files_to_download = set() # Update only. Relative file name
 	ldiff_files_to_remove = set() # Update only. File name (no path)
+
+
+	def __init__(self):
+		# Mutable metadata and queues belong to one client, never the class.
+		self.di_chunks = DownloadInfo()
+		self.di_diffs = DownloadInfo()
+		self.new_files_to_download = set()
+		self.ldiff_files_to_remove = set()
+		self.branches_json = None
+		self.installed_ver = None
+		self.rel_type = None
+		self.game_type = None
+		self.gamedatadir = None
 
 
 	def initialize(self, opts: Options):
@@ -571,40 +584,42 @@ class SophonClient:
 		shutil.rmtree(OPT.tempdir)
 
 
-	def load_cached_api_file(self, fname, url, POST_data = None):
-		"""
-		Cached file download. For JSON (API) files only!
-
-		fname: file name without path prefix
-		url:   str or function ptr to retrieve the URL
-		Returns: File handle
-		"""
+	def load_cached_api_file(self, fname, url, POST_data=None):
+		"""Atomic, streaming legacy metadata cache with verified TLS."""
+		if pathlib.Path(fname).name != fname:
+			raise ValueError("Invalid cache filename")
 		fullname = tempdir(fname)
-		do_download = True
-
-		if fullname.is_file():
-			# keep cached for 24 hours
-			do_download = time.time() - fullname.stat().st_mtime > (24 * 3600)
-
+		if fullname.is_symlink():
+			raise ValueError("Symlink metadata cache")
 		if OPT.force_use_cache:
-			do_download = False
-
-		if do_download:
-			# Check whether the file is still up-to-date
-			if callable(url):
-				url = url()
-
-			if POST_data != None:
-				req = request.Request(url, data=POST_data)
-				resp = request.urlopen(req)
-				with fullname.open("wb") as fh:
-					fh.write(resp.read())
+			return fullname
+		if fullname.is_file() and time.time() - fullname.stat().st_mtime <= 24 * 3600:
+			return fullname
+		if callable(url):
+			url = url()
+		transport = Transport()
+		part = fullname.with_name(fullname.name + ".part-" + uuid.uuid4().hex)
+		try:
+			if POST_data is None:
+				response = transport.open(url)
 			else:
-				request.urlretrieve(url, fullname)
-			debuglog(f"Downloaded new file '{fname}'") #, src={url}")
-		else:
-			debuglog(f"Loaded existing file '{fname}'")
-
+				# Legacy patch endpoint expects POST with an empty body.
+				body = POST_data if isinstance(POST_data, bytes) else b""
+				req = request.Request(url, data=body, method="POST")
+				try:
+					response = request.urlopen(req, context=transport.context, timeout=45)
+				except (OSError, urllib.error.URLError):
+					raise ServiceError("Sophon legacy metadata request failed (TLS verification enabled)") from None
+			with response, part.open("xb") as out:
+				shutil.copyfileobj(response, out, 1024 * 1024)
+				out.flush()
+				os.fsync(out.fileno())
+			os.replace(part, fullname)
+			sync_dir(fullname.parent)
+		except (OSError, urllib.error.URLError):
+			raise ServiceError("Sophon metadata download failed") from None
+		finally:
+			part.unlink(missing_ok=True)
 		return fullname
 
 
@@ -613,8 +628,8 @@ class SophonClient:
 		with path.open("rb") as fh:
 			js = json.load(fh)
 		ret = js["retcode"]
-		assert ret == 0, (f"Failed to retrieve '{fname}': " +
-			f"server returned status code {ret} ({js['message']})")
+		if ret != 0:
+			raise ServiceError("Sophon metadata request rejected (retcode " + str(ret) + ")")
 		return js["data"]
 
 
@@ -668,7 +683,8 @@ class SophonClient:
 
 		if not self.branches_json:
 			# MANDATORY. JSON with package_id, password and tag(s)
-			js = self.load_or_download_json("getGameBranches.json", f"{base_url}/getGameBranches?{tail}")
+			# Branch passwords stay in memory and are refreshed for each client.
+			js = Transport().json(f"{base_url}/getGameBranches?{tail}")
 
 			# Array length corresponds to the amount of "game_ids" requested.
 			self.branches_json = js["game_branches"][0][self.branch]
@@ -700,19 +716,12 @@ class SophonClient:
 			self.retrieve_API_keys()
 
 
-		url: str = None
-		if OPT.do_update:
-			if self.rel_type == "os":
-				url = "sg-downloader-api.ho" + "yoverse.com"
-			elif self.rel_type == "cn":
-				assert False, "TODO"
+		if self.rel_type == "os":
+			url = "sg-downloader-api.hoyoverse.com" if api_file == "getPatchBuild" else "sg-public-api.hoyoverse.com"
+		elif self.rel_type in ("cn", "bb"):
+			url = "api-takumi.mihoyo.com"
 		else:
-			if self.rel_type == "os":
-				url = "sg-public-api.ho" + "yoverse.com"
-			elif self.rel_type == "cn":
-				url = "api-takumi.mih" + "oyo.com"
-
-		assert not (url is None), f"Unhandled release type {self.rel_type}"
+			raise ValueError("Unknown Sophon release type")
 
 		url = (
 				"https://" + url + "/downloader/sophon_chunk/api/" + api_file
@@ -733,6 +742,8 @@ class SophonClient:
 			False: For patch files manifest
 		"""
 		api = "getBuild" if is_new_file else "getPatchBuild"
+		if is_new_file:
+			return {"retcode": 0, "data": Transport().json(self.make_getBuild_url(api))}
 		path = self.load_cached_api_file(f"{api}.json", lambda : self.make_getBuild_url(api),
 		                                 # POST is required for patch
 		                                 None if is_new_file else []
@@ -779,17 +790,23 @@ class SophonClient:
 		fname_raw = category["manifest"]["id"]
 		url = category["manifest_download"]["url_prefix"] + "/" + category["manifest"]["id"]
 
-		zstd_path = self.load_cached_api_file(fname_raw + ".zstd", url)
-		with zstd_path.open('br') as zfh:
-			reader = zstandard.ZstdDecompressor().stream_reader(zfh)
-			pb = None
-			if dlinfo == self.di_diffs:
-				pb = manifest_ldiff_pb2.DiffManifest()
-			elif dlinfo == self.di_chunks:
-				pb = manifest_pb2.Manifest()
-			else:
-				assert False, "unknown instance"
-			pb.ParseFromString(reader.read())
+		if dlinfo is self.di_chunks:
+			pb = Service(self.rel_type, OPT.tempdir).manifest(category)
+		elif dlinfo is self.di_diffs:
+			zstd_path = self.load_cached_api_file(fname_raw + ".zstd", url)
+			with zstd_path.open("rb") as source:
+				reader = zstandard.ZstdDecompressor().stream_reader(source)
+				try:
+					payload = reader.read(256 * 1024 * 1024 + 1)
+				finally:
+					reader.close()
+			if len(payload) > 256 * 1024 * 1024:
+				raise ValueError("Legacy diff manifest exceeds supported size")
+			pb = manifest_ldiff_pb2.DiffManifest()
+			pb.ParseFromString(payload)
+		else:
+			raise ValueError("Unknown manifest kind")
+
 		nfiles = len(pb.files)
 		debuglog(dlinfo.name, f"Decompressed manifest protobuf ({nfiles} files)")
 
@@ -864,164 +881,82 @@ class SophonClient:
 
 
 	def _download_file_resume(self, url: str, dstfile: pathlib.Path, dstsize: int):
-		filesize = try_get_file_size(dstfile)
-		if filesize == dstsize:
+		"""Legacy patch download: bounded streaming with exact-size validation.
+
+		A failed partial transfer is safely retried from zero. Completed legacy
+		patch blobs remain an optimization, never evidence of target correctness.
+		"""
+		if dstfile.is_symlink():
+			raise ValueError("Symlink patch download")
+		if try_get_file_size(dstfile) == dstsize:
 			return
-		if filesize > dstsize:
-			if OPT.dry_run:
-				warnlog(f"[remove corrupted file '{dstfile.name}'")
-			else:
-				warnlog(f"Removing corrupted file: {dstfile.name}")
-				dstfile.unlink()
-				filesize = 0
+		Transport().download(url, dstfile, dstsize)
 
-		errCnt = 0
-		errLogs = []
-		while True: # run up to 5 times
-			buffer = BytesIO()
-			c = pycurl.Curl()
-			c.setopt(c.URL, url)
-			if filesize > 0:
-				c.setopt(c.RANGE, f"{filesize}-")
-			c.setopt(c.WRITEDATA, buffer)
 
-			response_code = None
-			try:
-				c.perform()
-				response_code = c.getinfo(c.RESPONSE_CODE)
-				c.close()
+	def download_game_file(self, file_info: manifest_pb2.FileInfo, install_progress_handler=None, cancel_event=None):
+		"""Verified install/repair adapter to the shared full-manifest assembler.
 
-				if response_code == 416:
-					# 416: Out of range. Our _tmp file is already complete.
-					infolog(f"File '{dstfile.name}' is already downloaded.")
-					return
-
-				break
-			except pycurl.error as e:
-				errno, errstr = e.args
-				errCnt += 1
-				errLogs.append(f"Error {errno}: {errstr}")
-				if errCnt >= 5:
-					abortlog(f"Cannot download file '{dstfile.name}': " + ", ".join(errLogs))
-				else:
-					warnlog(f"Error {errno}: {errstr}. Retrying ({errCnt}/5)...")
-					time.sleep(10)
-				return
-
-		with dstfile.open("ab") as fh:
-			fh.write(buffer.getvalue())
-
-	def download_game_file(self, file_info: manifest_pb2.FileInfo, install_progress_handler = None, cancel_event = None):
+		The adapter publishes one fully verified asset atomically and never changes
+		version metadata. Parallel files use distinct full-path staging identities.
 		"""
-		Downloads the chunks and patches a file
-		file_info: FileInfo, one of the manifest.files[] objects
-
-		Returns `True` if the file is (now) present.
-		"""
-
-		if install_progress_handler:
-			install_progress_handler.file_download_start(file_info.filename)
-
-		if file_info.flags == 64:
-			# Created as soon a file is put inside
-			infolog(f"Skipping directory entry: {file_info.filename}")
-			if install_progress_handler:
-				install_progress_handler.file_download_skipped(file_info.filename, "directory")
-			return False
-		assert (file_info.flags == 0), f"Unknown flags {file_info.flags} for '{file_info.filename}'"
-
-		if OPT.TESTING_FILE and not (OPT.TESTING_FILE in file_info.filename):
-			return True
-
+		check_cancel(cancel_event)
 		filename_safety_check(file_info.filename)
-		filename = pathlib.Path(file_info.filename) # "UnityGame_Data/Subdirectory/file.txt"
-
-		# Check whether the file already exists
-		if try_get_file_size(gamedir(filename)) == file_info.size:
-			if install_progress_handler:
-				install_progress_handler.file_download_skipped(file_info.filename, "exists")
-			#infolog(f"File '{filename.name}' already exists. ")
+		root = OPT.gamedir.resolve()
+		target = safe_path(root, file_info.filename)
+		progress = install_progress_handler
+		if progress:
+			progress.file_download_start(file_info.filename)
+		if file_info.flags == 64:
+			if not OPT.dry_run:
+				target.mkdir(parents=True, exist_ok=True)
+			if progress:
+				progress.file_download_skipped(file_info.filename, "directory")
 			return True
-
-		CHUNK_URL_PREFIX = self.di_chunks.category_json["chunk_download"]["url_prefix"]
-
-		# Inform the user
-		size_mib = bytes_to_MiB(file_info.size)
-		infolog(f"Downloading '{filename.name}', {size_mib} MiB, {len(file_info.chunks)} chunks")
-		if install_progress_handler:
-			install_progress_handler.chunk_download_progress(filename.name, len(file_info.chunks), 0, 0.0, 0, file_info.size, 0)
-
+		if file_info.flags != 0:
+			raise ValueError("Unsupported manifest asset flags")
+		if OPT.TESTING_FILE and OPT.TESTING_FILE not in file_info.filename:
+			return True
+		# Reliable repair can queue a same-size corrupt file. Size alone never
+		# authorizes skipping either the original or a previously staged file.
+		if matches(target, file_info.size, file_info.md5, cancel_event):
+			if progress:
+				progress.file_download_skipped(file_info.filename, "exists")
+			return True
 		if OPT.disallow_download:
-			warnlog(f"NOT downloading chunks for {filename.name}")
-			return
-
-		# Download to the temporary directory. Move after we're done.
-		dstfile = tempdir(filename.name)
-		bytes_written = 0
-
-		while True: # run once
-			if try_get_file_size(dstfile) == file_info.size:
-				# File was already downloaded but not moved (e.g. out of space)
-				break
-
-			fh = dstfile.open("wb")
-			# Download all chunks
-			for chunk in file_info.chunks:
-				if cancel_event and cancel_event.is_set():
-					if install_progress_handler:
-						install_progress_handler.file_download_error(filename.name)
-					return False
-				cfname = tempdir(chunk.chunk_id) # compressed file path
-
-				if chunk.offset != bytes_written:
-					warnlog("\t Unexpected offset. Seek may fail.")
-
-				# Download chunk if not already done
-				self._download_file_resume(CHUNK_URL_PREFIX + "/" + chunk.chunk_id, cfname, chunk.compressed_size)
-
-				# Write chunk to file
-				with cfname.open("rb") as zfh:
-					reader = zstandard.ZstdDecompressor().stream_reader(zfh)
-					data = reader.read()
-					fh.seek(chunk.offset)
-					fh.write(data)
-					bytes_written += len(data)
-
-				debuglog(f"\t Progress: {(bytes_written * 100 / file_info.size):2.0f} % | "
-				         + f" {bytes_to_MiB(bytes_written)} / {size_mib} MiB", end="\r")
-				if install_progress_handler:
-					install_progress_handler.chunk_download_progress(
-						filename.name, len(file_info.chunks), chunk.chunk_id, bytes_written * 100 / file_info.size, bytes_written, file_info.size, chunk.compressed_size)
-				del data, reader, zfh, cfname
-
-				if RUN_MEMORY_HACK:
-					force_memory_release()
-			print("") # Keep the last "100 %" line
-
-		# Verify file integrity
-		md5 = hashlib.md5(dstfile.read_bytes()).hexdigest()
-		if file_info.md5 == md5:
-			infolog("\t File is correct (md5 check)")
-		else:
-			dstfile.unlink() # delete
-			abortlog(f"\t File is corrupt after download: {filename.name}. Please retry.")
-
-		if RUN_MEMORY_HACK:
-			force_memory_release()
-
-		# Remove chunks after downloading
-		for chunk in file_info.chunks:
-			tempdir(chunk.chunk_id).unlink(True)
-
-		# Move the completed files to the game directory
+			raise RuntimeError("Required file download is disabled")
+		category = self.di_chunks.category_json
+		descriptor = category["chunk_download"]
+		chunks = tuple(Chunk(c.chunk_id, c.md5, c.offset, c.uncompressed_size,
+			c.compressed_size, content_url(descriptor, c.chunk_id),
+			descriptor.get("compression", 1) == 1, getattr(c, "compressed_md5", ""))
+			for c in file_info.chunks)
+		asset = Asset(file_info.filename, file_info.size, file_info.md5, chunks)
+		version = self.di_chunks.getBuild_json["data"]["tag"]
+		build = Build(version, (asset,), (category.get("matching_field", "game"),))
+		transport = Transport(cancel_event)
+		downloaded = 0
+		def fetch(chunk, destination):
+			nonlocal downloaded
+			transport.chunk(chunk, destination)
+			downloaded += chunk.compressed_size
+			if progress:
+				progress.chunk_download_progress(asset.name, len(chunks), chunk.id,
+					min(100.0, downloaded * 100 / max(1, sum(c.compressed_size for c in chunks))),
+					downloaded, sum(c.compressed_size for c in chunks), chunk.compressed_size)
+		updater = Updater(root, build, None, fetch, cancel=cancel_event)
+		updater.state.mkdir(exist_ok=True)
+		staged = updater.construct(asset)
 		if OPT.dry_run:
-			infolog(f"[move new '{filename.name}' -> game dir]")
 			return True
-		gamefile = gamedir(filename).resolve()
-		gamefile.parent.mkdir(parents=True, exist_ok=True)
-		shutil.move(dstfile, gamefile)
-		if install_progress_handler:
-			install_progress_handler.file_download_complete(filename.name, file_info.size)
+		check_cancel(cancel_event)
+		target.parent.mkdir(parents=True, exist_ok=True)
+		safe_path(root, asset.name)
+		if target.exists():
+			os.chmod(staged, target.stat().st_mode & 0o777)
+		os.replace(staged, target)
+		sync_dir(target.parent)
+		if progress:
+			progress.file_download_complete(asset.name, asset.size)
 		return True
 
 
@@ -1142,7 +1077,7 @@ class SophonClient:
 
 			if gamefilesize == v.size:
 				# Maybe already up-to-date?
-				md5 = hashlib.md5(gamefile.read_bytes()).hexdigest()
+				md5 = hash_file(gamefile)
 				if md5 == v.hash:
 					if progress_handler:
 						progress_handler.ldiff_download_skipped(v.filename, "already updated")
@@ -1158,7 +1093,7 @@ class SophonClient:
 				self.new_files_to_download.add(v.filename)
 				return None
 
-			md5 = md5 if md5 else hashlib.md5(gamefile.read_bytes()).hexdigest()
+			md5 = md5 if md5 else hash_file(gamefile)
 			if progress_handler:
 				progress_handler.ldiff_download_skipped(v.filename, "file corrupt")
 			warnlog(f"md5 hash mismatch in '{gamefile.name}'. is={md5}, should={pinfo.original_hash} or {v.hash}")
@@ -1222,9 +1157,15 @@ class SophonClient:
 
 		gamefile = gamedir(v.filename)
 
-		# Patched file goes into the temporary directory (at first)
-		dstfile = tempdir(pathlib.Path(v.filename).name)
-		dstfile.unlink(True)  # remove any existing duplicate temporary file
+		# Stage on the target filesystem with a full-path identity.
+		state = OPT.gamedir / ".sophon-update"
+		if state.is_symlink():
+			raise ValueError("Symlink updater state")
+		state.mkdir(exist_ok=True)
+		dstfile = state / ("legacy-" + hashlib.sha256(v.filename.encode()).hexdigest())
+		if dstfile.is_symlink():
+			raise ValueError("Symlink legacy stage")
+		dstfile.unlink(missing_ok=True)
 
 		ldiffname = ldiff_dir.joinpath(pinfo.patch_id)
 
@@ -1235,21 +1176,33 @@ class SophonClient:
 				progress_handler.ldiff_patch_error(v.filename, "diff file missing")
 			abortlog(f"Diff file {ldiffname.name} is missing. Please redownload.")
 
-		# Apply the patch file
-		done = hpatchz_patch_file(gamefile, dstfile, ldiffname, pinfo.patch_offset, pinfo.patch_length)
+		# Empty source names denote Copy-Over, including HDiff against empty input.
+		copy_over = not pinfo.original_name
+		oldfile = gamefile
+		if not copy_over:
+			filename_safety_check(pinfo.original_name)
+			oldfile = gamedir(pinfo.original_name)
+			if not matches(oldfile, pinfo.original_size, pinfo.original_hash):
+				self.new_files_to_download.add(v.filename)
+				return
+		done = hpatchz_patch_file(oldfile, dstfile, ldiffname, pinfo.patch_offset, pinfo.patch_length,
+			allow_copy_over=copy_over, expected_size=v.size)
 		if not done:
-			# retry with longer timeout
-			done = hpatchz_patch_file(gamefile, dstfile, ldiffname, pinfo.patch_offset, pinfo.patch_length, 300)
+			done = hpatchz_patch_file(oldfile, dstfile, ldiffname, pinfo.patch_offset, pinfo.patch_length, 300,
+				allow_copy_over=copy_over, expected_size=v.size)
+		if not done:
+			self.new_files_to_download.add(v.filename)
+			return
 
 		# Verify patched file integrity (NOTE: hpatchz might already have checked it)
-		assert dstfile.stat().st_size == v.size
-		md5 = hashlib.md5(dstfile.read_bytes()).hexdigest()
-		if md5 != v.hash:
+		if not matches(dstfile, v.size, v.hash):
 			if progress_handler:
 				progress_handler.ldiff_patch_error(v.filename, "checksum failed")
 			warnlog(f"Checksum failed on file {v.filename}. Corrupt?")
 			# Retry by downloading from scratch
 			self.new_files_to_download.add(v.filename)
+			dstfile.unlink(missing_ok=True)
+			return
 		else:
 			infolog(f"Patched file {v.filename}")
 
@@ -1258,7 +1211,10 @@ class SophonClient:
 			infolog(f"[move patched '{dstfile.name}' -> game dir]")
 			return
 
-		shutil.move(dstfile, gamefile)
+		gamefile.parent.mkdir(parents=True, exist_ok=True)
+		filename_safety_check(v.filename)
+		os.replace(dstfile, gamefile)
+		sync_dir(gamefile.parent)
 
 
 	def apply_or_prepare_ldiff_files(self, progress_handler = None):
@@ -1495,6 +1451,9 @@ class SophonClient:
 		import threading
 		lock = threading.Lock()
 		def _verify_file(v):
+			filename_safety_check(v.filename)
+			if v.flags == 64:
+				return
 			if cancel_event and cancel_event.is_set():
 				if repair_progress_handler:
 					repair_progress_handler.job_error("cancelled")
@@ -1506,7 +1465,7 @@ class SophonClient:
 			if gamefilesize != v.size:
 				reason = f"size mismatch. is={gamefilesize}, should={v.size}"
 			elif reliable_checking:
-				md5 = hashlib.md5(gamefile.read_bytes()).hexdigest()
+				md5 = hash_file(gamefile)
 				if md5 != v.md5:
 					reason = f"md5 mismatch. is={md5}, should={v.md5}"
 				del md5

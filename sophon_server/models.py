@@ -38,3 +38,5 @@ class OnlineGameInfo(BaseModel):
     pre_download: bool
     pre_download_version: Optional[str] = None
     error: Optional[str] = None
+    # A full target manifest can update versions absent from legacy diff_tags.
+    full_manifest_update: bool = False

@@ -162,6 +162,29 @@ class UpdateProgressHandler(InstallProgressHandler):
         self.total_delete_files = 0
         self.current_deleted_files = 0
         self._ldiff_speed_thread = None
+        self._last_stage = None
+        self._last_stage_broadcast = 0
+
+    def event(self, event: dict):
+        """Adapter for the full-manifest updater's structured stage callback."""
+        self.update_stage(event.get("stage", "calculating"), **{
+            key: value for key, value in event.items()
+            if key not in ("type", "stage", "task_id")
+        })
+
+    def update_stage(self, stage: str, **details):
+        now = time.monotonic()
+        if stage == self._last_stage and now - self._last_stage_broadcast < 0.25:
+            return
+        self._last_stage = stage
+        self._last_stage_broadcast = now
+        total = details.get("total_files", 0)
+        completed = details.get("completed_files", 0)
+        if total:
+            self.tasks[self.task_id].progress = min(100, completed * 100 / total)
+        self.conn_manager.send_message_threadsafe({
+            **details, "type": "update_stage", "stage": stage, "task_id": self.task_id,
+        }, self.task_id)
 
     def _calculate_ldiff_speed(self):
         '''We will reuse the worker function and instance variables because

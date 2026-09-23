@@ -33,8 +33,10 @@ try:
         shutil.rmtree(distribution)  # Only generated output; never a profile.
     subprocess.run(['uv', 'run', '--frozen', '--python', python, 'nuitka',
                     '--standalone', '--disable-ccache', '--python-flag=isolated', '--include-data-files=./hpatchz=./hpatchz',
+                    '--include-package-data=certifi:cacert.pem',
                     '--output-filename=sophon-server', '--output-dir=./build',
                     '--assume-yes-for-downloads', 'server.py'], cwd=project,
                    env={**os.environ, 'NUITKA_CACHE_DIR': str(project / '.cache')}, check=True)
+    assert (distribution / 'certifi/cacert.pem').is_file(), 'Standalone TLS certificate bundle is missing'
 finally:
     (project / 'hpatchz').unlink()

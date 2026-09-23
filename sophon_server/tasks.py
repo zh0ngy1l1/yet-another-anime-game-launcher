@@ -6,6 +6,8 @@ from models import InstallRequest, RepairRequest, UpdateRequest, TaskStatus, Onl
 from utils import ConnectionManager
 from sophon_api import Options, SophonClient, force_memory_release, RUN_MEMORY_HACK, WORKER_CNT
 from online_info import game_download_size
+from sophon_full import prepare_update
+from full_update import write_version, matches, safe_path
 
 
 def update_config_ini_version(gamedir: pathlib.Path, version: str):
@@ -49,7 +51,6 @@ def perform_install(manager: ConnectionManager, tasks: Dict[str, TaskStatus], ta
     cli.retrieve_API_keys()
 
     cli.load_manifest("game")
-    update_config_ini_version(options.gamedir, cli.di_chunks.getBuild_json["data"]["tag"])
 
     download_size_total = cli.get_chunk_download_size(False)
     progress.download_summary(
@@ -73,7 +74,7 @@ def perform_install(manager: ConnectionManager, tasks: Dict[str, TaskStatus], ta
                 err_cnt += 1
                 err_logs.append(str(e))
         if err_cnt == 5:
-            raise Exception(f"Download file {v.name} failed after 3 attempts: {err_logs}")
+            raise Exception(f"Download file {v.filename} failed after 5 attempts: {err_logs}")
 
     # Prioritize downloading essintial files for version & game recognition
     positive_substr = ['globalgamemanagers', 'pkg_version']
@@ -102,8 +103,11 @@ def perform_install(manager: ConnectionManager, tasks: Dict[str, TaskStatus], ta
         for future in concurrent.futures.as_completed(futures):
             future.result()
 
-    cli.load_manifest("game")
-    cli.update_config_ini_version()
+    # Every download is verified; recheck the complete mandatory set before metadata.
+    for asset in cli.di_chunks.manifest.files:
+        if asset.flags != 64 and not matches(safe_path(options.gamedir, asset.filename), asset.size, asset.md5, cancel_event):
+            raise ValueError("Installation verification failed: " + asset.filename)
+    write_version(options.gamedir, cli.di_chunks.getBuild_json["data"]["tag"])
 
     del cli
     del options
@@ -124,6 +128,13 @@ def perform_repair(manager: ConnectionManager, tasks: Dict[str, TaskStatus], tas
         options.tempdir = pathlib.Path(request.tempdir)
     else:
         options.tempdir = pathlib.Path(request.gamedir) / ".tmp"
+
+    if request.game_type == "hk4e":
+        updater = prepare_update(options.gamedir.resolve(), options.tempdir / "full-manifests", cancel=cancel_event,
+                                 event=lambda event: progress.conn_manager.send_message_threadsafe(dict(event, task_id=task_id), task_id))
+        updater.run()
+        progress.job_end()
+        return
 
     remove_cached_files(options.tempdir)
 
@@ -154,6 +165,14 @@ def perform_update(manager: ConnectionManager, tasks: Dict[str, TaskStatus], tas
     else:
         options.tempdir = pathlib.Path(request.gamedir) / ".tmp"
 
+    if request.game_type == "hk4e":
+        updater = prepare_update(options.gamedir.resolve(), options.tempdir / "full-manifests",
+                                 predownload=options.predownload, cancel=cancel_event, event=progress.event)
+        updater.run(predownload=options.predownload)
+        progress.job_end()
+        return
+
+    # Legacy ldiff remains isolated to the other client. Genshin never needs getPatchBuild.
     remove_cached_files(options.tempdir)
 
     cli = SophonClient()
@@ -237,7 +256,8 @@ def fetch_online_game_info(reltype: str, game: Literal["nap", "hk4e"]) -> Online
                 release_type=online_info["release_type"],
                 pre_download=online_info["pre_download"],
                 pre_download_version=online_info["pre_download_version"],
-                error=None
+                error=None,
+                full_manifest_update=(game == "hk4e")
             )
         else:
             raise ValueError("Unsupported game type. Only 'hk4e' and 'nap' is supported.")
