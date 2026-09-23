@@ -2,61 +2,18 @@
 # SPDX-License-Identifier: MIT
 # Copyright (C) 2025 Krock <mk939@ymail.com>
 
-"""
-	Rough API documentation
-	-----------------------
-	SHA/getGameConfigs?...
-		Game paths (audio/voiceover, screenshots, logs, crash dumps) for all HoYo games
-	SHA/getAllGameBasicInfo?...
-		Launcher background data for the specified game
-	SHA/getGames?...
-		Launcher images and links for all HoYo games
-	SHA/getGameContent?...
-		Event preview data for the specified game
-	SGP/getLatestRelease?...
-		Launcher update information
-	SDA/getPatchBuild (POST)
-		List of manifests information (same as getBuild)
-
-	Seriously guys, why don't you provide the chunk URL, diff URL and the two manifests in the same file?
-
-
-	Functional description
-	----------------------
-	1 ) getBuild
-		JSON file that provides information about the available game and voiceover pack files
-		Provides manifests and the base URL to download chunks from
-	2 ) manifest
-		Provides information for all chunks or ldiff files
-	3a) chunks
-		zstd-compressed sections of files for installing from scratch (or new ones)
-	3b) diffs
-		hdiff files to patch installed game files
-
-
-	TODO
-	----
-	Low priority
-		Parallelization for file downloads and patching
-		Apply patches for non-existent files (apparently the official launcher can do that)
-
-	Hints for developers:
-		1. Investigate the JSON files downloaded to `tmp/` -> variable `EXPORT_JSON_FILES`
-
-"""
+"""Chunk installation and NAP legacy patching; HK4E updates use sophon_full."""
 
 from __future__ import annotations
 
-import argparse
 import gc
 import ctypes
 import hashlib # md5
 import os
-import io # TextIOWrapper
 import json
 import pathlib
 import re # Regular Expressions
-import shutil # rmtree
+import shutil
 import subprocess # for hpatchz (ldiff)
 import sys # stdout
 import tempfile # patch extraction
@@ -68,9 +25,7 @@ import urllib.error # exception handling
 import urllib.request as request # downloads
 from typing import TYPE_CHECKING
 
-import psutil
 import zstandard # archive unpacking
-from google.protobuf.json_format import MessageToJson
 
 import manifest_pb2 # generated
 import manifest_ldiff_pb2 # generated
@@ -79,8 +34,6 @@ from full_update import (Asset, Build, Chunk, Updater, check_cancel, hash_file,
                          matches, relative_name, safe_path, sync_dir)
 from sophon_full import Service, ServiceError, Transport, content_url
 
-from io import BytesIO
-import pycurl
 import concurrent.futures
 
 if TYPE_CHECKING:
@@ -89,11 +42,9 @@ if TYPE_CHECKING:
 SCRIPTDIR = pathlib.Path(__file__).resolve().parent
 
 # Needed for ldiff
-HPATCHZ_APP = SCRIPTDIR / "HDiffPatch/hpatchz"
+HPATCHZ_APP = SCRIPTDIR / "hpatchz"
 if not HPATCHZ_APP.is_file():
-	HPATCHZ_APP = SCRIPTDIR / ".." / "hpatchz" / "hpatchz"
-if not HPATCHZ_APP.is_file():
-	HPATCHZ_APP = SCRIPTDIR / "hpatchz"
+	HPATCHZ_APP = SCRIPTDIR.parent / "sidecar/hpatchz/hpatchz"
 # Legacy patch support is optional; the full-manifest updater needs no hpatchz.
 
 libc = ctypes.CDLL("libc.dylib")
@@ -105,7 +56,7 @@ def force_memory_release():
 	gc.collect()
 	_ = c_malloc_zone_pressure_relief(None, 1)
 
-# Run only in compiled binary
+# Release allocator pages between legacy batches; tests may disable this.
 RUN_MEMORY_HACK = True
 
 # Worker count for multithreaded downloads
@@ -114,60 +65,25 @@ WORKER_CNT = 8
 # Do not use all cpu cores because it causes system slowdown
 WORKER_CNT_VERIFY = 2
 
-# Not needed. Only helpful for development purposes.
-EXPORT_JSON_FILES = True
+# Server operation options
 
-
-# ------------------- CLI options
-
-class Options(argparse.Namespace):
+class Options:
 	gamedir:   pathlib.Path | None = None
 	tempdir:   pathlib.Path | None = SCRIPTDIR / "tmp" # cache
-	# where to place ldiff files and patched output files
-	#outputdir: pathlib.Path | None = SCRIPTDIR / "tmp" / "out"
-	force_use_cache: bool = False # True: disallow downloads, False: download if not cached
 	predownload: bool = False
 	install_reltype: str | None = None
 	game_type: Literal["hk4e", "nap"] | None # hk4e or nap
 	do_install: bool = False
 	do_update: bool = False         # True: ldiff, False: chunks
 	repair_mode: str | None = None  # "quick"|"reliable"|None
-	dry_run: bool = False           # True: prevents modifying game files
-	disallow_download: bool = False # True: prevents media downloads
 
-	# `True` ignores the "empty directory" requirement for installs and skips sanity checks for updates
-	ignore_conditions: bool = False
-	TESTING_FILE: str | None = None # if != None: only update/download the specified file
 
-	# main() script only
-	selected_lang_packs: str = ""
-
-# Cannot be overwritten by other scripts :(
+# Requests are serialized by the server operation lock.
 OPT = Options()
-
-
-# ------------------- Translate between voiceover pack names
-VOICEOVERS_LUT = {
-	# "Friendly/short": {"short": "aa-bb", "friendly": "Longname"}
-	"English(US)": {"short": "en-us"},
-	"Japanese":    {"short": "ja-jp"},
-	"Korean":      {"short": "ko-kr"},
-	"Chinese":     {"short": "zh-cn"}
-}
-if True:
-	keys: list = list(VOICEOVERS_LUT.keys())
-	for k in keys:
-		v = VOICEOVERS_LUT[k]
-		v["friendly"] = k
-
-		# Add reverse lookup for the short version
-		VOICEOVERS_LUT[v["short"]] = v
 
 
 # ------------------- Utilities
 
-def _handle_kwargs(kwargs):
-	sys.stdout.write("\33[2K")
 
 def tempdir(*args: str | PathLike[str]) -> pathlib.Path:
 	return OPT.tempdir.joinpath(*args)
@@ -176,23 +92,22 @@ def gamedir(*args: str | PathLike[str]) -> pathlib.Path:
 	return OPT.gamedir.joinpath(*args)
 
 def debuglog(*args, **kwargs):
-	_handle_kwargs(kwargs)
+	sys.stdout.write("\33[2K")
 	print("\033[37mDEBUG ", *args, "\033[0m", **kwargs)
 
 def infolog(*args, **kwargs):
-	_handle_kwargs(kwargs)
+	sys.stdout.write("\33[2K")
 	print("INFO  ", *args, **kwargs)
 
 def warnlog(*args, **kwargs):
-	_handle_kwargs(kwargs)
+	sys.stdout.write("\33[2K")
 	print("\033[36mWARN  ", *args, "\033[0m", **kwargs)
 
 def abortlog(*args, **kwargs):
-	_handle_kwargs(kwargs)
+	sys.stdout.write("\33[2K")
 	print("\033[31mERROR ", *args, "\033[0m", **kwargs)
 	exception_string = " ".join(str(a) for a in args)
 	raise RuntimeError(exception_string)
-	# exit(1)
 
 def try_get_file_size(filename: pathlib.Path):
 	"""
@@ -322,15 +237,6 @@ class SophonClient:
 	branch: str          # main / pre_download
 	branches_json = None # package_id, password, tag
 
-	# chunks: For files to download from scratch
-	# diffs:  For files to update by patching or removal
-	di_chunks = DownloadInfo()
-	di_diffs  = DownloadInfo()
-
-	new_files_to_download = set() # Update only. Relative file name
-	ldiff_files_to_remove = set() # Update only. File name (no path)
-
-
 	def __init__(self):
 		# Mutable metadata and queues belong to one client, never the class.
 		self.di_chunks = DownloadInfo()
@@ -367,8 +273,6 @@ class SophonClient:
 		self.branch = "pre_download" if OPT.predownload else "main"
 		infolog(f"Selected branch '{self.branch}'")
 
-		if OPT.dry_run:
-			infolog("Simulation mode is enabled.")
 
 		# Autodetection
 		if OPT.do_install:
@@ -386,9 +290,7 @@ class SophonClient:
 		self.installed_ver = None
 
 		OPT.gamedir.mkdir(exist_ok=True)
-		if not OPT.ignore_conditions:
-			# must be empty (allow config.ini)
-			assert len(list(OPT.gamedir.glob("*"))) < 2, "The specified install path is not empty"
+		assert len(list(OPT.gamedir.glob("*"))) < 2, "The specified install path is not empty"
 
 		# Create "config.ini"
 		templates = {}
@@ -421,49 +323,21 @@ class SophonClient:
 		Find out what kind of installation we need to update
 		"""
 		self._get_gamedatadir()
-		if self.game_type == "hk4e":
-			if gamedir("GenshinImpact.exe").is_file():
+		assert self.game_type == "nap", "HK4E updates and repairs require the full-manifest engine"
+		with open(gamedir("config.ini"), "r") as f:
+			contents = f.read()
+			if "sub_channel=0" in contents:
 				self.rel_type = "os"
-			elif gamedir("YuanShen.exe").is_file():
-				if gamedir(self.gamedatadir, "Plugins", "PCGameSDK.dll").is_file():
-					self.rel_type = "bb"
-				else:
-					self.rel_type = "cn"
-			if not isinstance(self.rel_type, str):
-				abortlog("Failed to detect release type. " \
-				         + f"Game executable in '{OPT.gamedir}' could not be found.")
-		elif self.game_type == "nap":
-			with open(gamedir("config.ini"), "r") as f:
-				contents = f.read()
-				if "sub_channel=0" in contents:
-					self.rel_type = "os"
-				elif "sub_channel=1" in contents:
-					self.rel_type = "cn"
-			if not isinstance(self.rel_type, str):
-				abortlog("Failed to detect release type. " \
-				         + f"config.ini in '{OPT.gamedir}' has wrong information.")
+			elif "sub_channel=1" in contents:
+				self.rel_type = "cn"
+		if not isinstance(self.rel_type, str):
+			abortlog(f"config.ini in '{OPT.gamedir}' has wrong release information.")
 
 		infolog(f"Release type: {self.rel_type}")
 
-		# Retrieve the installed game version
-		if not OPT.ignore_conditions:
-			if self.game_type == "hk4e":
-				fullname = gamedir(self.gamedatadir, "globalgamemanagers")
-				assert fullname.is_file(), "Game install is incomplete!"
-
-				contents = fullname.read_bytes()
-				ver = re.findall(br"\0(\d+\.\d+\.\d+)_\d+_\d+\0", contents)
-				assert len(ver) == 1, "Broken script or corrupted game installation"
-
-				self.installed_ver = ver[0].decode("utf-8")
-				infolog(f"Installed game version: {self.installed_ver} (anchor 1: globalgamemanagers)")
-			elif self.game_type == "nap":
-				ver = get_game_version(gamedir(self.gamedatadir), 0xc4)
-				assert ver, "Failed to retrieve game version from globalgamemanagers"
-				self.installed_ver = ver
-		else:
-			# Change this if needed
-			self.installed_ver = "5.5.0"
+		ver = get_game_version(gamedir(self.gamedatadir), 0xc4)
+		assert ver, "Failed to retrieve game version from globalgamemanagers"
+		self.installed_ver = ver
 
 		# Compare game version with what's contained in "config.ini"
 		self.check_config_ini()
@@ -497,93 +371,6 @@ class SophonClient:
 			self.installed_ver = ver[0]
 
 
-	def get_voiceover_packs(self):
-		"""
-		Returns a set of the installed packs: { "en-us", "ja-jp", "ko-kr", "zh-cn" }
-		"""
-
-		# This path is also specified in 'getGameConfigs'
-		fullname = gamedir(self.gamedatadir, "Persistent/audio_lang_14")
-
-		packs = set()
-		for line in fullname.open("r"):
-			line = line.strip()
-			if line == "":
-				continue
-
-			if not (line in VOICEOVERS_LUT):
-				warnlog("Unknown voiceover pack in 'audio_lang_14': " + line)
-				continue
-
-			mediapath = gamedir(self.gamedatadir, "StreamingAssets/AudioAssets", line)
-			num_files = len(list(mediapath.glob("*.*")))
-			if num_files < 10:
-				# These will be updated after the login screen
-				infolog(f"Skipping voiceover pack '{line}': Pack was installed in-game.")
-				continue
-
-			packs.add(VOICEOVERS_LUT[line]["short"])
-
-		debuglog("Found voiceover packs:", ", ".join(packs))
-		return packs
-
-
-	def update_voiceover_meta_file(self):
-		"""
-		[Install only] Auto-detect installed language packs and update audio_lang_14
-		"""
-		self._get_gamedatadir()
-
-		languages = set()
-		filename: pathlib.Path
-		for filename in OPT.gamedir.glob("*"):
-			groups = re.findall(r"^Audio_(.+)_pkg_version$", filename.name)
-			if len(groups) != 1:
-				continue
-			longname = groups[0]
-			if not (longname in VOICEOVERS_LUT):
-				warnlog(f"Unknown voiceover pack '{filename.name}'")
-				continue
-			languages.add(longname)
-
-		languages = list(languages)
-		languages.sort()
-
-		# Update the lang file
-		langfile = gamedir(self.gamedatadir, "Persistent/audio_lang_14")
-		lang_str = ", ".join(languages)
-		if OPT.dry_run:
-			infolog(f"[update lang file: {lang_str}]")
-			return
-
-		langfile.parent.mkdir(parents=True, exist_ok=True)
-		with langfile.open("w", newline="\r\n") as fh:
-			for lang in languages:
-				fh.write(lang + "\n")
-		infolog(f"Wrote the lang file to contain '{lang_str}'")
-
-
-	def cleanup_temp(self):
-		"""
-		Removes all temporary files
-		"""
-
-		# DANGER
-		if OPT.tempdir.resolve() in OPT.gamedir.resolve():
-			abortlog("Temp is within the game directory.")
-		if OPT.gamedir.resolve() in OPT.tempdir.resolve():
-			abortlog("Temp is a parent of the game directory.")
-		if OPT.tempdir.resolve() in SCRIPTDIR:
-			abortlog("Temp is a parent of this script.")
-
-		assert False
-		if OPT.dry_run:
-			info(f"[Delete temp dir '{OPT.tempdir}']")
-			return
-
-		shutil.rmtree(OPT.tempdir)
-
-
 	def load_cached_api_file(self, fname, url, POST_data=None):
 		"""Atomic, streaming legacy metadata cache with verified TLS."""
 		if pathlib.Path(fname).name != fname:
@@ -591,8 +378,6 @@ class SophonClient:
 		fullname = tempdir(fname)
 		if fullname.is_symlink():
 			raise ValueError("Symlink metadata cache")
-		if OPT.force_use_cache:
-			return fullname
 		if fullname.is_file() and time.time() - fullname.stat().st_mtime <= 24 * 3600:
 			return fullname
 		if callable(url):
@@ -623,16 +408,6 @@ class SophonClient:
 		return fullname
 
 
-	def load_or_download_json(self, fname, url):
-		path = self.load_cached_api_file(fname, url)
-		with path.open("rb") as fh:
-			js = json.load(fh)
-		ret = js["retcode"]
-		if ret != 0:
-			raise ServiceError("Sophon metadata request rejected (retcode " + str(ret) + ")")
-		return js["data"]
-
-
 	def retrieve_API_keys(self):
 		"""
 		Retrieves passkeys for authentication to download URLs
@@ -651,7 +426,7 @@ class SophonClient:
 		game_ids: str = None
 		launcher_id: str = None
 
-		assert self.game_type in ["hk4e", "nap", "hkrpg"], "Unknown game type. Must be 'hk4e' or 'nap'."
+		assert self.game_type in ["hk4e", "nap"], "Unknown game type. Must be 'hk4e' or 'nap'."
 
 		if self.rel_type == "os":
 			# Up-to-date as of 2024-06-15 (4.7.0)
@@ -659,8 +434,6 @@ class SophonClient:
 				game_ids = "U5hbdsT9W7"
 			elif self.game_type == "hk4e":
 				game_ids = "gopR6Cufr3"
-			elif self.game_type == "hkrpg":
-				game_ids = "4ziysqXOQ8"
 			launcher_id = "VYTpXlbWo8"
 		elif self.rel_type == "cn":
 			# From DGP-Studio/Snap.Hutao (GitHub), MIT
@@ -669,8 +442,6 @@ class SophonClient:
 				game_ids = "x6znKlJ0xK"
 			elif self.game_type == "hk4e":
 				game_ids = "1Z8W5NHUQb"
-			elif self.game_type == "hkrpg":
-				game_ids = "64kMb5iAWu"
 		elif self.rel_type == "bb":
 			# From DGP-Studio/Snap.Hutao (GitHub), MIT
 			assert self.game_type == "hk4e", "Bilibili is only available for 'hk4e' game type"
@@ -693,17 +464,6 @@ class SophonClient:
 
 			ver = self.branches_json["tag"]
 			infolog(f"Sophon provides game version {ver}")
-
-		if False:  # TODO
-			# JSON with game paths for voiceover packs, logs, screenshots
-			self.load_cached_api_file("getGameConfigs.json", f"{base_url}/getGameConfigs?{tail}")
-
-		if False:  # TODO
-			# JSON with SDK files (BiliBili ?)
-			channel = 1
-			sub_channel = 0
-			self.load_cached_api_file("getGameChannelSDKs.json",
-			                          f"{base_url}/getGameChannelSDKs?channel={channel}&{tail}&sub_channel={sub_channel}")
 
 
 	def make_getBuild_url(self, api_file):
@@ -810,14 +570,6 @@ class SophonClient:
 		nfiles = len(pb.files)
 		debuglog(dlinfo.name, f"Decompressed manifest protobuf ({nfiles} files)")
 
-		if EXPORT_JSON_FILES:
-			# For development purposes: write the manifest as JSON to a file
-			# NOTE: Underscores may be converted to uppercase letters
-			json_fname = tempdir(fname_raw + ".json")
-			if not json_fname.is_file():
-				with json_fname.open("w+") as jfh:
-					json.dump(json.loads(MessageToJson(pb)), jfh)
-				infolog(dlinfo.name, "Exported protobuf to JSON file")
 
 		dlinfo.manifest = pb
 
@@ -837,7 +589,7 @@ class SophonClient:
 				abortlog("There is no update available.")
 
 
-		# The rest of the fucking owl
+		# Select the requested full manifest.
 		self._select_category(self.di_chunks, cat_name)
 
 		if OPT.do_update:
@@ -907,23 +659,18 @@ class SophonClient:
 		if progress:
 			progress.file_download_start(file_info.filename)
 		if file_info.flags == 64:
-			if not OPT.dry_run:
-				target.mkdir(parents=True, exist_ok=True)
+			target.mkdir(parents=True, exist_ok=True)
 			if progress:
 				progress.file_download_skipped(file_info.filename, "directory")
 			return True
 		if file_info.flags != 0:
 			raise ValueError("Unsupported manifest asset flags")
-		if OPT.TESTING_FILE and OPT.TESTING_FILE not in file_info.filename:
-			return True
 		# Reliable repair can queue a same-size corrupt file. Size alone never
 		# authorizes skipping either the original or a previously staged file.
 		if matches(target, file_info.size, file_info.md5, cancel_event):
 			if progress:
 				progress.file_download_skipped(file_info.filename, "exists")
 			return True
-		if OPT.disallow_download:
-			raise RuntimeError("Required file download is disabled")
 		category = self.di_chunks.category_json
 		descriptor = category["chunk_download"]
 		chunks = tuple(Chunk(c.chunk_id, c.md5, c.offset, c.uncompressed_size,
@@ -946,8 +693,6 @@ class SophonClient:
 		updater = Updater(root, build, None, fetch, cancel=cancel_event)
 		updater.state.mkdir(exist_ok=True)
 		staged = updater.construct(asset)
-		if OPT.dry_run:
-			return True
 		check_cancel(cancel_event)
 		target.parent.mkdir(parents=True, exist_ok=True)
 		safe_path(root, asset.name)
@@ -975,15 +720,13 @@ class SophonClient:
 			return
 
 		infolog("Checking game file integrity (quick) ...")
-		# Do not abort in dry run
-		error_fn = warnlog if OPT.dry_run else abortlog
 		if OPT.do_install:
 			for v in self.di_chunks.manifest.files:
 				if v.flags == 64: # directory
 					continue
 
 				if try_get_file_size(gamedir(v.filename)) != v.size:
-					error_fn(f"File missing or invalid size: {v.filename}")
+					abortlog(f"File missing or invalid size: {v.filename}")
 
 		# Similar check after updating
 		if OPT.do_update:
@@ -991,7 +734,7 @@ class SophonClient:
 
 			for v in self.di_diffs.manifest.files:
 				if try_get_file_size(gamedir(v.filename)) != v.size:
-					error_fn(f"File missing or invalid size: {v.filename}")
+					abortlog(f"File missing or invalid size: {v.filename}")
 
 			# Check whether all old files are gone
 			# Similar to "self.process_deletefiles"
@@ -1004,13 +747,10 @@ class SophonClient:
 
 			for v in deletelist:
 				if gamedir(v.filename).is_file():
-					error_fn(f"Old file still exists: {v.filename}")
+					abortlog(f"Old file still exists: {v.filename}")
 
 		self.installed_ver = self.di_chunks.getBuild_json["data"]["tag"] # "MAJOR.MINOR.PATCH"
 		contents = contents.replace(ver[0], self.installed_ver)
-		if OPT.dry_run:
-			infolog(f"[update config.ini to {self.installed_ver}]")
-			return
 
 		confname.write_text(contents)
 		infolog(f"Updated config.ini to {self.installed_ver}")
@@ -1049,12 +789,6 @@ class SophonClient:
 			self.new_files_to_download.add(v.filename)
 			return None
 
-		if OPT.TESTING_FILE:
-			if not (OPT.TESTING_FILE in v.filename):
-				return None
-			else:
-				print("ENTER TO DOWNLOAD: ", v.filename)
-				input()
 
 		filename_safety_check(v.filename)
 
@@ -1118,9 +852,6 @@ class SophonClient:
 		        f"\t -> {pinfo.patch_id}"
 		        )
 
-		if OPT.disallow_download:
-			warnlog(f"NOT downloading diff for {ldiffname.name}")
-			return None
 
 		DIFF_URL_PREFIX = self.di_diffs.category_json["diff_download"]["url_prefix"]
 		self._download_file_resume(DIFF_URL_PREFIX + "/" + pinfo.patch_id, tmp_file, pinfo.patch_size)
@@ -1130,7 +861,6 @@ class SophonClient:
 		assert tmp_file.stat().st_size == pinfo.patch_size, "Corrupted patch download"
 
 		# Move to original ldiff file name (without _tmp)
-		# This does not need special dry-run handling (game files are not affected)
 		shutil.move(tmp_file, ldiffname)
 		if progress_handler:
 			progress_handler.ldiff_download_complete(v.filename, pinfo.patch_size)
@@ -1142,11 +872,9 @@ class SophonClient:
 		Helper function to apply one diff file.
 		"""
 
-		assert (not OPT.predownload or OPT.TESTING_FILE), "Not allowed for pre-downloads."
+		assert not OPT.predownload, "Not allowed for pre-downloads."
 		assert not (v.filename in self.new_files_to_download), "invalid script usage"
 
-		if OPT.TESTING_FILE and not (OPT.TESTING_FILE in v.filename):
-			return
 
 		filename_safety_check(v.filename)
 
@@ -1170,8 +898,6 @@ class SophonClient:
 		ldiffname = ldiff_dir.joinpath(pinfo.patch_id)
 
 		if not ldiffname.is_file():
-			if OPT.disallow_download:
-				return
 			if progress_handler:
 				progress_handler.ldiff_patch_error(v.filename, "diff file missing")
 			abortlog(f"Diff file {ldiffname.name} is missing. Please redownload.")
@@ -1207,9 +933,6 @@ class SophonClient:
 			infolog(f"Patched file {v.filename}")
 
 		# Replace the game install file
-		if OPT.dry_run:
-			infolog(f"[move patched '{dstfile.name}' -> game dir]")
-			return
 
 		gamefile.parent.mkdir(parents=True, exist_ok=True)
 		filename_safety_check(v.filename)
@@ -1276,13 +999,6 @@ class SophonClient:
 						progress_handler.ldiff_patch_complete(v.filename)
 					if RUN_MEMORY_HACK:
 						force_memory_release()
-				elif OPT.TESTING_FILE and (OPT.TESTING_FILE in v.filename):
-					# Allow patching individual files beforehand
-					warnlog(f"ENTER TO APPLY PATCH (will create backup file): ", OPT.TESTING_FILE)
-					input()
-					gamefile = gamedir(v.filename)
-					shutil.copy2(gamefile, f"{gamefile}.bak")
-					self._apply_ldiff_file(ldiff_dir, v)
 
 			files_done += 1
 			relname = pathlib.Path(v.filename).name
@@ -1321,9 +1037,6 @@ class SophonClient:
 				continue
 
 			# Remove the file
-			if OPT.dry_run:
-				infolog(f"[delete old file {v.filename}]")
-				continue
 
 			infolog(f"Deleted old file: {v.filename}")
 			if progress_handler:
@@ -1411,9 +1124,6 @@ class SophonClient:
 				continue
 
 			count += 1
-			if OPT.dry_run:
-				infolog(f"[remove now unused ldiff '{v}']")
-				continue
 
 			filename.unlink() # delete
 			if progress_handler:

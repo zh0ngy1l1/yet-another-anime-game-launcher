@@ -1,4 +1,4 @@
-import threading, os, pathlib, concurrent.futures, re, shutil
+import threading, os, pathlib, concurrent.futures
 from typing import Dict, Optional, Literal
 
 from progress_handlers import InstallProgressHandler, RepairProgressHandler, UpdateProgressHandler
@@ -9,16 +9,6 @@ from online_info import game_download_size
 from sophon_full import prepare_update
 from full_update import write_version, matches, safe_path
 
-
-def update_config_ini_version(gamedir: pathlib.Path, version: str):
-    confname = gamedir / "config.ini"
-    contents = confname.read_text()
-    ver = re.findall(r"game_version=(\d+\.\d+\.\d+)", contents)
-    if len(ver) != 1:
-        raise ValueError(f"Invalid config.ini format: {confname} does not contain a valid game_version")
-
-    contents = contents.replace(ver[0], version)
-    confname.write_text(contents)
 
 def remove_cached_files(tempdir: pathlib.Path):
     if tempdir.exists():
@@ -201,18 +191,11 @@ def perform_update(manager: ConnectionManager, tasks: Dict[str, TaskStatus], tas
 def fetch_online_game_info(reltype: str, game: Literal["nap", "hk4e"]) -> OnlineGameInfo:
     try:
         if game in ["hk4e", "nap"]:
-            options = Options()
-            options.game_type = game
-            options.install_reltype = reltype
-            options.ignore_conditions = True
-            options.gamedir = pathlib.Path("./sidecar/sophon_server/gametemp")  # TODO: Change to proper dir
-            options.tempdir = options.gamedir
-
-            if not options.gamedir.exists():
-                options.gamedir.mkdir(parents=True, exist_ok=True)
-
+            # Metadata has no game directory and must never initialize an install.
             cli = SophonClient()
-            cli.initialize(options)
+            cli.game_type = game
+            cli.rel_type = reltype
+            cli.branch = "main"
             cli.retrieve_API_keys()
             # The summary contains the same non-deduplicated compressed total
             # as get_chunk_download_size(False). Startup needs no chunk data.
@@ -225,13 +208,8 @@ def fetch_online_game_info(reltype: str, game: Literal["nap", "hk4e"]) -> Online
                 "release_type": reltype,
             }
 
-            del cli
-
-            shutil.rmtree(options.gamedir, ignore_errors=True)
-            options.predownload = True
-
-            cli = SophonClient()
-            cli.initialize(options)
+            cli.branches_json = None
+            cli.branch = "pre_download"
 
             try:
                 cli.retrieve_API_keys()
@@ -241,9 +219,7 @@ def fetch_online_game_info(reltype: str, game: Literal["nap", "hk4e"]) -> Online
                 online_info['pre_download'] = False
                 online_info["pre_download_version"] = "0.0.0"
 
-            shutil.rmtree(options.gamedir, ignore_errors=True)
             del cli
-            del options
 
             if RUN_MEMORY_HACK:
                 force_memory_release()

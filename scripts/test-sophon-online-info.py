@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 """Harmless startup metadata regression; no game, network or bundled process."""
-import ast
 import copy
-import importlib.util
-import json
 import pathlib
-import shutil
-import tempfile
+import sys
 import unittest
-from types import SimpleNamespace
-from typing import Literal
+from unittest.mock import patch
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location("online_info", ROOT / "sophon_server/online_info.py")
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
+sys.path.insert(0, str(ROOT / "sophon_server"))
+import online_info as module
+from tasks import fetch_online_game_info
+
 BUILD = {"retcode": 0, "data": {"tag": "7.0.0", "manifests": [
     {"matching_field": "game", "stats": {"compressed_size": "121313081970"},
      "deduplicated_stats": {"compressed_size": "121184596600"},
@@ -56,30 +52,31 @@ class OnlineInfoTests(unittest.TestCase):
     def test_startup_never_needs_manifest_download(self):
         # Run the actual startup task with a fake server whose chunk/manifest
         # route is unavailable. Preserve version, size and no-preload behavior.
-        tree = ast.parse((ROOT / "sophon_server/tasks.py").read_text())
-        function = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "fetch_online_game_info")
-        calls = []
-        class Client:
-            def initialize(self, options): self.options = options
-            def retrieve_API_keys(self):
-                if self.options.predownload: raise AssertionError("No pre-download branch")
-                self.branches_json = {"tag": "7.0.0", "diff_tags": ["6.7.0", "6.6.0"]}
-            def get_getBuild_json(self, new_files):
-                calls.append(new_files)
-                return BUILD
-            def load_manifest(self, category): raise AssertionError("Chunk CDN must not be contacted during startup")
-        with tempfile.TemporaryDirectory() as directory:
-            namespace = dict(Literal=Literal, OnlineGameInfo=lambda **kwargs: kwargs,
-                Options=lambda: SimpleNamespace(predownload=False), SophonClient=Client,
-                pathlib=SimpleNamespace(Path=lambda _: pathlib.Path(directory) / "gametemp"),
-                shutil=shutil, RUN_MEMORY_HACK=False, game_download_size=module.game_download_size)
-            exec(compile(ast.Module(body=[function], type_ignores=[]), "startup-task", "exec"), namespace)
-            result = namespace["fetch_online_game_info"]("os", "hk4e")
-        self.assertIsNone(result["error"])
-        self.assertEqual(result["install_size"], 121313081970)
-        self.assertEqual(result["version"], "7.0.0")
-        self.assertFalse(result["pre_download"])
-        self.assertEqual(calls, [True])
+        for game in ("hk4e", "nap"):
+            for preload in (False, True):
+                with self.subTest(game=game, preload=preload):
+                    calls = []
+                    class Client:
+                        def retrieve_API_keys(self):
+                            calls.append((self.game_type, self.rel_type, self.branch))
+                            if self.branch == "pre_download" and not preload:
+                                raise AssertionError("No pre-download branch")
+                            self.branches_json = {"tag": "7.0.0" if self.branch == "main" else "7.1.0",
+                                                  "diff_tags": ["6.7.0", "6.6.0"]}
+                        def get_getBuild_json(self, new_files):
+                            self_test.assertTrue(new_files)
+                            return BUILD
+                    self_test = self
+                    with patch("tasks.SophonClient", Client), patch("tasks.RUN_MEMORY_HACK", False), \
+                         patch.object(pathlib.Path, "mkdir", side_effect=AssertionError("Metadata must not create game directories")):
+                        result = fetch_online_game_info("os", game)
+                    self.assertIsNone(result.error)
+                    self.assertEqual(result.install_size, 121313081970)
+                    self.assertEqual(result.version, "7.0.0")
+                    self.assertEqual(result.pre_download, preload)
+                    self.assertEqual(result.pre_download_version, "7.1.0" if preload else "0.0.0")
+                    self.assertEqual(result.full_manifest_update, game == "hk4e")
+                    self.assertEqual(calls, [(game, "os", "main"), (game, "os", "pre_download")])
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@
 name = "sophon-server"
 version = "0.1.0"
 description = "Game file download server"
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "certifi>=2025.1.31",
