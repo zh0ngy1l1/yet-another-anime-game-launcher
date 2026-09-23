@@ -13,7 +13,7 @@ import threading
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'sophon_server'))
-from sophon_full import prepare_update
+from sophon_clone_guard import guard_clone, guard_auxiliary_path, write_json_result
 
 
 def main():
@@ -26,19 +26,22 @@ def main():
     parser.add_argument('--result', type=Path)
     args = parser.parse_args()
     root = args.gamedir.resolve(strict=True)
+    original = args.clone_of.resolve(strict=True) if args.clone_of else None
+    protected = [root] + ([original] if original else [])
+    try:
+        args.cache = guard_auxiliary_path(args.cache, protected, '--cache')
+        if args.result:
+            args.result = guard_auxiliary_path(args.result, protected, '--result')
+    except ValueError as error:
+        parser.error(str(error))
     if args.clone_of:
-        original = args.clone_of.resolve(strict=True)
-        if root == original or original in root.parents or root in original.parents:
-            parser.error('Clone and original must be disjoint canonical directories')
-        for path in root.rglob('*'):
-            if path.is_symlink():
-                parser.error('Clone contains a symlink')
-            if path.is_file():
-                counterpart = original / path.relative_to(root)
-                if counterpart.exists() and path.samefile(counterpart):
-                    parser.error('Clone shares a file inode with the original')
+        try:
+            guard_clone(original, root)
+        except ValueError as error:
+            parser.error(str(error))
     if not args.verify_only and not args.clone_of:
         parser.error('Development CLI writes require --clone-of; normal installs use YAAGL')
+    from sophon_full import prepare_update
     cancel = threading.Event()
     signal.signal(signal.SIGINT, lambda *_: cancel.set())
     signal.signal(signal.SIGTERM, lambda *_: cancel.set())
@@ -61,7 +64,7 @@ def main():
         result = updater.run(predownload=args.predownload)
         result['elapsed_seconds'] = time.monotonic() - started
     if args.result:
-        args.result.write_text(json.dumps(result, indent=2) + '\n')
+        write_json_result(args.result, result)
     print(json.dumps(result), flush=True)
     return 1 if result.get('failed') else 0
 

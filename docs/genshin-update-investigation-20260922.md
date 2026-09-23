@@ -206,3 +206,61 @@ stream-hashed every available English alias with two workers, finishing in 11.16
 All 174 present files validate against official source or target metadata; they total **17,676,578,598 bytes**. Mapping target chunks by decompressed MD5+size to old-source chunk offsets, plus using the 141 exact-target aliases, identifies **13,853,553,122 reusable target bytes**. Required compressed English chunks are therefore at most **4,451,549,611 bytes**, rather than the initial exact-path estimate of 18,303,859,503 bytes. Together with the earlier game estimate, the corrected download upper bound is **13,462,193,775 bytes** (about 12.54 GiB), before any further cache reuse or duplicate download elimination.
 
 These files are useful byte sources only: the updater must read them without modifying the Persistent cache, verify each copied target chunk, assemble official target files under their manifest paths, and perform final full-file verification. A path alias alone never establishes identity. The new implementation's source-candidate mapping follows this rule and also supports corresponding non-audio Persistent content where present. Source/target manifests and the user's original directory were not modified by this audit. Full sanitized per-file evidence is `/tmp/yaagl-sophon-investigation/voice-alias-audit.json`.
+
+The independent verifier is now checked in as `scripts/verify-sophon-clone.py`. It derives versions and checksums from saved build responses, verifies the saved protobuf checksums before use, imports no updater code, streams file hashes with two workers, checks config/globalgamemanagers/obsolete assets, and compares original inventory and optional initial hash anchors. Result output is rejected inside either game directory. Its eight synthetic CLI tests passed with:
+
+```sh
+/tmp/yaagl-sophon-investigation/venv/bin/python scripts/test-sophon-clone-verifier.py
+```
+
+They cover a valid independent clone without writes to either installation, same-size corruption, stale obsolete files, original-installation changes, unsafe manifest paths, unsafe output placement, an unavailable source manifest, and an original inode linked under a different clone path. The post-update command is:
+
+```sh
+/tmp/yaagl-sophon-investigation/venv/bin/python scripts/verify-sophon-clone.py \
+  --clone '/Users/david/Library/Application Support/YAAGL Update Validation/20260922/game' \
+  --original /Users/david/.gimpact \
+  --manifest-dir /tmp/yaagl-sophon-investigation \
+  --original-inventory /tmp/yaagl-sophon-investigation/original-inventory.json \
+  --original-hashes /tmp/yaagl-sophon-investigation/original-anchor-hashes.json \
+  --categories game,en-us \
+  --result /tmp/yaagl-sophon-investigation/independent-clone-verification.json
+```
+
+The completed independent live verification result is recorded below; the synthetic tests are separate evidence.
+
+## Retained Persistent voice cache: verified facts and limits
+
+The 174 English files in `Persistent/AudioAssets/English(US)` are **tracked game-managed content**, not arbitrary unowned files. The original `Persistent/res_versions_persist` contains 174 English entries, and every entry's cached MD5 agrees with the corresponding file. `Persistent/ScriptVersion` is `7.0.0`; `audio_revision` and `PatchDone` are `47194594`. Of those tracked files, 141 match the current full target manifest's corresponding canonical voice assets, while **33 match only the old source version and differ from the target**.
+
+The current full Sophon manifests describe `StreamingAssets` voice paths and the root package marker. Verifying those paths establishes the selected full launcher packages' file-level correctness. It does not establish that all game-managed Persistent content has been refreshed, that stale entries are harmless, or which copy the current game will prioritize.
+
+The reviewed maintained Collapse commit `dc47259171794596331dffcf90db85a6ac0415ac` distinguishes full-package installation from in-game resource repair:
+
+- The full-version update dispatches to `StartPackageUpdateSophon`, writes the selected Sophon asset paths, and removes temporary Sophon verification markers. The reviewed install-management code does not invalidate `ScriptVersion` or the Persistent resource manifests as part of this flow. See [full Sophon update implementation](https://github.com/CollapseLauncher/Collapse/blob/dc47259171794596331dffcf90db85a6ac0415ac/CollapseLauncher/Classes/InstallManagement/Base/InstallManagerBase.Sophon.cs#L630) and [version-update dispatch](https://github.com/CollapseLauncher/Collapse/blob/dc47259171794596331dffcf90db85a6ac0415ac/CollapseLauncher/Classes/InstallManagement/Base/InstallManagerBase.cs#L533).
+- Genshin's installation inventory builder calls `BuildPrimaryManifest`; the additional `BuildPersistentManifest` invocation is explicitly commented out. See [installation inventory construction](https://github.com/CollapseLauncher/Collapse/blob/dc47259171794596331dffcf90db85a6ac0415ac/CollapseLauncher/Classes/InstallManagement/Genshin/GenshinInstall.PkgVersion.cs#L49).
+- Separate repair obtains dispatcher resource manifests and decides whether assets belong in Persistent based on patch status and differences from base-package hashes. It migrates non-patch audio/video to StreamingAssets while excluding assets identified as current patches. See [Persistent placement rules](https://github.com/CollapseLauncher/Collapse/blob/dc47259171794596331dffcf90db85a6ac0415ac/CollapseLauncher/Classes/RepairManagement/Genshin/Fetch.Persistent.cs#L159) and [repair migration](https://github.com/CollapseLauncher/Collapse/blob/dc47259171794596331dffcf90db85a6ac0415ac/CollapseLauncher/Classes/RepairManagement/Genshin/Check.cs#L91).
+
+These sources do not justify inventing a blanket cache-deletion rule or changing Persistent version markers without performing their associated resource update. The implementation retains those cache files and markers unchanged, using valid bytes only as read-only assembly sources. **Current in-game hotfix ownership and runtime precedence remain unverified; this work does not claim that the retained Persistent cache is internally current.** Absence of obsolete canonical source-manifest assets and correctness of every selected canonical target asset must be reported separately from that remaining cache/runtime uncertainty.
+
+## Completed independent clone verification
+
+After the updater's final invocation exited successfully, the exact independent verification command above ran to completion: **exit 0 in 101.598 seconds**. It used the previously saved and checksum-validated official source and target manifests, without importing updater code or modifying either game directory.
+
+| Independent check | Result |
+| --- | --- |
+| Selected target packages | `game`, `en-us` |
+| Target / source version | `7.1.0` / `7.0.0` |
+| Target files verified by streamed MD5 and size | **2,921 / 2,921** |
+| Target bytes verified | **150,287,592,051** |
+| Failed target assets | **0** |
+| config.ini version | `7.1.0` |
+| globalgamemanagers detected version | `7.1.0` |
+| Obsolete source-manifest files or directories still present | **0** |
+| Source manifest available for obsolete-file audit | Yes |
+| Original 3,846-file stat inventory versus initial snapshot | Unchanged |
+| Original config, executable, globalgamemanagers and language-marker SHA-256 anchors | All four unchanged |
+| File inodes shared between clone and original, including different relative paths | None |
+
+The external receipt is `/tmp/yaagl-sophon-investigation/independent-clone-verification.json`, including per-file hashes. Original provenance consists of a complete file-stat inventory and four content-hash anchors; it is not a full cryptographic comparison of every original byte. The validated clone is `/Users/david/Library/Application Support/YAAGL Update Validation/20260922/game`.
+
+This demonstrates that the clone's complete selected canonical game and English packages match the official 7.1.0 target manifests. The retained Persistent-cache scope limitations above remain unchanged; no claim of successful game launch or current in-game hotfix-cache verification is made by this file-level result.

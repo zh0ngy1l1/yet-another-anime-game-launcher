@@ -19,6 +19,7 @@ from urllib import error, request
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('executable', type=Path)
+    parser.add_argument('--websocket', action='store_true', help='Also check WebSocket transport (requires the locked Sophon Python environment)')
     args = parser.parse_args()
     executable = args.executable.resolve(strict=True)
     certificate_bundle = executable.parent / 'certifi/cacert.pem'
@@ -48,6 +49,14 @@ def main():
                         time.sleep(0.1)
                 if not health or health.get('status') != 'healthy':
                     raise RuntimeError('Standalone health check did not succeed')
+                if args.websocket:
+                    from websockets.sync.client import connect
+                    # Unknown task lookup is read-only and must return an
+                    # explicit error through the compiled WebSocket backend.
+                    with connect(f'ws://127.0.0.1:{port}/ws/smoke-unknown-task', open_timeout=10) as websocket:
+                        event = json.loads(websocket.recv(timeout=10))
+                    if event.get('type') != 'error' or event.get('task_id') != 'smoke-unknown-task':
+                        raise RuntimeError('Standalone WebSocket transport did not return the task error')
                 with request.urlopen(base + '/api/game/online_info?game=hk4e&reltype=os', timeout=150) as response:
                     info = json.load(response)
                 if info.get('error') or not info.get('version') or info.get('full_manifest_update') is not True:
@@ -58,6 +67,7 @@ def main():
                                   pre_download=info['pre_download'],
                                   executable_sha256=hashlib.file_digest(binary, 'sha256').hexdigest(),
                                   certificate_bundle_sha256=hashlib.file_digest(certificates, 'sha256').hexdigest(),
+                                  websocket_checked=args.websocket,
                                   cwd_isolated=True, game_operations_submitted=0)
             finally:
                 process.terminate()
