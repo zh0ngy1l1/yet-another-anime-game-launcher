@@ -82,7 +82,7 @@ it("snapshots before apply and promotes the attributed window before exact rollb
   await session.finish(true);
   expect(calls.slice(4)).toEqual(["wait", "observe", "restore", "wait"]);
   expect(
-    JSON.parse(storage.get("hk4e_window_size_hk4e_global")!)
+    JSON.parse(storage.get("hk4e_window_size_hk4e_global") ?? "")
   ).toMatchObject({ width: 1152, height: 648, retina: false });
   expect(storage.has("hk4e_window_controls_pending")).toBe(false);
   await session.finish(true); // idempotent cleanup cannot recapture/overwrite
@@ -165,6 +165,7 @@ it("startup with a durable restored marker skips removed helper artifacts", asyn
       context: input().wine.executionContext,
       options: ["1", "0", "0", "0"],
       restored: true,
+      saved: true,
     })
   );
   await recoverWindowSession(input().wine);
@@ -176,4 +177,45 @@ it("wrong server/executable is rejected before artifact or registry activity", a
   ).rejects.toThrow("exact HK4E executable");
   expect(stageFpsArtifact).not.toHaveBeenCalled();
   expect(startOwnedWineExecution).not.toHaveBeenCalled();
+});
+
+it("save failure discards only an unapplied transaction", async () => {
+  commandFailure = "save";
+  const session = await createWindowSession(input());
+  await expect(session.prepare()).rejects.toThrow("save failed");
+  expect(
+    JSON.parse(storage.get("hk4e_window_controls_pending") ?? "").saved
+  ).toBe(false);
+  commandFailure = undefined;
+  await session.finish(false);
+  expect(calls).toContain("discard");
+  expect(calls).not.toContain("apply");
+  expect(calls).not.toContain("restore");
+});
+it("startup retains an applied transaction when its original snapshot cannot be restored", async () => {
+  const request = input();
+  const session = await createWindowSession(request);
+  await session.prepare();
+  expect(
+    JSON.parse(storage.get("hk4e_window_controls_pending") ?? "").saved
+  ).toBe(true);
+  commandFailure = "restore";
+  await expect(recoverWindowSession(request.wine)).rejects.toThrow(
+    "restore failed"
+  );
+  expect(storage.has("hk4e_window_controls_pending")).toBe(true);
+  expect(calls).not.toContain("discard");
+});
+it("an unknown saved phase cannot be interpreted as permission to discard a snapshot", async () => {
+  const request = input();
+  const session = await createWindowSession(request);
+  await session.prepare();
+  const record = JSON.parse(storage.get("hk4e_window_controls_pending") ?? "");
+  delete record.saved;
+  storage.set("hk4e_window_controls_pending", JSON.stringify(record));
+  await expect(recoverWindowSession(request.wine)).rejects.toThrow(
+    "Unrecognized window controls"
+  );
+  expect(calls).not.toContain("discard");
+  expect(storage.has("hk4e_window_controls_pending")).toBe(true);
 });

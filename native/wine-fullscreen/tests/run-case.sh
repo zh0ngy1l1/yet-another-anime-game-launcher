@@ -30,11 +30,15 @@ else
 fi
 "$engine/bin/wineserver" -w
 : > "$work/logs/$case_name-native.log"
-YAAGL_TEST_SECONDS=60 YAAGL_EXPECT_FIXED="$expected" \
+YAAGL_TEST_SECONDS="${YAAGL_TEST_SECONDS:-60}" YAAGL_EXPECT_FIXED="$expected" \
 YAAGL_OBSERVER_LOG="$work/logs/$case_name-native.log" \
 DYLD_INSERT_LIBRARIES="${YAAGL_OBSERVER_DYLIB:-$work/tests/observe-fullscreen.dylib}" \
 "$engine/bin/wine" "$work/tests/$test_app" > "$work/logs/$case_name-windows.log" 2>&1
 "$engine/bin/wineserver" -w
 rg '^RESULT failures=0$' "$work/logs/$case_name-native.log"
 if rg '^FAIL ' "$work/logs/$case_name-native.log"; then exit 1; fi
-python3 "$here/check-geometry.py" "$work/logs/$case_name-windows.log"
+if [[ ${YAAGL_TEST_CLOSE_DURING_ENTRY:-0} == 1 ]]; then
+    rg '^DESTROYED YAAGL fixed' "$work/logs/$case_name-windows.log"
+else
+    python3 "$here/check-geometry.py" "$work/logs/$case_name-windows.log"
+fi

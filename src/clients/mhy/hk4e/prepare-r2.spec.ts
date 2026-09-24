@@ -139,3 +139,13 @@ it("transports the real multiline recipe and manifest through the shell boundary
     rmSync(directory, { recursive: true });
   }
 });
+
+it("rejects an unsupported fullscreen distribution before Wine or copy preparation", async () => {
+  const wine = input();
+  Object.assign(wine, { distributionId: "11.8-dxmt-signed-experimental" });
+  await expect(
+    prepareR2Wine(wine, { fps: false, fullscreen: true })
+  ).rejects.toThrow("preference is saved");
+  expect(wine.waitUntilServerOff).not.toHaveBeenCalled();
+  expect(exec).not.toHaveBeenCalled();
+});

@@ -563,3 +563,93 @@ it.each([false, true])(
     }
   }
 );
+
+it.each(
+  [false, true].flatMap(fps =>
+    [false, true].flatMap(fullscreen =>
+      [false, true].flatMap(steam =>
+        ["hk4e_global", "hk4e_cn"].map(server => ({
+          fps,
+          fullscreen,
+          steam,
+          server,
+        }))
+      )
+    )
+  )
+)(
+  "composes FPS=$fps fullscreen=$fullscreen Steam=$steam server=$server without a second runtime or unwanted worker",
+  async ({ fps, fullscreen, steam, server }) => {
+    vi.useFakeTimers();
+    const clock = vi
+      .spyOn(operationClock, "now")
+      .mockImplementation(() => Date.now());
+    try {
+      stored.set(FPS_UNLOCK_ENABLED_KEY, String(fps));
+      stored.set(FPS_UNLOCK_TARGET_KEY, "120");
+      const request = input(),
+        native = boundary(steam);
+      request.config.hk4eNativeFullscreen = fullscreen;
+      request.config.steamPatch = steam;
+      request.config.retina = false;
+      request.server = { id: server } as Server;
+      request.gameExecutable =
+        server === "hk4e_cn" ? "YuanShen.exe" : "GenshinImpact.exe";
+      Object.assign(request.wine, {
+        distributionId: "11.0-dxmt-signed-with-patches",
+        executionContext: { loader: "/wine/bin/wine", prefix: "/prefix" },
+        attributes: { renderBackend: "dxmt", winePath: "wine" },
+      });
+      vi.spyOn(Neutralino.filesystem, "getStats").mockImplementation(
+        async path =>
+          ({
+            isFile: path !== "/prefix",
+            isDirectory: path === "/prefix",
+          } as never)
+      );
+      if (fps) {
+        const actual = await vi.importActual<typeof import("./fps-bridge")>(
+          "./fps-bridge"
+        );
+        vi.mocked(prepareFpsBridge).mockImplementationOnce(value =>
+          actual.prepareFpsBridge(value, native.io)
+        );
+      }
+      const running = drain(launchGameProgram(request));
+      await vi.advanceTimersByTimeAsync(11000);
+      expect(prepareR2Wine).toHaveBeenCalledTimes(fps || fullscreen ? 1 : 0);
+      if (fps || fullscreen)
+        expect(prepareR2Wine).toHaveBeenCalledWith(request.wine, {
+          fps,
+          fullscreen,
+        });
+      expect(request.wine.setProps).toHaveBeenCalledWith(
+        expect.objectContaining({ retina: false })
+      );
+      if (fps) {
+        expect(native.events).toContain("fps:120");
+        native.exit();
+        native.stopped();
+        native.direct.resolve({ confirmed: true, status: 0 });
+        await vi.advanceTimersByTimeAsync(2000);
+      } else {
+        expect(prepareFpsBridge).not.toHaveBeenCalled();
+        expect(request.wine.exec2).toHaveBeenCalledWith(
+          steam ? "C:\\windows\\system32\\steam.exe" : "cmd",
+          expect.any(Array),
+          expect.objectContaining({
+            DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
+          }),
+          expect.any(String),
+          true
+        );
+      }
+      await running;
+      expect(disposeR2Wine).toHaveBeenCalledTimes(fps || fullscreen ? 1 : 0);
+      expect(launchOwnership.state().held).toBe(false);
+    } finally {
+      clock.mockRestore();
+      vi.useRealTimers();
+    }
+  }
+);

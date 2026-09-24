@@ -68,9 +68,9 @@ static int set(unsigned i, DWORD type, const BYTE *data, DWORD length) {
     e = RegSetValueExW(key, names[i], 0, type, data, length); RegCloseKey(key);
     return e == ERROR_SUCCESS;
 }
-static int restore(void) {
+static int restore(int allow_missing) {
     /* A failed save never mutated the registry and has no committed snapshot. */
-    if (GetFileAttributesW(file) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND) return 1;
+    if (GetFileAttributesW(file) == INVALID_FILE_ATTRIBUTES && GetLastError() == ERROR_FILE_NOT_FOUND) return allow_missing;
     if (!load()) return 0;
     int ok = 1;
     for (unsigned i = 0; i < 4; i++) {
@@ -124,7 +124,8 @@ int wmain(int argc, wchar_t **argv) {
     keys[3] = app; keys[4] = driver; keys[5] = L"Software\\miHoYo"; keys[6] = game;
     swprintf(file, 32768, L"%ls\\window-registry.bin", argv[2]);
     swprintf(temp, 32768, L"%ls\\window-registry.tmp", argv[2]);
-    if (!wcscmp(argv[1], L"restore")) return restore() ? 0 : 5;
+    if (!wcscmp(argv[1], L"restore")) return restore(0) ? 0 : 5;
+    if (!wcscmp(argv[1], L"discard")) return restore(1) ? 0 : 5;
     if (!wcscmp(argv[1], L"observe")) return observe(argv[2]) ? 0 : 5;
     if ((wcscmp(argv[4], L"0") && wcscmp(argv[4], L"1")) ||
         (wcscmp(argv[7], L"0") && wcscmp(argv[7], L"1"))) return 2;

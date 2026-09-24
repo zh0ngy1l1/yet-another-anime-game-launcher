@@ -64,8 +64,10 @@ export async function prepareR2Wine(
   await log(
     `Private runtime prepared: ${root}; FPS=${
       features.fps
-    }; native fullscreen=${features.fullscreen}; R2 ntdll SHA-256=${
-      JSON.parse(manifest).outputSha256
+    }; native fullscreen=${features.fullscreen}; ntdll SHA-256=${
+      features.fps
+        ? JSON.parse(manifest).outputSha256
+        : JSON.parse(manifest).inputSha256
     }; source=${context.loader}; prefix=${context.prefix}`
   );
   return prepared;

@@ -161,6 +161,7 @@ export async function createWindowSession(input: {
     context: wine.executionContext,
     options,
     restored: false,
+    saved: false,
   };
   const environment: Record<string, string> = config.hk4eNativeFullscreen
     ? {
@@ -176,6 +177,8 @@ export async function createWindowSession(input: {
       started = true;
       await setKey(pendingKey, JSON.stringify(record));
       await command.run("save");
+      record.saved = true;
+      await setKey(pendingKey, JSON.stringify(record));
       await command.run("apply");
       await wine.waitUntilServerOff();
       await log(
@@ -229,7 +232,7 @@ export async function createWindowSession(input: {
         observed = true;
       }
       if (started && !restored) {
-        await command.run("restore");
+        await command.run(record.saved ? "restore" : "discard");
         await wine.waitUntilServerOff();
         record.restored = true;
         await setKey(pendingKey, JSON.stringify(record));
@@ -249,6 +252,8 @@ export async function recoverWindowSession(wine: Wine) {
   const saved = JSON.parse(raw);
   if (
     saved.schema !== 1 ||
+    typeof saved.saved !== "boolean" ||
+    typeof saved.restored !== "boolean" ||
     saved.context?.prefix !== wine.prefix ||
     !Array.isArray(saved.options) ||
     saved.options.length !== 4
@@ -275,7 +280,7 @@ export async function recoverWindowSession(wine: Wine) {
     saved.options
   );
   if (!saved.restored) {
-    await command.run("restore");
+    await command.run(saved.saved ? "restore" : "discard");
     await wait();
     saved.restored = true;
     await setKey(pendingKey, JSON.stringify(saved));

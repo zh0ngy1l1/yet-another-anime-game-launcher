@@ -31,6 +31,10 @@ static LRESULT CALLBACK proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         TextOutA(dc,16,44,hint,lstrlenA(hint));
         EndPaint(hwnd,&ps); return 0;
     }
+    if (msg==WM_DESTROY) {
+        char title[100]; GetWindowTextA(hwnd,title,sizeof(title));
+        printf("DESTROYED %s\n",title); fflush(stdout);
+    }
     if (msg==WM_CLOSE) { DestroyWindow(hwnd); return 0; }
     return DefWindowProcA(hwnd,msg,wp,lp);
 }
@@ -70,6 +74,7 @@ int main(void)
     while (GetMessageA(&msg,NULL,0,0)>0) {
         if (msg.message==WM_TIMER && msg.wParam==timer) {
             for (unsigned i=0;i<count;i++) {
+                if (!IsWindow(windows[i])) continue;
                 RECT r,c; GetWindowRect(windows[i],&r); GetClientRect(windows[i],&c);
                 printf("RECT t=%u name=%s window=%ld,%ld,%ld,%ld client=%ld,%ld style=%08lx ex=%08lx\n",ticks,names[i],r.left,r.top,r.right-r.left,r.bottom-r.top,c.right,c.bottom,(unsigned long)GetWindowLongA(windows[i],GWL_STYLE),(unsigned long)GetWindowLongA(windows[i],GWL_EXSTYLE));
             }

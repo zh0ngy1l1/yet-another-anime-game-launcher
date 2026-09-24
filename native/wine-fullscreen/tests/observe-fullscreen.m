@@ -42,6 +42,15 @@ static void step(void)
 {
     if (!find(@"YAAGL constrained")) return;
     if (++ticks%8) return; /* four seconds per transition, no busy polling */
+    if (getenv("YAAGL_TEST_CLOSE_DURING_ENTRY") && stage==1) {
+        snapshot(target,"closed-during-entry");
+        fprintf(logfile,"CLOSE visible=%d closing=%d\n",target.visible,[[target valueForKey:@"closing"] boolValue]); fflush(logfile);
+        check([[target valueForKey:@"closing"] boolValue] && !target.visible, "target closes safely during entry (observer retains Cocoa object)");
+        check(![[target valueForKey:@"enteringFullScreen"] boolValue] && ![[target valueForKey:@"exitingFullScreen"] boolValue] && !(target.styleMask & NSWindowStyleMaskFullScreen) && !inFullscreenSpace(target), "closed target has no pending transition or fullscreen Space");
+        check(find(@"YAAGL constrained").visible, "other fixture windows remain usable");
+        fprintf(logfile,"RESULT failures=%d\n",failures); fflush(logfile);
+        stage=14; return;
+    }
     BOOL enabled=getenv("YAAGL_EXPECT_FIXED") && atoi(getenv("YAAGL_EXPECT_FIXED"));
     if (!stage) {
         for (NSWindow *w in NSApp.windows) if ([w.title hasPrefix:@"YAAGL "]) snapshot(w,"initial");
@@ -58,6 +67,10 @@ static void step(void)
         check(!(target.styleMask & NSWindowStyleMaskFullScreen),"ordinary startup never enters fullscreen");
         if (getenv("YAAGL_TEST_GREEN_BUTTON")) [[target standardWindowButton:NSWindowZoomButton] performClick:nil];
         else [target toggleFullScreen:nil];
+        if (getenv("YAAGL_TEST_CLOSE_DURING_ENTRY")) {
+            check([[target valueForKey:@"enteringFullScreen"] boolValue], "close requested while native entry is pending");
+            [target performClose:nil];
+        } else if (getenv("YAAGL_TEST_DUPLICATE_TOGGLE")) [target toggleFullScreen:nil];
     } else if (stage==1 || stage==3 || stage==5) {
         snapshot(target,"entered");
         check(!!(target.styleMask & NSWindowStyleMaskFullScreen),"Cocoa native fullscreen style set");
@@ -103,6 +116,8 @@ static void step(void)
         check(!(target.styleMask & NSWindowStyleMaskFullScreen) && NSEqualRects(savedFrame,target.frame),"constrained window restores frame");
         NSWindow *disabled=find(@"YAAGL disabled"); [disabled toggleFullScreen:nil];
         check(!(disabled.styleMask & NSWindowStyleMaskFullScreen),"disabled window cannot enter fullscreen");
+    } else if (stage==13) {
+        check(!(target.styleMask & NSWindowStyleMaskFullScreen) && !inFullscreenSpace(target), "no automatic reentry after user exit");
         fprintf(logfile,"RESULT failures=%d\n",failures); fflush(logfile);
     }
     stage++;
@@ -118,7 +133,7 @@ __attribute__((constructor)) static void start(void)
     dispatch_async(dispatch_get_main_queue(),^{
         dispatch_source_t timer=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,dispatch_get_main_queue());
         dispatch_source_set_timer(timer,dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),NSEC_PER_SEC/2,NSEC_PER_SEC/10);
-        dispatch_source_set_event_handler(timer,^{@autoreleasepool { if(stage<=12) step(); }});
+        dispatch_source_set_event_handler(timer,^{@autoreleasepool { if(stage<=13) step(); }});
         dispatch_resume(timer);
     });
 }
