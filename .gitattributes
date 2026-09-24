@@ -1,0 +1,2 @@
+# Unified-diff context markers on otherwise empty lines are significant.
+native/wine-game-mode/*.patch whitespace=-blank-at-eol

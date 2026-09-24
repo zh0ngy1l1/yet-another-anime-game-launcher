@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "wineCommit": "db11d0fe6a169c457e23d007e20404643d067aa8",
+  "overlayCommit": "0d029255bce8f2f4ac47a1984b59ba82e09d9829",
+  "baseArchiveSha256": "4ebba536115e937c3826fa5808dbed50cd5e91c8454999b54cbe0cd2a43d8b4c",
+  "bundleIdentifier": "com.zh0ngy1l1.yaagl.hk4e-game",
+  "architecture": "x86_64",
+  "deploymentTarget": "14.0",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "sdk": "26.5",
+  "inputLoaderSha256": "86437f92f8b1580733902c50ce54ce63162111de84ce85667c70581f1b421bf8",
+  "ntdll": {
+    "plain": {
+      "path": "ntdll.so",
+      "sha256": "af8d94f3d9b51bb9e20e635e17e785f7cb512128f5adc5065c30aa1c599014d5",
+      "size": 616560
+    },
+    "r2": {
+      "path": "ntdll-r2.so",
+      "sha256": "6daf44d0f65d69e752bb3acfd2adeb7d313826829daade9eef6ec61490f96a7a",
+      "size": 616576
+    }
+  },
+  "sourceFiles": {
+    "native/wine-game-mode/loader.c": "f84c5ace53c95de48a2329db7a0238b4533d5536845172c41055007843cf3c04",
+    "native/wine-game-mode/main.h": "ed0a9f8950a71d30ff70b1e0bf1d6cc2b32ab267b77833ebe4843e8eaaebe1bf",
+    "native/wine-game-mode/routing.h": "9765eda57b8ba150d64122c3d35815ef389e4b087f69ca46d535fc8fc5aac9e3",
+    "native/wine-game-mode/Info.plist": "d0ea6195f181e7bf1472bd9b3684288aad8e80ec7092c46404b7baab8f9f4218",
+    "native/wine-game-mode/resolved-image.patch": "a26134ea959db8679278df0a0c3ac1355961f4c02341c3aaeef56384d75e444f",
+    "native/wine-r2/0001-ntdll-use-current-protection-for-rosetta-toggle.patch": "88dd45f99c6438db828688239286192b1405c90f22d03ef5c54b62bb22c52458",
+    "native/wine-fullscreen/prepare-sources.py": "2e1166adedfbab690549827fd014e9fc6b57cc29ee983c14f2a5ce36e33d1917",
+    "native/wine-fullscreen/configure-engine.sh": "d15061465d0ad58b2d000cc1eb659b3c1c62bc5d96e677777f0b840edd29c309",
+    "scripts/build-game-mode.py": "1cf43044c48db335b38e84459a2184382ab520522bfe7b8296246c41cddb5f7f"
+  },
+  "files": [
+    {
+      "path": "YAAGL HK4E.app/Contents/Info.plist",
+      "sha256": "d0ea6195f181e7bf1472bd9b3684288aad8e80ec7092c46404b7baab8f9f4218",
+      "size": 1069,
+      "mode": 420
+    },
+    {
+      "path": "YAAGL HK4E.app/Contents/MacOS/wine",
+      "sha256": "b5019ca171e295d44a947f06de904a37cb21d5c8c36aefee8808ce50f93606a3",
+      "size": 33216,
+      "mode": 493
+    },
+    {
+      "path": "YAAGL HK4E.app/Contents/_CodeSignature/CodeResources",
+      "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b",
+      "size": 2200,
+      "mode": 420
+    },
+    {
+      "path": "ntdll-r2.so",
+      "sha256": "6daf44d0f65d69e752bb3acfd2adeb7d313826829daade9eef6ec61490f96a7a",
+      "size": 616576,
+      "mode": 493
+    },
+    {
+      "path": "ntdll.so",
+      "sha256": "af8d94f3d9b51bb9e20e635e17e785f7cb512128f5adc5065c30aa1c599014d5",
+      "size": 616560,
+      "mode": 493
+    },
+    {
+      "path": "wine",
+      "sha256": "8f8e629353e72462eb69e9dc6ff7791f39e51023a00c88f555b6673290e45ffe",
+      "size": 32784,
+      "mode": 493
+    }
+  ]
+}
