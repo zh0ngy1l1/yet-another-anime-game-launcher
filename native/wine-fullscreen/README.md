@@ -52,7 +52,9 @@ Unity windowed mode separately from custom resolution.
 The patch preserves the early rejection of undecorated windows and excludes
 child, popup, layered, shaped, owned, tool, nonactivating and dialog windows.
 Cocoa controls use existing transition callbacks. Pending/closing windows reject
-another toggle. The saved fixed window frame and owned-window frames survive
+another toggle. Late exit/failure callbacks for a destroyed Win32 window finish
+closing its Cocoa shell instead of displaying its old frame. Eligibility changes
+and completed/failed/restored transitions have separate diagnostics. The saved fixed window frame and owned-window frames survive
 fullscreen geometry updates. There is no automatic entry or reentry.
 
 `YAAGL_WINDOW_STATE_EXE` must exactly match the current Windows image basename,
@@ -69,3 +71,11 @@ unchanged Wine Retina preference. No fullscreen-state restoration is implemented
 Space query are test-only, never packaged with or injected into the game. It
 exercises actual AppKit transitions and verifies Space type, Win32 styles,
 constraints and geometry. Fixture results are not game qualification.
+
+Run Space-transition fixtures serially in an **unlocked interactive console**.
+Do not compile over a running fixture executable or share a test prefix between
+cases. A locked session may deliver AppKit callbacks without a fullscreen Space;
+that is not successful entry. `YAAGL_TEST_GREEN_BUTTON=1` exercises the standard
+button, `YAAGL_TEST_DUPLICATE_TOGGLE=1` tests a second pending request, and
+`YAAGL_TEST_CLOSE_DURING_ENTRY=1 YAAGL_TEST_SECONDS=12` closes the Win32 window
+while entry is pending. Use `YAAGL_OBSERVER_DYLIB` for the compiled observer.

@@ -20,7 +20,7 @@ index 23ecd6d..3ea6fa6 100644
  
      int draggingPhase;
 diff --git a/dlls/winemac.drv/cocoa_window.m b/dlls/winemac.drv/cocoa_window.m
-index 7d6d704..3a02b97 100644
+index 7d6d704..1249d93 100644
 --- a/dlls/winemac.drv/cocoa_window.m
 +++ b/dlls/winemac.drv/cocoa_window.m
 @@ -1044,6 +1044,8 @@ + (WineWindow*) createWindowWithFeatures:(const struct macdrv_window_features*)w
@@ -51,7 +51,15 @@ index 7d6d704..3a02b97 100644
              !(self.parentWindow || self.latentParentWindow))
          {
              behavior |= NSWindowCollectionBehaviorFullScreenPrimary;
-@@ -1222,7 +1227,13 @@ - (void) setWindowFeatures:(const struct macdrv_window_features*)wf
+@@ -1171,6 +1176,7 @@ - (void) adjustFullScreenBehavior:(NSWindowCollectionBehavior)behavior
+         {
+             [self setCollectionBehavior:behavior];
+             [self adjustFeaturesForState];
++            [self fullscreenDiagnostic:(behavior & NSWindowCollectionBehaviorFullScreenPrimary) ? "eligible" : "ineligible"];
+         }
+     }
+ 
+@@ -1222,7 +1228,13 @@ - (void) setWindowFeatures:(const struct macdrv_window_features*)wf
                  [self setTitle:title];
          }
  
@@ -65,7 +73,7 @@ index 7d6d704..3a02b97 100644
          [self adjustFeaturesForState];
          [self setHasShadow:wf->shadow];
      }
-@@ -2011,6 +2022,7 @@ - (void) setFrameFromWine:(NSRect)contentRect
+@@ -2011,6 +2023,7 @@ - (void) setFrameFromWine:(NSRect)contentRect
                      NSEnableScreenUpdates();
  
                  if (!enteringFullScreen &&
@@ -73,7 +81,7 @@ index 7d6d704..3a02b97 100644
                      [[NSProcessInfo processInfo] systemUptime] - enteredFullScreenTime > 1.0)
                      nonFullscreenFrame = frame;
  
-@@ -2645,7 +2657,7 @@ - (void) miniaturize:(id)sender
+@@ -2645,7 +2658,7 @@ - (void) miniaturize:(id)sender
  
      - (void) toggleFullScreen:(id)sender
      {
@@ -82,7 +90,7 @@ index 7d6d704..3a02b97 100644
              [super toggleFullScreen:sender];
      }
  
-@@ -2993,19 +3005,71 @@ - (void) windowDidEndLiveResize:(NSNotification *)notification
+@@ -2993,19 +3006,87 @@ - (void) windowDidEndLiveResize:(NSNotification *)notification
          }
      }
  
@@ -122,7 +130,8 @@ index 7d6d704..3a02b97 100644
          enteringFullScreen = FALSE;
 +        [self fullscreenDiagnostic:"entered"];
          enteredFullScreenTime = [[NSProcessInfo processInfo] systemUptime];
-         if (pendingOrderOut)
+-        if (pendingOrderOut)
++        if (pendingOrderOut || self.closing)
              [self doOrderOut];
      }
  
@@ -144,9 +153,25 @@ index 7d6d704..3a02b97 100644
 +        nonFullscreenChildFrames = nil;
 +    }
 +
++    /* AppKit can complete a transition after Win32 destroyed the window. Do
++     * not restore/display its frame in a late callback: that can resurrect a
++     * visible Cocoa shell without a Windows window behind it. */
++    - (BOOL) finishClosingFullscreenWindow
++    {
++        if (!self.closing) return NO;
++        enteringFullScreen = exitingFullScreen = FALSE;
++        [NSObject cancelPreviousPerformRequestsWithTarget:self];
++        [nonFullscreenChildFrames release];
++        nonFullscreenChildFrames = nil;
++        [self doOrderOut];
++        [self fullscreenDiagnostic:"closed-transition"];
++        return YES;
++    }
++
      - (void) windowDidExitFullScreen:(NSNotification*)notification
      {
          exitingFullScreen = FALSE;
++        if ([self finishClosingFullscreenWindow]) return;
          [self setFrameAndWineFrame:nonFullscreenFrame];
          [self windowDidResize:nil];
 +        [self restoreNonFullscreenChildFrames];
@@ -154,10 +179,11 @@ index 7d6d704..3a02b97 100644
          if (pendingOrderOut)
              [self doOrderOut];
      }
-@@ -3014,6 +3078,11 @@ - (void) windowDidFailToEnterFullScreen:(NSWindow*)window
+@@ -3014,6 +3095,12 @@ - (void) windowDidFailToEnterFullScreen:(NSWindow*)window
      {
          enteringFullScreen = FALSE;
          enteredFullScreenTime = 0;
++        if ([self finishClosingFullscreenWindow]) return;
 +        [self setFrameAndWineFrame:nonFullscreenFrame];
 +        [self windowDidResize:nil];
 +        [self fullscreenDiagnostic:"failed-enter"];
@@ -166,7 +192,7 @@ index 7d6d704..3a02b97 100644
          if (pendingOrderOut)
              [self doOrderOut];
      }
-@@ -3021,6 +3090,7 @@ - (void) windowDidFailToEnterFullScreen:(NSWindow*)window
+@@ -3021,6 +3108,7 @@ - (void) windowDidFailToEnterFullScreen:(NSWindow*)window
      - (void) windowDidFailToExitFullScreen:(NSWindow*)window
      {
          exitingFullScreen = FALSE;
@@ -174,7 +200,7 @@ index 7d6d704..3a02b97 100644
          [self windowDidResize:nil];
          if (pendingOrderOut)
              [self doOrderOut];
-@@ -3084,6 +3154,10 @@ - (void)windowDidResize:(NSNotification *)notification skipSizeMove:(BOOL)skipSi
+@@ -3084,6 +3172,10 @@ - (void)windowDidResize:(NSNotification *)notification skipSizeMove:(BOOL)skipSi
  
          [[[self contentView] inputContext] invalidateCharacterCoordinates];
          [self updateFullscreen];
@@ -185,7 +211,7 @@ index 7d6d704..3a02b97 100644
      }
  
      - (void)windowDidResize:(NSNotification *)notification
-@@ -3140,8 +3214,20 @@ - (void) windowWillClose:(NSNotification*)notification
+@@ -3140,8 +3232,20 @@ - (void) windowWillClose:(NSNotification*)notification
  
      - (void) windowWillEnterFullScreen:(NSNotification*)notification
      {
@@ -206,7 +232,7 @@ index 7d6d704..3a02b97 100644
      }
  
      - (void) windowWillExitFullScreen:(NSNotification*)notification
-@@ -3395,6 +3481,7 @@ void macdrv_destroy_cocoa_window(macdrv_window w)
+@@ -3395,6 +3499,7 @@ void macdrv_destroy_cocoa_window(macdrv_window w)
      WineWindow* window = (WineWindow*)w;
  
      OnMainThread(^{

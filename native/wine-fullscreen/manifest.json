@@ -4,7 +4,7 @@
   "overlayCommit": "0d029255bce8f2f4ac47a1984b59ba82e09d9829",
   "baseArchiveSha256": "4ebba536115e937c3826fa5808dbed50cd5e91c8454999b54cbe0cd2a43d8b4c",
   "legacyPatchCommit": "d48bd81bfcd64b337c92d2b53d0dacc3321a9b41",
-  "patchSha256": "645aa723cdf576be04aacc1693bc84f86c33269c8b62a2dca389d35a60540e78",
+  "patchSha256": "2286bb220b8af3b2a5ee8d895a3bf72068b95db660cedb544b12bab104226936",
   "architectures": [
     "x86_64 Mach-O",
     "x86_64 PE",
@@ -17,8 +17,8 @@
     {
       "path": "lib/wine/x86_64-unix/winemac.so",
       "inputSha256": "2b48014ef2a2d0781dc351ef21144444b991dc9c8a485131db182d3b8a8b80a5",
-      "sha256": "0ab70f31e5cdbff7672693928cb7c1e97f9eddab7be4ced4fafa2cc7c4a27132",
-      "size": 501568,
+      "sha256": "9a2492653c84e3a57dafc2e6862f11f1cd5985d978d3140615ab039ab95fc060",
+      "size": 501632,
       "signed": true
     },
     {
