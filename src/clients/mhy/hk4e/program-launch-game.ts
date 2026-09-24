@@ -1,3 +1,5 @@
+import { createWindowSession } from "./window-session";
+import { validateHk4eExecutable } from "./window-state";
 import { createLaunchJournal } from "./launch-journal";
 import { disposeR2Wine, prepareR2Wine } from "./prepare-r2";
 import {
@@ -73,52 +75,6 @@ async function applyHDRRegistry({
   );
 }
 
-function resolutionDimensions(config: Config) {
-  const width = Number(config.resolutionWidth),
-    height = Number(config.resolutionHeight);
-  return isNaN(width) || isNaN(height) || width <= 0 || height <= 0
-    ? undefined
-    : { width, height };
-}
-
-async function applyResolutionRegistry(
-  wine: Wine,
-  server: Server,
-  config: Config
-) {
-  let key = "HKEY_CURRENT_USER\\Software\\\x6d\x69\x48\x6f\x59\x6f\\";
-  if (server.id === "hk4e_cn") {
-    key += "\u539f\u795e";
-  } else if (server.id === "hk4e_global") {
-    key += "\x47\x65\x6e\x73\x68\x69\x6e\x20\x49\x6d\x70\x61\x63\x74";
-  } else {
-    return;
-  }
-
-  const dimensions = resolutionDimensions(config);
-  if (!dimensions) return;
-  const { width, height } = dimensions;
-
-  const lines = [
-    `Windows Registry Editor Version 5.00`,
-    ``,
-    `[${key}]`,
-    `"Screenmanager Is Fullscreen mode_h3981298716"=dword:00000000`,
-    `"Screenmanager Resolution Width_h182942802"=dword:${width
-      .toString(16)
-      .padStart(8, "0")}`,
-    `"Screenmanager Resolution Height_h2627697771"=dword:${height
-      .toString(16)
-      .padStart(8, "0")}`,
-  ];
-
-  const path = resolve("./hk4e_resolution.reg");
-  await writeBinary(path, utf16le(lines.join("\r\n")));
-  await withRegistryTemporary(path, () =>
-    wine.exec("regedit", [wine.toWinePath(path)], {}, "/dev/null")
-  );
-}
-
 async function* launchGameDisabledProgram(
   {
     gameDir,
@@ -134,7 +90,8 @@ async function* launchGameDisabledProgram(
     server: Server;
   },
   owner: ReturnType<typeof launchOwnership.claim>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  windowSession: Awaited<ReturnType<typeof createWindowSession>>
 ): CommonUpdateProgram {
   const result = await exec([
     "/usr/bin/mktemp",
@@ -151,7 +108,7 @@ async function* launchGameDisabledProgram(
   let originalPatched = "NOTFOUND",
     patchedStateOwned = false,
     hdr = false,
-    resolution = false;
+    normalExit = false;
   let primary: unknown;
   const secondary: unknown[] = [];
   const check = () => {
@@ -181,17 +138,12 @@ async function* launchGameDisabledProgram(
     originalPatched = await getKeyOrDefault("patched", "NOTFOUND");
     await journal.capture(resolve("winedrv_config.bat"));
     await wine.setProps(config);
+    await windowSession.prepare();
     if (config.hk4eEnableHDR) {
       await journal.capture(resolve("hk4e_enable_hdr.reg"));
       await journal.capture(resolve("hk4e_revert_hdr.reg"));
       hdr = true;
       await applyHDRRegistry({ wine, server });
-    }
-    if (config.resolutionCustom) {
-      await journal.capture(resolve("hk4e_resolution.reg"));
-      await journal.capture(resolve("hk4e_revert_resolution.reg"));
-      resolution = true;
-      await applyResolutionRegistry(wine, server, config);
     }
     await waitWine();
     const cmd = `@echo off
@@ -231,10 +183,11 @@ cd /d "${wine.toWinePath(gameDir)}"
       config.steamPatch
         ? [wine.toWinePath(join(gameDir, gameExecutable))]
         : ["/c", `${wine.toWinePath(resolve("./config.bat"))} `],
-      gameEnvironment(wine, config),
+      { ...gameEnvironment(wine, config), ...windowSession.environment },
       logfile,
       true
     );
+    normalExit = true;
   } catch (error) {
     primary = error;
   } finally {
@@ -246,6 +199,7 @@ cd /d "${wine.toWinePath(gameDir)}"
         await launchFix?.finish();
         owner.phase("Waiting for Wine before restoring launch files");
         await waitWine();
+        await windowSession.finish(normalExit);
         if (!registryDone) {
           if (hdr)
             try {
@@ -254,15 +208,8 @@ cd /d "${wine.toWinePath(gameDir)}"
             } catch (error) {
               errors.push(error);
             }
-          if (resolution)
-            try {
-              await revertResolutionRegistry(wine, server);
-              resolution = false;
-            } catch (error) {
-              errors.push(error);
-            }
           await waitWine();
-          registryDone = !hdr && !resolution;
+          registryDone = !hdr;
         }
         if (!filesDone) {
           const restored = await journal.restore();
@@ -342,32 +289,6 @@ async function revertHDRRegistry({
   );
 }
 
-async function revertResolutionRegistry(wine: Wine, server: Server) {
-  let key = "HKEY_CURRENT_USER\\Software\\\x6d\x69\x48\x6f\x59\x6f\\";
-  if (server.id === "hk4e_cn") {
-    key += "\u539f\u795e";
-  } else if (server.id === "hk4e_global") {
-    key += "\x47\x65\x6e\x73\x68\x69\x6e\x20\x49\x6d\x70\x61\x63\x74";
-  } else {
-    return;
-  }
-
-  const lines = [
-    `Windows Registry Editor Version 5.00`,
-    ``,
-    `[${key}]`,
-    `"Screenmanager Is Fullscreen mode_h3981298716"=-`,
-    `"Screenmanager Resolution Width_h182942802"=-`,
-    `"Screenmanager Resolution Height_h2627697771"=-`,
-  ];
-
-  const path = resolve("./hk4e_revert_resolution.reg");
-  await writeBinary(path, utf16le(lines.join("\r\n")));
-  await withRegistryTemporary(path, () =>
-    wine.exec("regedit", [wine.toWinePath(path)], {}, "/dev/null")
-  );
-}
-
 export function gameEnvironment(
   wine: Wine,
   config: Config
@@ -413,19 +334,30 @@ async function* ownedLaunchGameProgram(
   input = { ...input, config: { ...input.config } };
   let delegated = false;
   let preparedRuntime: Wine | undefined;
+  let windowSession:
+    | Awaited<ReturnType<typeof createWindowSession>>
+    | undefined;
   try {
+    validateHk4eExecutable(input.server.id, input.gameExecutable);
     const admission = await admitFpsLaunch({
       ...input,
       server: input.server.id,
     });
     if (signal.aborted) throw new Error("Launch cancelled before preparation");
+    if (admission || input.config.hk4eNativeFullscreen) {
+      preparedRuntime = await prepareR2Wine(input.wine, {
+        fps: !!admission,
+        fullscreen: input.config.hk4eNativeFullscreen === true,
+      });
+      input = { ...input, wine: preparedRuntime };
+    }
+    windowSession = await createWindowSession(input);
+    const controls = windowSession;
     if (!admission) {
       yield* resources();
-      yield* launchGameDisabledProgram(input, owner, signal);
+      yield* launchGameDisabledProgram(input, owner, signal, controls);
       return;
     }
-    preparedRuntime = await prepareR2Wine(input.wine);
-    input = { ...input, wine: preparedRuntime };
     const admitted = { ...admission, wine: input.wine.executionContext };
     if (signal.aborted)
       throw new Error("Launch cancelled after R2 preparation");
@@ -438,9 +370,12 @@ async function* ownedLaunchGameProgram(
         server,
         resources,
         finishRuntime: () => disposeR2Wine(wine),
-        environment: gameEnvironment(wine, config),
-        registryResolution:
-          config.resolutionCustom && !!resolutionDimensions(config),
+        environment: {
+          ...gameEnvironment(wine, config),
+          ...controls.environment,
+        },
+        registryResolution: false,
+        finishWindowControls: normal => controls.finish(normal),
         launchFix: config.blockNet
           ? createLaunchFix(server.id, owner.problem)
           : undefined,
@@ -449,13 +384,10 @@ async function* ownedLaunchGameProgram(
           progress(["setStateText", "PATCHING"]);
           await capture(resolve("winedrv_config.bat"));
           await wine.setProps(config);
+          await controls.prepare();
           if (config.hk4eEnableHDR) {
             await capture(resolve("hk4e_enable_hdr.reg"));
             await applyHDRRegistry({ wine, server });
-          }
-          if (config.resolutionCustom) {
-            await capture(resolve("hk4e_resolution.reg"));
-            await applyResolutionRegistry(wine, server, config);
           }
           await wine.waitUntilServerOff();
           if (config.reshade) {
@@ -521,6 +453,7 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
       : new LaunchFailure(String(error), error);
   } finally {
     if (!delegated) {
+      await windowSession?.finish(false);
       if (preparedRuntime) await disposeR2Wine(preparedRuntime);
       owner.finish();
     }

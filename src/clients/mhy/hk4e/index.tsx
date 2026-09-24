@@ -1,3 +1,4 @@
+import { recoverWindowSession } from "./window-session";
 import { createHk4eSettings } from "./settings";
 import { batch, createSignal } from "solid-js";
 import { CommonUpdateProgram } from "@common-update-ui";
@@ -277,6 +278,7 @@ export async function createHK4EChannelClient({
       });
     },
     async *init(config: Config) {
+      await recoverWindowSession(wine);
       try {
         await getKey("patched");
       } catch {

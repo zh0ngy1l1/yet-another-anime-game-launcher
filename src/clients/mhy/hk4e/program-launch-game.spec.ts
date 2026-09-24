@@ -15,6 +15,13 @@ import { boundary } from "./fps-integration-fixture";
 import { createLaunchFix } from "./launch-fix";
 import { prepareR2Wine, disposeR2Wine } from "./prepare-r2";
 
+vi.mock("./window-session", () => ({
+  createWindowSession: vi.fn(async () => ({
+    environment: {},
+    prepare: vi.fn(async () => undefined),
+    finish: vi.fn(async () => undefined),
+  })),
+}));
 vi.mock("./prepare-r2", () => ({
   prepareR2Wine: vi.fn(async (wine: Wine) => wine),
   disposeR2Wine: vi.fn(async () => undefined),

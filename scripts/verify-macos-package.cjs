@@ -24,7 +24,15 @@ for(const member of members) assert.equal(hash(asar.extractFile(archive,member.p
 const config = JSON.parse(asar.extractFile(archive,"neutralino.config.json"));
 assert.equal(config.modes.window.title,"Yaagl OS"); assert.equal(config.modes.window.hidden,true);
 const js = members.filter(x=>/\/assets\/.*\.js$/.test(x.path)).map(x=>asar.extractFile(archive,x.path).toString()).join("\n");
-for(const value of [build.bridge.sha256,build.native.version,"custom.bootstrap","decode", "FPS runtime prepared:","eef64f611ae9033261a70f46ec0be38d58823717f14e80331946c6d0cd3c85f7",build.channel === "hk4eos" ? "hk4e_global" : "hk4e_cn"]) assert(js.includes(value),value);
+for(const value of [build.bridge.sha256,build.native.version,"custom.bootstrap","decode", "Private runtime prepared:","eef64f611ae9033261a70f46ec0be38d58823717f14e80331946c6d0cd3c85f7",build.channel === "hk4eos" ? "hk4e_global" : "hk4e_cn"]) assert(js.includes(value),value);
+const fullscreen = JSON.parse(fs.readFileSync(path.join(resources,"sources/wine-fullscreen/manifest.json")));
+for (const asset of fullscreen.outputs) {
+  assert(js.includes(asset.sha256), "Frontend must pin packaged fullscreen driver");
+  assert.equal(hash(fs.readFileSync(path.join(resources,"sidecar/wine-fullscreen",asset.path))),asset.sha256);
+}
+const windowHelper = JSON.parse(fs.readFileSync(path.join(resources,"sources/window-state/manifest.json")));
+assert(js.includes(windowHelper.sha256));
+assert.equal(hash(fs.readFileSync(path.join(resources,"sidecar/window-state",windowHelper.filename))),windowHelper.sha256);
 assert(!/Starting [Ll]auncher/.test(js));
 assert(!/\/Users\/[^/]+\//.test(js));
 const machos = [];

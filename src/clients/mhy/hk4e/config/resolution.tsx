@@ -14,6 +14,7 @@ import { Config, NOOP } from "@config/config-def";
 
 declare module "@config/config-def" {
   interface Config {
+    hk4eResolutionRevision?: string;
     resolutionCustom: boolean;
     resolutionWidth: string;
     resolutionHeight: string;
@@ -31,6 +32,13 @@ export default async function ({
   config: Partial<Config>;
   locale: Locale;
 }) {
+  try {
+    config.hk4eResolutionRevision = await getKey(
+      "config_hk4e_resolution_revision"
+    );
+  } catch {
+    /* Existing preference. */
+  }
   const [Custom] = await createCustom({ locale, config });
   const [Width] = await createWidth({ locale, config });
   const [Height] = await createHeight({ locale, config });
@@ -79,6 +87,11 @@ async function createCustom({
     if (config.resolutionCustom == value()) return NOOP;
     config.resolutionCustom = value();
     await setKey(CONFIG_KEY_CUSTOM, config.resolutionCustom ? "true" : "false");
+    config.hk4eResolutionRevision = String(Date.now());
+    await setKey(
+      "config_hk4e_resolution_revision",
+      config.hk4eResolutionRevision
+    );
     return NOOP;
   }
 
@@ -126,6 +139,11 @@ async function createWidth({
     if (config.resolutionWidth == value()) return NOOP;
     config.resolutionWidth = value();
     await setKey(CONFIG_KEY_WIDTH, config.resolutionWidth);
+    config.hk4eResolutionRevision = String(Date.now());
+    await setKey(
+      "config_hk4e_resolution_revision",
+      config.hk4eResolutionRevision
+    );
     return NOOP;
   }
 
@@ -170,6 +188,11 @@ async function createHeight({
     if (config.resolutionHeight == value()) return NOOP;
     config.resolutionHeight = value();
     await setKey(CONFIG_KEY_HEIGHT, config.resolutionHeight);
+    config.hk4eResolutionRevision = String(Date.now());
+    await setKey(
+      "config_hk4e_resolution_revision",
+      config.hk4eResolutionRevision
+    );
     return NOOP;
   }
 

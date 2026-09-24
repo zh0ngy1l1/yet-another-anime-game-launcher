@@ -23,7 +23,6 @@ with tempfile.TemporaryDirectory(prefix='yaagl-window-registry-') as t:
         key=app+'\\Mac Driver';gamekey='HKCU\\Software\\miHoYo\\'+game
         # This prefix belongs exclusively to this test.
         for case in ('absent','binary','dword','string'):
-            wine('reg','delete',app,'/f',ok=wine('reg','query',app,ok=False).returncode==0) if False else None
             subprocess.run([str(a.runtime/'bin/wine'),'reg','delete',app,'/f'],env=env,capture_output=True)
             subprocess.run([str(a.runtime/'bin/wine'),'reg','delete',gamekey,'/f'],env=env,capture_output=True)
             if case != 'absent':

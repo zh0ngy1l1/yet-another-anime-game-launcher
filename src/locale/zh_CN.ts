@@ -112,6 +112,9 @@ export const zh_CN = {
   SETTING_BLOCK_NET: "Launch Fix(block hosts)",
   SETTING_TIMEOUT_FIX: "Timeout Fix",
   SETTING_LICENSES: "Licenses", // TODO: Translate
+  SETTING_NATIVE_FULLSCREEN: "原生 macOS 全屏",
+  SETTING_NATIVE_FULLSCREEN_DESC:
+    "启用游戏窗口的绿色全屏按钮。启动时保持窗口模式，并记住窗口大小。",
   SETTING_ENABLE_HDR: "启用 HDR",
 
   SETTING_PROXY_ENABLED: "Enable HTTP Proxy", // TODO: Translate

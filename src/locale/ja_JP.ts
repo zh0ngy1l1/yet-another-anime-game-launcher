@@ -120,6 +120,9 @@ export const ja_JP: typeof zh_CN = {
   SETTING_BLOCK_NET: "起動修正（ホストのブロック）",
   SETTING_TIMEOUT_FIX: "タイムアウト修正",
   SETTING_LICENSES: "ライセンス",
+  SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
+  SETTING_NATIVE_FULLSCREEN_DESC:
+    "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
   SETTING_ENABLE_HDR: "HDR有効",
 
   SETTING_PROXY_ENABLED: "HTTPプロキシ有効",

@@ -89,6 +89,9 @@ starts ON for a new profile; Launch Fix starts OFF. Enabling FPS unlocking cause
 the launcher to prepare and select R2 automatically at Launch. No Library file
 edits, manual ntdll copy, developer tools or source checkout are needed to run it.
 Existing settings are preserved. See [FPS operation and recovery](fps-runtime.md).
+Native fullscreen is a separate default-off HK4E setting. Its pinned driver trio
+and registry helper are tracked and verified during this build; see
+[native fullscreen operation, size memory and recovery](native-fullscreen.md).
 
 Rollback is normal quit, wait for cleanup, then reopen the retained previous app
 with its own profile. Keep game data, saves and prefixes. Do not copy a running

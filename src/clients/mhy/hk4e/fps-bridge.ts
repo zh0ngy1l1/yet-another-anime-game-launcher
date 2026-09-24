@@ -702,6 +702,10 @@ export async function prepareFpsBridge(
         await io.pause();
       }
     },
+    normalGameExit: () =>
+      last?.primaryExited === 1 &&
+      last.exitCodeKnown === 1 &&
+      last.exitCode === 0,
     release: releaseBridge,
     settleRegistry,
     dispose: async () => {

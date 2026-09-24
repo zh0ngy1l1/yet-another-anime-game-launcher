@@ -25,6 +25,7 @@ export function launchFpsGame(
     launchFix?: ReturnType<typeof createLaunchFix>;
     resources: (enabledFps?: boolean) => CommonUpdateProgram;
     finishRuntime?: () => Promise<void>;
+    finishWindowControls?: (normal: boolean) => Promise<void>;
     setup: (
       capture: (path: string) => Promise<void>,
       progress: (command: CommonProgressUICommand) => void
@@ -188,6 +189,7 @@ export function launchFpsGame(
             await preparationRecovery();
             preparationRecovery = undefined;
           }
+          await input.finishWindowControls?.(false);
           await input.finishRuntime?.();
           return [];
         }
@@ -213,6 +215,7 @@ export function launchFpsGame(
             return [error];
           }
         }
+        await input.finishWindowControls?.(bridge.normalGameExit?.() === true);
         if (registrySaved && !registryRestored) {
           phase("Restoring original HDR, resolution and Wine registry values");
           wineWaited = false;

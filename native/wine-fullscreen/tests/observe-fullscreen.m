@@ -54,7 +54,10 @@ static void step(void)
         check(!find(@"YAAGL child"),"child has no Cocoa top-level window");
         target=[find(enabled ? @"YAAGL fixed" : @"YAAGL resizable") retain]; savedFrame=target.frame;
         [target makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
-        snapshot(target,"before-enter"); [target toggleFullScreen:nil];
+        snapshot(target,"before-enter");
+        check(!(target.styleMask & NSWindowStyleMaskFullScreen),"ordinary startup never enters fullscreen");
+        if (getenv("YAAGL_TEST_GREEN_BUTTON")) [[target standardWindowButton:NSWindowZoomButton] performClick:nil];
+        else [target toggleFullScreen:nil];
     } else if (stage==1 || stage==3 || stage==5) {
         snapshot(target,"entered");
         check(!!(target.styleMask & NSWindowStyleMaskFullScreen),"Cocoa native fullscreen style set");

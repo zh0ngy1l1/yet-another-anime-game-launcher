@@ -118,6 +118,9 @@ export const es_ES: typeof zh_CN = {
   SETTING_TIMEOUT_FIX: "Timeout Fix",
   SETTING_LICENSES: "Licencias",
 
+  SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
+  SETTING_NATIVE_FULLSCREEN_DESC:
+    "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
   SETTING_ENABLE_HDR: "Activar HDR",
 
   SETTING_PROXY_ENABLED: "Activar Proxy HTTP",

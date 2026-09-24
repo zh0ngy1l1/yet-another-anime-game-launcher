@@ -119,6 +119,9 @@ export const ko_KR: typeof zh_CN = {
   SETTING_BLOCK_NET: "게임실행 문제해결(hosts 수정)",
   SETTING_TIMEOUT_FIX: "타임아웃 문제 해결",
   SETTING_LICENSES: en.SETTING_LICENSES, // TODO: Translate
+  SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
+  SETTING_NATIVE_FULLSCREEN_DESC:
+    "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
   SETTING_ENABLE_HDR: "HDR 활성화",
 
   SETTING_PROXY_ENABLED: en.SETTING_PROXY_ENABLED, // TODO: Translate

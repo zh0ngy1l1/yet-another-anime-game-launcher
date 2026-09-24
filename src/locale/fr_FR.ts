@@ -123,6 +123,9 @@ export const fr_FR: typeof zh_CN = {
   SETTING_BLOCK_NET: "Launch Fix(block hosts)",
   SETTING_TIMEOUT_FIX: "Timeout Fix",
   SETTING_LICENSES: en.SETTING_LICENSES, // TODO: Translate
+  SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
+  SETTING_NATIVE_FULLSCREEN_DESC:
+    "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
   SETTING_ENABLE_HDR: "Activer le HDR",
 
   SETTING_PROXY_ENABLED: en.SETTING_PROXY_ENABLED, // TODO: Translate
