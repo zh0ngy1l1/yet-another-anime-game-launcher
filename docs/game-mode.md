@@ -40,3 +40,5 @@ do not delete them to bypass ownership guards.
 
 A/B testing is a separate stage. No performance benefit is asserted by this
 integration or by the previous fullscreen measurements, which had Game Mode off.
+See the [implementation and brief functional validation report](game-mode-validation-20260923.md)
+for the qualified configuration, native identities, checks and remaining limits.
