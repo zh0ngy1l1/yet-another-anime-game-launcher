@@ -69,5 +69,7 @@ The driver emits `yaagl-fullscreen:` transition/geometry diagnostics. “Entered
 is an AppKit callback with native style, not Wine's screen-covering flag. Cocoa
 screen/content points and backing scale are not proof of game render-target or
 Metal drawable dimensions. Test-only observers may query Spaces; they are never
-injected into the product game path. See the validation report for finite observed
-coverage and limitations; fixture success alone is not Genshin qualification.
+injected into the product game path. See the
+[2026-09-23 validation report](native-fullscreen-validation-20260923.md) for
+observed coverage and limitations; fixture success alone is not Genshin
+qualification.
