@@ -92,6 +92,12 @@ Existing settings are preserved. See [FPS operation and recovery](fps-runtime.md
 Native fullscreen is a separate default-off HK4E setting. Its pinned driver trio
 and registry helper are tracked and verified during this build; see
 [native fullscreen operation, size memory and recovery](native-fullscreen.md).
+Optional [Game Mode support](game-mode.md) ships a pinned signed app host, inner
+loader and two explicitly identified Wine 11.0 ntdll variants. Sources, LGPL
+license and [developer rebuild recipe](../native/wine-game-mode/README.md) are
+included. The build and package verifier check their hashes, signatures,
+architecture, loader ABI, dependencies and matching embedded/external plists.
+Game Mode off retains the original/R2 and fullscreen identities.
 
 Rollback is normal quit, wait for cleanup, then reopen the retained previous app
 with its own profile. Keep game data, saves and prefixes. Do not copy a running

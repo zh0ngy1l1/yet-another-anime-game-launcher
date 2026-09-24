@@ -1,4 +1,5 @@
 import { createWindowSession } from "./window-session";
+import { admitGameMode } from "./game-mode";
 import { validateHk4eExecutable } from "./window-state";
 import { createLaunchJournal } from "./launch-journal";
 import { disposeR2Wine, prepareR2Wine } from "./prepare-r2";
@@ -343,11 +344,15 @@ async function* ownedLaunchGameProgram(
       ...input,
       server: input.server.id,
     });
+    const gameMode = await admitGameMode(input.config, input.wine);
     if (signal.aborted) throw new Error("Launch cancelled before preparation");
     if (admission || input.config.hk4eNativeFullscreen) {
       preparedRuntime = await prepareR2Wine(input.wine, {
         fps: !!admission,
         fullscreen: input.config.hk4eNativeFullscreen === true,
+        ...(gameMode
+          ? { gameMode: join(input.gameDir, input.gameExecutable) }
+          : {}),
       });
       input = { ...input, wine: preparedRuntime };
     }

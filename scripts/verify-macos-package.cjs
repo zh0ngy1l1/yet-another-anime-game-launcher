@@ -31,6 +31,12 @@ for (const asset of fullscreen.outputs) {
   assert.equal(hash(fs.readFileSync(path.join(resources,"sidecar/wine-fullscreen",asset.path))),asset.sha256);
 }
 const windowHelper = JSON.parse(fs.readFileSync(path.join(resources,"sources/window-state/manifest.json")));
+const gameMode = JSON.parse(fs.readFileSync(path.join(resources,"sources/wine-game-mode/manifest.json")));
+for (const asset of gameMode.files) {
+  assert(js.includes(asset.sha256), "Frontend must pin packaged Game Mode asset");
+  assert.equal(hash(fs.readFileSync(path.join(resources,"sidecar/wine-game-mode",asset.path))),asset.sha256);
+}
+cp.execFileSync(process.env.YAAGL_BUILD_PYTHON || "python3.13", [path.join(__dirname,"verify-game-mode-assets.py"), "--resources", resources], {stdio:"inherit"});
 assert(js.includes(windowHelper.sha256));
 assert.equal(hash(fs.readFileSync(path.join(resources,"sidecar/window-state",windowHelper.filename))),windowHelper.sha256);
 assert(!/Starting [Ll]auncher/.test(js));

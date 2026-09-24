@@ -123,6 +123,9 @@ export const fr_FR: typeof zh_CN = {
   SETTING_BLOCK_NET: "Launch Fix(block hosts)",
   SETTING_TIMEOUT_FIX: "Timeout Fix",
   SETTING_LICENSES: en.SETTING_LICENSES, // TODO: Translate
+  SETTING_GAME_MODE: "Mode Jeu",
+  SETTING_GAME_MODE_DESC:
+    "Au prochain lancement. Nécessite le plein écran natif macOS, une puce Apple, macOS 14+ et Wine 11.0 DXMT (signé et corrigé). Démarre en fenêtre ; le bouton vert ouvre le plein écran. macOS décide de l’activation et mémorise votre choix. Inactif sans prise en charge du plein écran natif.",
   SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
   SETTING_NATIVE_FULLSCREEN_DESC:
     "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",

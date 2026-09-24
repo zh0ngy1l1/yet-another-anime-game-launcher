@@ -121,6 +121,9 @@ export const de_DE: typeof zh_CN = {
   SETTING_BLOCK_NET: "Launch Fix(block hosts)",
   SETTING_TIMEOUT_FIX: "Timeout Fix",
   SETTING_LICENSES: en.SETTING_LICENSES, // TODO: Translate
+  SETTING_GAME_MODE: "Spielmodus",
+  SETTING_GAME_MODE_DESC:
+    "Gilt ab dem nächsten Start. Benötigt nativen macOS-Vollbildmodus, Apple Silicon, macOS 14+ und Wine 11.0 DXMT (signiert, mit Patches). Startet im Fenster; die grüne Taste öffnet den Vollbildmodus. macOS entscheidet über die Aktivierung und merkt sich deine Wahl. Ohne nativen Vollbildmodus bleibt die Option inaktiv.",
   SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
   SETTING_NATIVE_FULLSCREEN_DESC:
     "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",

@@ -48,6 +48,7 @@ async function main() {
   fs.writeFileSync("src/clients/secret.ts",Buffer.from(fs.readFileSync("src/clients/secret.b64","utf8"),"base64"));
   run(process.execPath,["scripts/build-fps-bridge.cjs","--build-manifest"]);
   run(python,["scripts/verify-fullscreen-assets.py"]);
+  run(python,["scripts/verify-game-mode-assets.py"]);
   run(python,["scripts/build-hk4e-native.py"]);
   run(python,["scripts/build-sophon.py"]);
   run("pnpm",["exec","tsc"]);
@@ -84,7 +85,8 @@ async function main() {
   copyTracked("native/wine-r2",path.join(resources,"runtime-r2"));
   copyTracked("native/wine-fullscreen",path.join(resources,"sources/wine-fullscreen"));
   copyTracked("native/window-state",path.join(resources,"sources/window-state"));
-  for (const script of ["build-fullscreen-driver.py", "build-window-state.py", "verify-fullscreen-assets.py"])
+  copyTracked("native/wine-game-mode",path.join(resources,"sources/wine-game-mode"));
+  for (const script of ["build-fullscreen-driver.py", "build-window-state.py", "verify-fullscreen-assets.py", "build-game-mode.py", "verify-game-mode-assets.py"])
     fs.copyFileSync(path.join("scripts",script),path.join(resources,"sources",script));
   copyTracked("native/xdelta",path.join(resources,"sources/xdelta"));
   fs.copyFileSync("scripts/build-xdelta.py",path.join(resources,"sources/xdelta/build-xdelta.py"));

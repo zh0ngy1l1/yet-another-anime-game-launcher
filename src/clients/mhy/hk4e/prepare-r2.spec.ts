@@ -149,3 +149,47 @@ it("rejects an unsupported fullscreen distribution before Wine or copy preparati
   expect(wine.waitUntilServerOff).not.toHaveBeenCalled();
   expect(exec).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  "binds Game Mode to the selected game/prefix in one copy with FPS=%s",
+  async fps => {
+    const wine = input();
+    vi.mocked(exec).mockResolvedValue({
+      stdOut: "/profile/fps-runtime/r2-0123456789/wine\n",
+    } as never);
+    await prepareR2Wine(wine, {
+      fps,
+      fullscreen: true,
+      gameMode: "/games/原神/GenshinImpact.exe",
+    });
+    const args = vi.mocked(exec).mock.calls[0][0];
+    expect(JSON.parse(args[args.length - 1] as string)).toMatchObject({
+      applyR2: fps,
+      gameModeExecutable: "/games/原神/GenshinImpact.exe",
+      gameModePrefix: "/selected/prefix",
+      gameMode: { schema: 1 },
+      fullscreen: { schema: 1 },
+    });
+    expect(createWine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environment: {
+          ...context.environment,
+          YAAGL_GAME_MODE_REQUEST:
+            "/profile/fps-runtime/r2-0123456789/wine/lib/wine/x86_64-unix/yaagl-game-mode.request",
+          YAAGL_GAME_MODE_IMAGE: "",
+        },
+      })
+    );
+    expect(exec).toHaveBeenCalledOnce();
+  }
+);
+it("cannot prepare a Game Mode host without fullscreen support", async () => {
+  await expect(
+    prepareR2Wine(input(), {
+      fps: true,
+      fullscreen: false,
+      gameMode: "/game/GenshinImpact.exe",
+    })
+  ).rejects.toThrow("requires native fullscreen");
+  expect(exec).not.toHaveBeenCalled();
+});

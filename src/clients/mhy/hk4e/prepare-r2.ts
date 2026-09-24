@@ -1,6 +1,7 @@
 import { basename, dirname } from "path-browserify";
 import recipe from "./prepare-r2.pl?raw";
 import fullscreenManifest from "../../../../native/wine-fullscreen/manifest.json?raw";
+import gameModeManifest from "../../../../native/wine-game-mode/manifest.json?raw";
 import manifest from "../../../../native/wine-r2/delta.json?raw";
 import { exec, log, resolve } from "../../../utils";
 import { createWine, Wine } from "../../../wine/wine";
@@ -9,8 +10,13 @@ import { createWine, Wine } from "../../../wine/wine";
  * libraries used by another prefix, and never reuses interrupted preparation. */
 export async function prepareR2Wine(
   wine: Wine,
-  features = { fps: true, fullscreen: false }
+  features: { fps: boolean; fullscreen: boolean; gameMode?: string } = {
+    fps: true,
+    fullscreen: false,
+  }
 ) {
+  if (features.gameMode && !features.fullscreen)
+    throw new Error("Game Mode routing requires native fullscreen support");
   if (
     features.fullscreen &&
     (wine.distributionId !== "11.0-dxmt-signed-with-patches" ||
@@ -33,6 +39,14 @@ export async function prepareR2Wine(
     JSON.stringify({
       ...JSON.parse(manifest),
       applyR2: features.fps,
+      ...(features.gameMode
+        ? {
+            gameMode: JSON.parse(gameModeManifest),
+            gameModeAssets: resolve("./sidecar/wine-game-mode"),
+            gameModeExecutable: features.gameMode,
+            gameModePrefix: context.prefix,
+          }
+        : {}),
       ...(features.fullscreen
         ? {
             fullscreen: JSON.parse(fullscreenManifest),
@@ -59,13 +73,26 @@ export async function prepareR2Wine(
       attributes: { ...wine.attributes },
     },
     runtimeRoot: root,
-    environment: context.environment,
+    environment: {
+      ...context.environment,
+      ...(features.gameMode
+        ? {
+            YAAGL_GAME_MODE_REQUEST: `${root}/lib/wine/x86_64-unix/yaagl-game-mode.request`,
+            YAAGL_GAME_MODE_IMAGE: "",
+          }
+        : {}),
+    },
   });
   await log(
     `Private runtime prepared: ${root}; FPS=${
       features.fps
-    }; native fullscreen=${features.fullscreen}; ntdll SHA-256=${
-      features.fps
+    }; native fullscreen=${
+      features.fullscreen
+    }; Game Mode host=${!!features.gameMode} (OS activation unobserved); ntdll SHA-256=${
+      features.gameMode
+        ? JSON.parse(gameModeManifest).ntdll[features.fps ? "r2" : "plain"]
+            .sha256
+        : features.fps
         ? JSON.parse(manifest).outputSha256
         : JSON.parse(manifest).inputSha256
     }; source=${context.loader}; prefix=${context.prefix}`

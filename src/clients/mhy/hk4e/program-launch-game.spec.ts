@@ -89,6 +89,10 @@ beforeEach(() => {
         exitCode: 0,
         stdOut: command.startsWith("/usr/bin/mktemp")
           ? "/tmp/yaagl-launch.0123456789\n"
+          : command.includes("hw.optional.arm64")
+          ? "1\n"
+          : command.includes("sw_vers")
+          ? "26.6.2\n"
           : command.includes("steamgameid")
           ? "absent"
           : "",
@@ -568,18 +572,21 @@ it.each(
   [false, true].flatMap(fps =>
     [false, true].flatMap(fullscreen =>
       [false, true].flatMap(steam =>
-        ["hk4e_global", "hk4e_cn"].map(server => ({
-          fps,
-          fullscreen,
-          steam,
-          server,
-        }))
+        ["hk4e_global", "hk4e_cn"].flatMap(server =>
+          [false, true].map(gameMode => ({
+            fps,
+            fullscreen,
+            steam,
+            server,
+            gameMode,
+          }))
+        )
       )
     )
   )
 )(
-  "composes FPS=$fps fullscreen=$fullscreen Steam=$steam server=$server without a second runtime or unwanted worker",
-  async ({ fps, fullscreen, steam, server }) => {
+  "composes FPS=$fps fullscreen=$fullscreen GameMode=$gameMode Steam=$steam server=$server without a second runtime or unwanted worker",
+  async ({ fps, fullscreen, steam, server, gameMode }) => {
     vi.useFakeTimers();
     const clock = vi
       .spyOn(operationClock, "now")
@@ -590,6 +597,7 @@ it.each(
       const request = input(),
         native = boundary(steam);
       request.config.hk4eNativeFullscreen = fullscreen;
+      request.config.hk4eGameMode = gameMode;
       request.config.steamPatch = steam;
       request.config.retina = false;
       request.server = { id: server } as Server;
@@ -622,6 +630,9 @@ it.each(
         expect(prepareR2Wine).toHaveBeenCalledWith(request.wine, {
           fps,
           fullscreen,
+          ...(gameMode && fullscreen
+            ? { gameMode: `/game/${request.gameExecutable}` }
+            : {}),
         });
       expect(request.wine.setProps).toHaveBeenCalledWith(
         expect.objectContaining({ retina: false })

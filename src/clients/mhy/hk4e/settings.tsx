@@ -7,6 +7,7 @@ import createBlockNet from "./config/block-net";
 import createResolution from "./config/resolution";
 import createTimeoutFix from "./config/timeout-fix";
 import { createNativeFullscreenConfig } from "./config/native-fullscreen";
+import { createGameModeConfig } from "./config/game-mode";
 import { createEnableHDRConfig } from "./config/enable-hdr";
 import { createFpsUnlockConfig } from "./config/fps-unlock";
 
@@ -20,6 +21,7 @@ export async function createHk4eSettings(
   const [SP] = await createSteamPatch({ locale, config });
   const [BN] = await createBlockNet({ locale, config });
   const [NF] = await createNativeFullscreenConfig({ locale, config });
+  const [GM] = await createGameModeConfig({ locale, config });
   const [HDR] = await createEnableHDRConfig({ locale, config });
   const [RES] = await createResolution({ locale, config });
   const [TF] = await createTimeoutFix({ locale, config });
@@ -31,6 +33,7 @@ export async function createHk4eSettings(
       gameVersion(),
       <FPS />,
       <NF />,
+      <GM />,
       <HDR />,
       <W3 />,
       <PO />,

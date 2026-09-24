@@ -6,6 +6,7 @@ use File::Find;
 use File::Copy qw(copy);
 use File::Temp qw(tempdir);
 use File::Path qw(make_path remove_tree);
+use File::Basename qw(dirname basename);
 use JSON::PP;
 use Fcntl qw(O_RDONLY O_NOFOLLOW);
 
@@ -60,7 +61,33 @@ for my $p (keys %{$m->{pins}}) {
     die "Unsupported Wine executable: $p" unless hash_file("$source/$p") eq $m->{pins}{$p};
 }
 my $apply_r2 = !exists($m->{applyR2}) || $m->{applyR2};
-my $output = $apply_r2 ? $m->{outputSha256} : $input;
+my $game_mode = $m->{gameMode};
+my $output = $game_mode ? $game_mode->{ntdll}{$apply_r2 ? 'r2' : 'plain'}{sha256} :
+    $apply_r2 ? $m->{outputSha256} : $input;
+my ($game_target, $game_prefix, @game_stat);
+if ($game_mode) {
+    die "Game Mode requires fullscreen/compatible manifest" unless $m->{fullscreen} && $game_mode->{schema} == 1 &&
+        $game_mode->{bundleIdentifier} eq 'com.zh0ngy1l1.yaagl.hk4e-game';
+    die "Unsupported Game Mode loader input" unless
+        hash_file("$source/lib/wine/x86_64-unix/wine") eq $game_mode->{inputLoaderSha256};
+    for my $a (@{$game_mode->{files}}) {
+        die "Game Mode asset path" if $a->{path} =~ m{(?:^/|(?:^|/)\.\.(?:/|$))};
+        die "Game Mode bundled asset mismatch: $a->{path}" unless
+            hash_file("$m->{gameModeAssets}/$a->{path}") eq $a->{sha256};
+    }
+    system('/usr/bin/codesign', '--verify', '--strict', "$m->{gameModeAssets}/YAAGL HK4E.app") == 0
+        or die "Game Mode host signature invalid";
+    for my $path ($m->{gameModeExecutable}, $m->{gameModePrefix}) {
+        die "Game Mode requires absolute paths without control characters" unless defined($path) &&
+            $path =~ m{^/} && $path !~ /[\x00-\x1f\x7f]/;
+    }
+    $game_target = abs_path($m->{gameModeExecutable});
+    $game_prefix = abs_path($m->{gameModePrefix});
+    die "Invalid Game Mode target/prefix" unless defined($game_target) && defined($game_prefix) &&
+        -f $game_target && -d $game_prefix &&
+        basename($game_target) =~ /^(?:GenshinImpact|YuanShen)\.exe$/;
+    @game_stat = stat($game_target);
+}
 if ($m->{fullscreen}) {
     die "fullscreen architecture/manifest" unless $m->{fullscreen}{schema} == 1 &&
         @{$m->{fullscreen}{outputs}} == 3;
@@ -89,7 +116,7 @@ my $ok = eval {
         my @a = stat($source . $p); my @b = stat($copy . $p);
         die "shared inode: $p" if $a[0] == $b[0] && $a[1] == $b[1];
     }
-    if ($apply_r2 && $input eq $m->{inputSha256}) {
+    if ($apply_r2 && !$game_mode && $input eq $m->{inputSha256}) {
         open(my $f, '<', $copy . $rel) or die "read ntdll: $!";
         binmode($f); local $/; my $bytes = <$f>; close($f) or die $!;
         die "ntdll size" unless length($bytes) == $m->{size};
@@ -101,6 +128,29 @@ my $ok = eval {
         die "delta output" unless sha256_hex($bytes) eq $m->{outputSha256};
         open(my $out, '>', $copy . $rel) or die "write ntdll: $!";
         binmode($out); print {$out} $bytes or die $!; close($out) or die $!;
+    }
+    if ($game_mode) {
+        my $asset = $game_mode->{ntdll}{$apply_r2 ? 'r2' : 'plain'};
+        copy("$m->{gameModeAssets}/$asset->{path}", $copy . $rel) or die "copy Game Mode ntdll: $!";
+        $copied->{$rel}[2] = $asset->{size};
+        for my $a (@{$game_mode->{files}}) {
+            next if $a->{path} eq 'ntdll.so' || $a->{path} eq 'ntdll-r2.so';
+            my $p = "/lib/wine/x86_64-unix/$a->{path}";
+            for my $dir (make_path(dirname($copy . $p))) {
+                $copied->{substr($dir, length($copy))} = ['directory', (stat($dir))[2] & 07777];
+            }
+            copy("$m->{gameModeAssets}/$a->{path}", $copy . $p) or die "copy Game Mode asset: $!";
+            chmod($a->{mode}, $copy . $p) or die "Game Mode asset permissions: $!";
+            $copied->{$p} = ['file', $a->{mode}, $a->{size}, $a->{sha256}];
+        }
+        my $request = '/lib/wine/x86_64-unix/yaagl-game-mode.request';
+        open(my $f, '>', $copy . $request) or die "create Game Mode request: $!";
+        chmod(0600, $copy . $request) or die $!;
+        print {$f} "YAAGL-HK4E-GAME-MODE-1\n$game_prefix\n$game_target\n$game_stat[0] $game_stat[1]\n$output\n" or die $!;
+        close($f) or die $!;
+        $copied->{$request} = ['file', 0600, (stat($copy . $request))[7], hash_file($copy . $request)];
+        system('/usr/bin/codesign', '--verify', '--strict', "$copy/lib/wine/x86_64-unix/YAAGL HK4E.app") == 0
+            or die "Prepared Game Mode host signature invalid";
     }
     die "R2 artifact mismatch" unless hash_file($copy . $rel) eq $output;
     system('/usr/bin/codesign', '--verify', '--strict', $copy . $rel) == 0
@@ -123,6 +173,7 @@ my $ok = eval {
     my $receipt = {schema => 1, source => $source, runtime => $copy,
         inputSha256 => $input, outputSha256 => $output,
         fullscreen => $m->{fullscreen},
+        gameMode => $game_mode,
         manifestSha256 => sha256_hex($manifest_json), files => $copied};
     open(my $out, '>', "$directory/receipt.json.tmp") or die $!;
     print {$out} $json->encode($receipt) or die $!; close($out) or die $!;

@@ -112,6 +112,9 @@ export const zh_CN = {
   SETTING_BLOCK_NET: "Launch Fix(block hosts)",
   SETTING_TIMEOUT_FIX: "Timeout Fix",
   SETTING_LICENSES: "Licenses", // TODO: Translate
+  SETTING_GAME_MODE: "游戏模式",
+  SETTING_GAME_MODE_DESC:
+    "下次启动生效。需要启用原生 macOS 全屏、Apple 芯片、macOS 14 或更高版本及 Wine 11.0 DXMT（已签名并含补丁）。游戏以窗口模式启动，点击绿色按钮进入全屏。本设置仅请求支持；macOS 决定是否启用游戏模式并记住你的选择。关闭原生全屏支持时不生效。",
   SETTING_NATIVE_FULLSCREEN: "原生 macOS 全屏",
   SETTING_NATIVE_FULLSCREEN_DESC:
     "启用游戏窗口的绿色全屏按钮。启动时保持窗口模式，并记住窗口大小。",

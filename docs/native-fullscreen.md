@@ -13,8 +13,9 @@ explanation. There is no automatic distro/backend switch. FPS and fullscreen
 compose in one unique private APFS copy. Fullscreen-only uses the qualified source
 ntdll; FPS combinations use the existing exact R2 ntdll correction. Installed Wine,
 loader/server identity, DXMT config, FPS target, Retina and keyboard mappings stay
-under their existing settings. No Game Mode host/identity or display-mode change
-is part of this feature.
+under their existing settings. [Game Mode](game-mode.md) is a separate default-off
+option that requires native fullscreen support; fullscreen alone adds no Game
+Mode identity or display-mode change.
 
 ## Window memory and precedence
 

@@ -117,6 +117,9 @@ export const th_TH: typeof zh_CN = {
   SETTING_BLOCK_NET: "Launch Fix(block hosts)",
   SETTING_TIMEOUT_FIX: "Timeout Fix",
   SETTING_LICENSES: en.SETTING_LICENSES, // TODO: Translate
+  SETTING_GAME_MODE: "โหมดเกม",
+  SETTING_GAME_MODE_DESC:
+    "มีผลเมื่อเปิดเกมครั้งถัดไป ต้องใช้โหมดเต็มหน้าจอของ macOS, Apple Silicon, macOS 14 ขึ้นไป และ Wine 11.0 DXMT (ลงนามพร้อมแพตช์) เกมเริ่มแบบหน้าต่าง ใช้ปุ่มสีเขียวเพื่อเข้าเต็มหน้าจอ macOS เป็นผู้เปิดใช้งานและจดจำตัวเลือกของคุณ ไม่มีผลเมื่อปิดการรองรับเต็มหน้าจอของ macOS",
   SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
   SETTING_NATIVE_FULLSCREEN_DESC:
     "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",

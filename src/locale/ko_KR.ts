@@ -119,6 +119,9 @@ export const ko_KR: typeof zh_CN = {
   SETTING_BLOCK_NET: "게임실행 문제해결(hosts 수정)",
   SETTING_TIMEOUT_FIX: "타임아웃 문제 해결",
   SETTING_LICENSES: en.SETTING_LICENSES, // TODO: Translate
+  SETTING_GAME_MODE: "게임 모드",
+  SETTING_GAME_MODE_DESC:
+    "다음 실행에 적용됩니다. 기본 macOS 전체 화면, Apple Silicon, macOS 14 이상, Wine 11.0 DXMT(서명 및 패치 적용)가 필요합니다. 창 모드로 시작하며 초록색 버튼으로 전체 화면에 진입합니다. macOS가 활성화 여부를 결정하고 선택을 기억합니다. 기본 전체 화면 지원이 꺼져 있으면 적용되지 않습니다.",
   SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
   SETTING_NATIVE_FULLSCREEN_DESC:
     "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
