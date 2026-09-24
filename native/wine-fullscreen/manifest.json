@@ -1,0 +1,39 @@
+{
+  "schema": 1,
+  "wineCommit": "db11d0fe6a169c457e23d007e20404643d067aa8",
+  "overlayCommit": "0d029255bce8f2f4ac47a1984b59ba82e09d9829",
+  "baseArchiveSha256": "4ebba536115e937c3826fa5808dbed50cd5e91c8454999b54cbe0cd2a43d8b4c",
+  "legacyPatchCommit": "d48bd81bfcd64b337c92d2b53d0dacc3321a9b41",
+  "patchSha256": "645aa723cdf576be04aacc1693bc84f86c33269c8b62a2dca389d35a60540e78",
+  "architectures": [
+    "x86_64 Mach-O",
+    "x86_64 PE",
+    "i386 PE"
+  ],
+  "deploymentTarget": "14.0",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "sdk": "26.5",
+  "outputs": [
+    {
+      "path": "lib/wine/x86_64-unix/winemac.so",
+      "inputSha256": "2b48014ef2a2d0781dc351ef21144444b991dc9c8a485131db182d3b8a8b80a5",
+      "sha256": "0ab70f31e5cdbff7672693928cb7c1e97f9eddab7be4ced4fafa2cc7c4a27132",
+      "size": 501568,
+      "signed": true
+    },
+    {
+      "path": "lib/wine/x86_64-windows/winemac.drv",
+      "inputSha256": "b01fbc294c5f799403d72dacfe6c475c269cd4dd5a19a04c6729f1c454a972fc",
+      "sha256": "028a8d90b99645223b8acb39d762c3c90133f66c6f5b45801459bc69abf991f7",
+      "size": 75028,
+      "signed": false
+    },
+    {
+      "path": "lib/wine/i386-windows/winemac.drv",
+      "inputSha256": "31416dbf3bc77ef0e29397188c30deea7581be7e0a06ace08d7d63ca973f0adc",
+      "sha256": "dbd93e08079edc9f064b9526a98fc00c9da178a477577d75a2ca89e1945fd8c3",
+      "size": 62977,
+      "signed": false
+    }
+  ]
+}

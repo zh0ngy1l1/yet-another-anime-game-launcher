@@ -3,6 +3,7 @@ use warnings;
 use Cwd qw(abs_path);
 use Digest::SHA qw(sha256_hex);
 use File::Find;
+use File::Copy qw(copy);
 use File::Temp qw(tempdir);
 use File::Path qw(make_path remove_tree);
 use JSON::PP;
@@ -58,6 +59,22 @@ die "Unsupported Wine ntdll bytes; FPS launch stopped before game changes" unles
 for my $p (keys %{$m->{pins}}) {
     die "Unsupported Wine executable: $p" unless hash_file("$source/$p") eq $m->{pins}{$p};
 }
+my $apply_r2 = !exists($m->{applyR2}) || $m->{applyR2};
+my $output = $apply_r2 ? $m->{outputSha256} : $input;
+if ($m->{fullscreen}) {
+    die "fullscreen architecture/manifest" unless $m->{fullscreen}{schema} == 1 &&
+        @{$m->{fullscreen}{outputs}} == 3;
+    my @expected = ('lib/wine/x86_64-unix/winemac.so',
+        'lib/wine/x86_64-windows/winemac.drv', 'lib/wine/i386-windows/winemac.drv');
+    for my $i (0..2) {
+        my $a = $m->{fullscreen}{outputs}[$i];
+        die "fullscreen module path" unless $a->{path} eq $expected[$i];
+        die "Unsupported fullscreen driver input: $a->{path}" unless
+            hash_file("$source/$a->{path}") eq $a->{inputSha256};
+        die "Fullscreen bundled asset mismatch: $a->{path}" unless
+            hash_file("$m->{fullscreenAssets}/$a->{path}") eq $a->{sha256};
+    }
+}
 my $before = inventory($source);
 my $directory = tempdir('r2-XXXXXXXXXX', DIR => $parent, CLEANUP => 0);
 my $copy = "$directory/wine";
@@ -72,7 +89,7 @@ my $ok = eval {
         my @a = stat($source . $p); my @b = stat($copy . $p);
         die "shared inode: $p" if $a[0] == $b[0] && $a[1] == $b[1];
     }
-    if ($input eq $m->{inputSha256}) {
+    if ($apply_r2 && $input eq $m->{inputSha256}) {
         open(my $f, '<', $copy . $rel) or die "read ntdll: $!";
         binmode($f); local $/; my $bytes = <$f>; close($f) or die $!;
         die "ntdll size" unless length($bytes) == $m->{size};
@@ -85,13 +102,27 @@ my $ok = eval {
         open(my $out, '>', $copy . $rel) or die "write ntdll: $!";
         binmode($out); print {$out} $bytes or die $!; close($out) or die $!;
     }
-    die "R2 artifact mismatch" unless hash_file($copy . $rel) eq $m->{outputSha256};
+    die "R2 artifact mismatch" unless hash_file($copy . $rel) eq $output;
     system('/usr/bin/codesign', '--verify', '--strict', $copy . $rel) == 0
         or die "R2 signature invalid";
-    $copied->{$rel}[3] = $m->{outputSha256};
+    $copied->{$rel}[3] = $output;
+    if ($m->{fullscreen}) {
+        for my $a (@{$m->{fullscreen}{outputs}}) {
+            my $p = $a->{path};
+            copy("$m->{fullscreenAssets}/$p", "$copy/$p") or die "copy driver: $!";
+            die "Fullscreen output mismatch: $p" unless hash_file("$copy/$p") eq $a->{sha256};
+            if ($a->{signed}) {
+                system('/usr/bin/codesign', '--verify', '--strict', "$copy/$p") == 0
+                    or die "Fullscreen signature invalid";
+            }
+            $copied->{"/$p"}[2] = $a->{size};
+            $copied->{"/$p"}[3] = $a->{sha256};
+        }
+    }
     die "prepared runtime mismatch" unless $json->encode($copied) eq $json->encode(inventory($copy));
     my $receipt = {schema => 1, source => $source, runtime => $copy,
-        inputSha256 => $input, outputSha256 => $m->{outputSha256},
+        inputSha256 => $input, outputSha256 => $output,
+        fullscreen => $m->{fullscreen},
         manifestSha256 => sha256_hex($manifest_json), files => $copied};
     open(my $out, '>', "$directory/receipt.json.tmp") or die $!;
     print {$out} $json->encode($receipt) or die $!; close($out) or die $!;

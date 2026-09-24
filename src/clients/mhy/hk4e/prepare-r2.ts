@@ -1,12 +1,24 @@
 import { basename, dirname } from "path-browserify";
 import recipe from "./prepare-r2.pl?raw";
+import fullscreenManifest from "../../../../native/wine-fullscreen/manifest.json?raw";
 import manifest from "../../../../native/wine-r2/delta.json?raw";
 import { exec, log, resolve } from "../../../utils";
 import { createWine, Wine } from "../../../wine/wine";
 
 /** The installed runtime is read only. A unique per-launch copy avoids changing
  * libraries used by another prefix, and never reuses interrupted preparation. */
-export async function prepareR2Wine(wine: Wine) {
+export async function prepareR2Wine(
+  wine: Wine,
+  features = { fps: true, fullscreen: false }
+) {
+  if (
+    features.fullscreen &&
+    (wine.distributionId !== "11.0-dxmt-signed-with-patches" ||
+      wine.attributes.renderBackend !== "dxmt")
+  )
+    throw new Error(
+      "Native macOS fullscreen requires the qualified Wine 11.0 DXMT signed-with-patches runtime. Your preference is saved; select that runtime or disable native fullscreen."
+    );
   const context = wine.executionContext;
   await wine.waitUntilServerOff();
   const parent = resolve("./fps-runtime");
@@ -18,7 +30,16 @@ export async function prepareR2Wine(wine: Wine) {
     btoa(recipe),
     dirname(dirname(context.loader)),
     parent,
-    JSON.stringify(JSON.parse(manifest)),
+    JSON.stringify({
+      ...JSON.parse(manifest),
+      applyR2: features.fps,
+      ...(features.fullscreen
+        ? {
+            fullscreen: JSON.parse(fullscreenManifest),
+            fullscreenAssets: resolve("./sidecar/wine-fullscreen"),
+          }
+        : {}),
+    }),
   ]);
   const root = stdOut.replace(/\n$/, "");
   if (
@@ -41,7 +62,9 @@ export async function prepareR2Wine(wine: Wine) {
     environment: context.environment,
   });
   await log(
-    `FPS runtime prepared: ${root}; R2 ntdll SHA-256=${
+    `Private runtime prepared: ${root}; FPS=${
+      features.fps
+    }; native fullscreen=${features.fullscreen}; R2 ntdll SHA-256=${
       JSON.parse(manifest).outputSha256
     }; source=${context.loader}; prefix=${context.prefix}`
   );

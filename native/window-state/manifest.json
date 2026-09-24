@@ -1,0 +1,8 @@
+{
+  "filename": "window-registry.exe",
+  "size": 22528,
+  "sha256": "a3543fe33b46f6a24eb3976d33a6802251fbe996f106927996961e96bb5aefc3",
+  "sourceSha256": "61b494845bc79be3bcd64e65664b3f2c1328ddc66dfcff5b9229517a413e2eb1",
+  "architecture": "x86_64 PE",
+  "compiler": "x86_64-w64-mingw32-gcc (GCC) 16.2.0"
+}
