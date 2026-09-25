@@ -68,6 +68,13 @@ the exact reviewed R2 source correction (`ntdll-r2.so`). The rebuild verifies th
 R2 helper against the existing provenance hash. Neither is represented as the old
 `eef64f…` binary. Fullscreen native/PE driver bytes are unchanged.
 
+The build explicitly removes `virtual.o` and its linked ntdll after applying R2.
+macOS's make 3.81 can otherwise reuse the plain object when both source changes
+occur within one second. Package verification rejects identical plain/R2 text
+sections; the real-Wine fixture checks that an external write to currently
+WRITECOPY image data does not temporarily remove read access. Source hashes and
+distinct signatures alone cannot establish that the correction was compiled.
+
 Game Mode off adds no assets/routing and retains the accepted original or R2
 runtime identities. Normal `./build-macos.sh` verifies and packages tracked
 assets, sources, license and recipes; no Wine compilation or paid signing is

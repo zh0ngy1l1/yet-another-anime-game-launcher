@@ -40,6 +40,7 @@ def macho(path):
     count = struct.unpack_from('<I', data, 16)[0]
     offset = 32
     segments = {}
+    text = None
     plist = None
     for _ in range(count):
         cmd, size = struct.unpack_from('<II', data, offset)
@@ -50,8 +51,15 @@ def macho(path):
                 section = struct.unpack_from('<16s16sQQIIIIIIII', data, offset + 72 + i * 80)
                 if section[0].rstrip(b'\0') == b'__info_plist':
                     plist = plistlib.loads(data[section[4]:section[4] + section[3]])
+                if section[0].rstrip(b'\0') == b'__text':
+                    text = data[section[4]:section[4] + section[3]]
         offset += size
-    return segments, plist
+    return segments, plist, text
+
+# Signatures/filenames can differ while a stale object leaves the code identical.
+# The real-Wine fixture additionally checks R2's protection behavior at runtime.
+assert macho(assets / 'ntdll.so')[2] != macho(assets / 'ntdll-r2.so')[2], \
+    'R2 has identical machine code to plain ntdll; rebuild the patched virtual.o'
 
 app = assets / 'YAAGL HK4E.app'
 for relative in ['wine', 'ntdll.so', 'ntdll-r2.so', 'YAAGL HK4E.app/Contents/MacOS/wine']:
@@ -67,7 +75,7 @@ for relative in ['wine', 'ntdll.so', 'ntdll-r2.so', 'YAAGL HK4E.app/Contents/Mac
             dep = block.split('name ', 1)[1].split(' (offset', 1)[0]
             assert dep.startswith(('/usr/lib/', '/System/Library/', '@rpath/', '@loader_path/')), dep
     if relative.endswith('wine'):
-        segments, info = macho(p)
+        segments, info, _ = macho(p)
         assert segments['WINE_RESERVE'] == (0x1000, 0x1fffff000)
         assert segments['WINE_TOP_DOWN'] == (0x7ff000000000, 0x001ff0000)
         assert '_wine_main_preload_info' in subprocess.check_output(['nm', '-gU', str(p)], text=True)

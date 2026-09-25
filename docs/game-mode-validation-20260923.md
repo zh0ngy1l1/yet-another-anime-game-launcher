@@ -4,6 +4,11 @@ Validated September 23, 2026 (America/Toronto), on Apple M4 / macOS 26.6.2
 (`25G83`), using Global, Steam Patch, DXMT and
 `11.0-dxmt-signed-with-patches`. This qualifies that configuration only.
 
+**September 25 correction:** the initial successful session did not establish
+repeatable startup reliability. The September 24 user crash exposed a stale
+compiled R2 object in the Game Mode assets. See the follow-up below; the original
+Game Mode + R2 hash in this report is historical and must not be reused.
+
 ## Branch and candidate
 
 The fetched accepted `main` was
@@ -159,6 +164,51 @@ real gameplay, other hardware/OS versions and long sessions were not run. Those
 launch constructions and native compositions have fixture coverage, not claimed
 live qualification. No relaunch was added to repeat the already accepted window
 memory investigation.
+
+## September 25: pre-login regression investigation
+
+The exact reported run was `game_1790307883255.log`, Global/Steam, target 150.
+Its launcher/profile resource hash and host hash match candidate implementation
+`110c07a`; this was not a stale frontend. The game host selected ntdll `6daf44…`.
+The adjacent disabled run `game_1790308032459.log` selected accepted R2 `eef64f…`
+and exited normally. The failing run's fullscreen diagnostics remained
+`native=0`; there is no retained evidence of OS Game Mode activation before its
+fault. The checkbox establishes desired routing, not activation.
+
+The retained Windows crash dump identifies game PID 284 / thread 288, instruction
+`GenshinImpact.exe+0x117e393` (`movsd xmm0, [rip+0x434eb0d]`), reading
+`0x1454ccea8` at 23:45:34. That is the same 4 KB page as FPS target
+`0x1454cc60c`; the bridge's successful write ended at 23:45:34.408. The worker
+had started at 23:45:17, successfully wrote/read 150, then ended normally when
+the game terminated with `0xc0000005` at 23:45:36. "Generation 1" is its first
+worker instance, not an exception or failure classification. No matching macOS
+game crash report was found; the Windows dump supplied the fault context.
+
+The actual shipped plain and purported R2 ntdll had **identical `__text`**.
+Disassembly of `NtWriteVirtualMemory` still selected `AllocationProtect` and
+could temporarily request `PAGE_NOACCESS` for currently readable image data.
+Although the source helper hash was correct, its patch landed at
+23:01:24.278, after `virtual.o` at 23:01:24.208 on September 23. Make 3.81's
+whole-second dependency comparison reused that plain object. Distinct filenames
+and signatures obscured the identical code. This reintroduced the known unsafe
+protection behavior only in the newly rebuilt Game Mode/FPS composition.
+
+The correction invalidates just that object and linked output after applying
+the accepted R2 source patch. Both ntdll identities and the host's permitted
+hashes were rebuilt together; loader routing, FPS target/worker, ownership,
+fullscreen driver and installed Wine are unchanged. Package verification now
+rejects identical plain/R2 text, and a bounded real-Wine image-data write fixture
+checks the protection behavior. It detects the archived broken binary's two
+remote protection changes, including `PAGE_NOACCESS`; the corrected R2 must
+perform none and still write/read back 150. No racing game crash is needed for
+this regression test.
+
+Raw Wine/bridge/launcher logs, the Windows dump, nearby reports and archived
+broken assets are retained privately under
+`.tmp/game-mode-regression-20260924/evidence`, with hashes. New signed identities
+are recorded in the [current native manifest](../native/wine-game-mode/manifest.json).
+The two fresh candidate game checks and settings inspection are recorded below
+after completion.
 
 ## Use and stopping point
 

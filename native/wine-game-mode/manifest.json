@@ -12,12 +12,12 @@
   "ntdll": {
     "plain": {
       "path": "ntdll.so",
-      "sha256": "af8d94f3d9b51bb9e20e635e17e785f7cb512128f5adc5065c30aa1c599014d5",
+      "sha256": "2a413dc54a28f35008aea06cbf5b5bd06885a1924978dd7212b35c3f2d806d77",
       "size": 616560
     },
     "r2": {
       "path": "ntdll-r2.so",
-      "sha256": "6daf44d0f65d69e752bb3acfd2adeb7d313826829daade9eef6ec61490f96a7a",
+      "sha256": "9ffbd02c9f108718b9748a76988fe083ad785307fd4912432c10ea06814dbd17",
       "size": 616576
     }
   },
@@ -30,7 +30,7 @@
     "native/wine-r2/0001-ntdll-use-current-protection-for-rosetta-toggle.patch": "88dd45f99c6438db828688239286192b1405c90f22d03ef5c54b62bb22c52458",
     "native/wine-fullscreen/prepare-sources.py": "2e1166adedfbab690549827fd014e9fc6b57cc29ee983c14f2a5ce36e33d1917",
     "native/wine-fullscreen/configure-engine.sh": "d15061465d0ad58b2d000cc1eb659b3c1c62bc5d96e677777f0b840edd29c309",
-    "scripts/build-game-mode.py": "1cf43044c48db335b38e84459a2184382ab520522bfe7b8296246c41cddb5f7f"
+    "scripts/build-game-mode.py": "69570f5b9c24225e0ac29ccf11325720b9d4f3374da0e601d048c7971c711f70"
   },
   "files": [
     {
@@ -41,7 +41,7 @@
     },
     {
       "path": "YAAGL HK4E.app/Contents/MacOS/wine",
-      "sha256": "b5019ca171e295d44a947f06de904a37cb21d5c8c36aefee8808ce50f93606a3",
+      "sha256": "ee51c7affab7da180013d8f88e2475823bffba605d8eff13262b7830b2930c94",
       "size": 33216,
       "mode": 493
     },
@@ -53,13 +53,13 @@
     },
     {
       "path": "ntdll-r2.so",
-      "sha256": "6daf44d0f65d69e752bb3acfd2adeb7d313826829daade9eef6ec61490f96a7a",
+      "sha256": "9ffbd02c9f108718b9748a76988fe083ad785307fd4912432c10ea06814dbd17",
       "size": 616576,
       "mode": 493
     },
     {
       "path": "ntdll.so",
-      "sha256": "af8d94f3d9b51bb9e20e635e17e785f7cb512128f5adc5065c30aa1c599014d5",
+      "sha256": "2a413dc54a28f35008aea06cbf5b5bd06885a1924978dd7212b35c3f2d806d77",
       "size": 616560,
       "mode": 493
     },

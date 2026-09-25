@@ -13,10 +13,14 @@ import tempfile
 root = Path(__file__).resolve().parent.parent
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('--runtime', type=Path, required=True)
+p.add_argument('--game-mode-artifacts', type=Path,
+               help='Archived manifest.json and wine-game-mode/ assets to check a prior build')
 a = p.parse_args()
 base = json.loads((root / 'native/wine-r2/delta.json').read_text())
 fullscreen = json.loads((root / 'native/wine-fullscreen/manifest.json').read_text())
-gm = json.loads((root / 'native/wine-game-mode/manifest.json').read_text())
+gm = json.loads(((a.game_mode_artifacts / 'manifest.json') if a.game_mode_artifacts else
+                 (root / 'native/wine-game-mode/manifest.json')).read_text())
+assets = a.game_mode_artifacts / 'wine-game-mode' if a.game_mode_artifacts else root / 'sidecar/wine-game-mode'
 def run(*args, **kw):
     return subprocess.run(list(map(str, args)), check=True, **kw)
 def win(path):
@@ -33,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='yaagl-game-mode-wine-') as temporary:
         game = work / name; shutil.copy2(fixture, game)
         manifest = {**base, 'applyR2': fps, 'fullscreen': fullscreen,
                     'fullscreenAssets': str(root / 'sidecar/wine-fullscreen'),
-                    'gameMode': gm, 'gameModeAssets': str(root / 'sidecar/wine-game-mode'),
+                    'gameMode': gm, 'gameModeAssets': str(assets.resolve()),
                     'gameModeExecutable': str(game), 'gameModePrefix': str(prefix)}
         prep = run('perl', root / 'src/clients/mhy/hk4e/prepare-r2.pl', a.runtime.resolve(), parents,
                    json.dumps(manifest), capture_output=True, text=True)
@@ -52,6 +56,18 @@ with tempfile.TemporaryDirectory(prefix='yaagl-game-mode-wine-') as temporary:
                 assert 'child exit=37' in result.stdout and 'arguments/environment/handle retained' in result.stdout, result
                 assert (work / 'inherited.txt').read_bytes() == b'inherited'
                 print('PASS resolved image beats command-line name; context/exit preserved', fps, actual.name)
+            memory = run(runtime / 'bin/wine', win(fixture), '--r2-parent', win(game),
+                         env={**environment, 'WINEDEBUG': '-all,trace+virtual,+pid'},
+                         cwd=work, capture_output=True, text=True)
+            assert memory.stderr.count('yaagl-game-mode: host pid=') == 1, memory.stderr
+            write = memory.stderr.split('YAAGL_R2_WRITE_BEGIN ', 1)[1].split('YAAGL_R2_WRITE_END ok=1', 1)[0]
+            assert write.startswith('allocation=0x80 current=0x8 '), write
+            # R2 must bypass the protection toggle for currently non-executable
+            # data. The plain fixture proves the trace detects the old two calls.
+            protects = [line for line in write.splitlines() if ':NtProtectVirtualMemory ' in line and
+                        not line.split(':NtProtectVirtualMemory ', 1)[1].startswith('0xffffffffffffffff ')]
+            assert len(protects) == (0 if fps else 2), protects
+            print('PASS cross-process image-data write/readback; protection calls', fps, len(protects))
         finally:
             # No timeout/forced kill. Completion precedes private runtime disposal.
             run(runtime / 'bin/wineserver', '-w', env=environment)

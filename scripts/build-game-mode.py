@@ -42,6 +42,11 @@ for name in ('plain', 'r2'):
         helper = text[start:text.index('\n}', start) + 3]
         provenance = json.loads((root / 'native/wine-r2/provenance.json').read_text())
         assert hashlib.sha256(helper.encode()).hexdigest() == provenance['correction']['helper_utf8_sha256']
+        # Apple's make 3.81 compares whole seconds. The patch can land in the
+        # same second as the plain object, so timestamps cannot select R2.
+        # Invalidate exactly the changed object and its linked output.
+        for relative in ('dlls/ntdll/unix/virtual.o', 'dlls/ntdll/ntdll.so'):
+            (work / 'build' / relative).unlink()
     run('make', '-C', work / 'build', '-j8', 'dlls/ntdll/ntdll.so', env=env)
     dest = stage / ('ntdll.so' if name == 'plain' else 'ntdll-r2.so')
     shutil.copy2(work / 'build/dlls/ntdll/ntdll.so', dest)
