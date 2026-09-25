@@ -207,8 +207,51 @@ Raw Wine/bridge/launcher logs, the Windows dump, nearby reports and archived
 broken assets are retained privately under
 `.tmp/game-mode-regression-20260924/evidence`, with hashes. New signed identities
 are recorded in the [current native manifest](../native/wine-game-mode/manifest.json).
-The two fresh candidate game checks and settings inspection are recorded below
-after completion.
+The rebuilt combined R2 identity is
+`9ffbd02c9f108718b9748a76988fe083ad785307fd4912432c10ea06814dbd17`.
+
+Fix commit `676e30a` and settings commit `4358518` are local on
+`feat/hk4e-game-mode`. The clean candidate at
+`build/game-mode-fixed-global/Yaagl OS.app` was built from
+`4358518bebccbbac8da893a3789d4b818660d8d9`, separately from the previous candidate.
+Typecheck, formatting, all 2,134 unit tests, 16 preparation cases, loader/context
+checks and package verification passed; lint has the same nine existing
+warnings. The China frontend built. The new native regression failed on archived
+broken R2 and passed on rebuilt R2 (zero remote protection changes, successful
+write/readback). A separate tiny make fixture reproduced the same-second stale
+object and verified explicit invalidation. Export sets and accepted fullscreen
+assets are unchanged.
+
+One new guarded startup used fresh APFS copies of the current production profile
+and game, Global/Steam, FPS 150, fullscreen and Game Mode enabled. Native game PID
+35352 / Windows PID 280 owned the expected `com.zh0ngy1l1.yaagl.hk4e-game`
+window. Actual mapped files in the game, FPS bridge and both Steam processes
+matched corrected R2 `9ffbd0…` in the same private runtime. The game's mapped
+native/PE fullscreen driver, PE ntdll and DXMT/winemetal assets matched their
+expected inputs. This is loaded-module evidence, not only a staging receipt.
+The worker applied and read back 150, including the initialization writes that
+preceded the reported failure; no new crash dump or access-violation exit arose.
+
+**Interactive repeat verification is incomplete.** The Mac locked during this
+startup, before game UI could be inspected. The loginwindow covered the desktop;
+world entry, new fullscreen entry/exit and current OS Game Mode activation were
+not observable. No in-world interaction or performance sampling occurred. An
+unlock was requested; the game was closed through a normal application Quit
+request rather than leaving it running unattended. It exited 0 at 00:25:04;
+owned Wine completion, registry/file restoration and private disposal completed
+at 00:25:18. The launcher also quit 0. No owned processes, runtime, window journal,
+pending controls or patch marker remained. Window memory saved the observed
+windowed client size `1506x851` with Retina off; this does not establish a new
+fullscreen restoration check. The protected original game, production app and
+production profile inventories, and installed Wine hashes, remained unchanged.
+
+The two short interactive enabled launches remain pending an unlocked desktop.
+No additional disabled live control was needed: the user's adjacent disabled run
+and unchanged accepted off-route assets provide that control evidence. Current
+live artifacts are retained privately under
+`/private/var/folders/nn/34wh2q094x5f5qrtj4n8c76r0000gn/T/yaagl-game-mode-r2-live-1wddx77e`
+(`session-1`, `session-1-provenance.json`, `session-1-cleanup.json`); ignored
+screenshots and build/check logs are under `.tmp/game-mode-regression-20260924`.
 
 Settings cleanup shortens the English fullscreen description from 14 words to
 "Green button: fullscreen desktop." (4), and Game Mode to
@@ -220,6 +263,10 @@ separate locale/help key. Its component and menu slot were removed. The internal
 `config_workaround3` reader retains saved values and historical channel/CPU
 defaults for `workaround3`-tagged patch compatibility; no migration, preference
 rewrite or hardcoded replacement was introduced.
+The rebuilt candidate's English settings were visually inspected before the Mac
+locked: both short descriptions rendered correctly, target 150 and both enabled
+checkboxes were retained, and HDR was followed directly by the AC patch setting
+with no Workaround 3 control or empty slot.
 
 ## Use and stopping point
 
