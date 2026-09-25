@@ -8,6 +8,8 @@ Validated September 23, 2026 (America/Toronto), on Apple M4 / macOS 26.6.2
 repeatable startup reliability. The September 24 user crash exposed a stale
 compiled R2 object in the Game Mode assets. See the follow-up below; the original
 Game Mode + R2 hash in this report is historical and must not be reused.
+The corrected candidate subsequently passed two brief interactive Global/Steam
+launches, including observed OS Game Mode activation and fullscreen restoration.
 
 ## Branch and candidate
 
@@ -58,13 +60,13 @@ claims.
 
 New signed assets are tracked under `sidecar/wine-game-mode`. SHA-256 identities:
 
-| Asset | SHA-256 |
-| --- | --- |
-| Game Mode ntdll, FPS off | `af8d94f3d9b51bb9e20e635e17e785f7cb512128f5adc5065c30aa1c599014d5` |
-| Game Mode + R2 ntdll, FPS on | `6daf44d0f65d69e752bb3acfd2adeb7d313826829daade9eef6ec61490f96a7a` |
-| Ordinary inner loader | `8f8e629353e72462eb69e9dc6ff7791f39e51023a00c88f555b6673290e45ffe` |
-| App-host loader | `b5019ca171e295d44a947f06de904a37cb21d5c8c36aefee8808ce50f93606a3` |
-| Unchanged accepted R2 ntdll, Game Mode off | `eef64f611ae9033261a70f46ec0be38d58823717f14e80331946c6d0cd3c85f7` |
+| Asset                                       | SHA-256                                                            |
+| ------------------------------------------- | ------------------------------------------------------------------ |
+| Game Mode ntdll, FPS off                    | `af8d94f3d9b51bb9e20e635e17e785f7cb512128f5adc5065c30aa1c599014d5` |
+| Game Mode + R2 ntdll, FPS on                | `6daf44d0f65d69e752bb3acfd2adeb7d313826829daade9eef6ec61490f96a7a` |
+| Ordinary inner loader                       | `8f8e629353e72462eb69e9dc6ff7791f39e51023a00c88f555b6673290e45ffe` |
+| App-host loader                             | `b5019ca171e295d44a947f06de904a37cb21d5c8c36aefee8808ce50f93606a3` |
+| Unchanged accepted R2 ntdll, Game Mode off  | `eef64f611ae9033261a70f46ec0be38d58823717f14e80331946c6d0cd3c85f7` |
 | Unchanged accepted fullscreen native driver | `9a2492653c84e3a57dafc2e6862f11f1cd5985d978d3140615ab039ab95fc060` |
 
 The [native manifest](../native/wine-game-mode/manifest.json) pins all source,
@@ -232,8 +234,8 @@ expected inputs. This is loaded-module evidence, not only a staging receipt.
 The worker applied and read back 150, including the initialization writes that
 preceded the reported failure; no new crash dump or access-violation exit arose.
 
-**Interactive repeat verification is incomplete.** The Mac locked during this
-startup, before game UI could be inspected. The loginwindow covered the desktop;
+**The first corrected startup was blocked by the lock screen.** The Mac locked
+during startup, before game UI could be inspected. The loginwindow covered the desktop;
 world entry, new fullscreen entry/exit and current OS Game Mode activation were
 not observable. No in-world interaction or performance sampling occurred. An
 unlock was requested; the game was closed through a normal application Quit
@@ -245,13 +247,41 @@ windowed client size `1506x851` with Retina off; this does not establish a new
 fullscreen restoration check. The protected original game, production app and
 production profile inventories, and installed Wine hashes, remained unchanged.
 
-The two short interactive enabled launches remain pending an unlocked desktop.
 No additional disabled live control was needed: the user's adjacent disabled run
 and unchanged accepted off-route assets provide that control evidence. Current
 live artifacts are retained privately under
 `/private/var/folders/nn/34wh2q094x5f5qrtj4n8c76r0000gn/T/yaagl-game-mode-r2-live-1wddx77e`
 (`session-1`, `session-1-provenance.json`, `session-1-cleanup.json`); ignored
 screenshots and build/check logs are under `.tmp/game-mode-regression-20260924`.
+
+After the desktop was unlocked, two new clean candidate launches completed on
+September 25. Both used Global/Steam with native fullscreen and Game Mode enabled,
+FPS unlocking at 150, and unchanged graphics/Retina settings. Native game PIDs
+38444 and 40900 correspond to `game_1790312594592.log` and
+`game_1790312978137.log`. Both reached the world and accepted input; observed
+in-world time totaled about two minutes. Actual mapped modules in each game,
+bridge and both Steam processes matched corrected R2 `9ffbd0…` and the expected
+native/PE fullscreen, PE ntdll and DXMT/winemetal inputs. Both workers successfully
+wrote and read back 150. Neither run produced a new crash dump.
+
+The first interactive session entered native fullscreen through the green
+button. The actual game host retained bundle ID
+`com.zh0ngy1l1.yaagl.hk4e-game`; the macOS game overlay visibly and accessibly
+reported **Game Mode, On**. Leaving fullscreen through the same button restored
+the exact window bounds `(3, 46, 1506, 883)` and client size `1506x851`. Wine's
+fullscreen diagnostics independently recorded entry and restoration. The second
+session stayed windowed, confirming that enabled settings do not force entry.
+
+Both games closed normally through their window close buttons and exited 0 at
+01:07:17 and 01:13:16 local time. Registry/file restoration and private disposal
+completed at 01:07:31 and 01:13:30. Both launchers quit 0; no owned processes,
+private runtimes, window journals, pending controls or patch markers remained.
+Window memory retained `1506x851`, Retina off. Protected original-game,
+production-app and production-profile inventories and installed Wine hashes
+remained unchanged. The same private evidence directory contains `session-2` and
+`session-3`, their provenance, interaction, mapped-hash and cleanup receipts.
+These new checks complete the requested brief repeat verification; they establish
+no long-session, China/direct/FPS-disabled gameplay or performance claim.
 
 Settings cleanup shortens the English fullscreen description from 14 words to
 "Green button: fullscreen desktop." (4), and Game Mode to
