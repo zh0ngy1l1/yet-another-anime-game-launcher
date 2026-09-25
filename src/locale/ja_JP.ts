@@ -121,11 +121,9 @@ export const ja_JP: typeof zh_CN = {
   SETTING_TIMEOUT_FIX: "タイムアウト修正",
   SETTING_LICENSES: "ライセンス",
   SETTING_GAME_MODE: "ゲームモード",
-  SETTING_GAME_MODE_DESC:
-    "次回起動時に適用。ネイティブ macOS フルスクリーン、Apple シリコン、macOS 14 以降、Wine 11.0 DXMT（署名・パッチ適用済み）が必要です。ウインドウで起動し、緑のボタンでフルスクリーンにします。有効化は macOS が管理し、選択を記憶します。ネイティブフルスクリーンがオフの場合は適用されません。",
+  SETTING_GAME_MODE_DESC: "ネイティブ全画面で macOS ゲームモードを許可。",
   SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
-  SETTING_NATIVE_FULLSCREEN_DESC:
-    "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
+  SETTING_NATIVE_FULLSCREEN_DESC: "緑ボタンで全画面デスクトップ。",
   SETTING_ENABLE_HDR: "HDR有効",
 
   SETTING_PROXY_ENABLED: "HTTPプロキシ有効",

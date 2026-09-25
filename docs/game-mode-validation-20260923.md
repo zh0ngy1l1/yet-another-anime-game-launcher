@@ -210,6 +210,17 @@ are recorded in the [current native manifest](../native/wine-game-mode/manifest.
 The two fresh candidate game checks and settings inspection are recorded below
 after completion.
 
+Settings cleanup shortens the English fullscreen description from 14 words to
+"Green button: fullscreen desktop." (4), and Game Mode to
+"Allow macOS Game Mode in native fullscreen." (7). Both descriptions were updated
+in all ten locales; localized character lengths are also at most one third of
+their former length. Names, defaults and activation behavior are unchanged.
+Workaround 3 was a hardcoded `Workaround #3(does nothing now)` control with no
+separate locale/help key. Its component and menu slot were removed. The internal
+`config_workaround3` reader retains saved values and historical channel/CPU
+defaults for `workaround3`-tagged patch compatibility; no migration, preference
+rewrite or hardcoded replacement was introduced.
+
 ## Use and stopping point
 
 Enable **Native macOS fullscreen** and the separate **Game Mode** option in Game

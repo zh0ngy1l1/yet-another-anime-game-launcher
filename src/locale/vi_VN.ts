@@ -120,11 +120,9 @@ export const vi_VN: typeof zh_CN = {
   SETTING_TIMEOUT_FIX: "Timeout Fix",
   SETTING_LICENSES: en.SETTING_LICENSES, // TODO: Translate
   SETTING_GAME_MODE: "Chế độ trò chơi",
-  SETTING_GAME_MODE_DESC:
-    "Áp dụng ở lần chạy tiếp theo. Cần toàn màn hình gốc macOS, Apple Silicon, macOS 14+ và Wine 11.0 DXMT (đã ký, có bản vá). Khởi động dạng cửa sổ; dùng nút xanh để vào toàn màn hình. macOS quyết định kích hoạt và ghi nhớ lựa chọn. Không có hiệu lực khi tắt hỗ trợ toàn màn hình gốc.",
+  SETTING_GAME_MODE_DESC: "Cho phép Game Mode macOS khi toàn màn hình gốc.",
   SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
-  SETTING_NATIVE_FULLSCREEN_DESC:
-    "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
+  SETTING_NATIVE_FULLSCREEN_DESC: "Nút xanh: toàn màn hình.",
   SETTING_ENABLE_HDR: "Bật HDR",
 
   SETTING_PROXY_ENABLED: en.SETTING_PROXY_ENABLED, // TODO: Translate

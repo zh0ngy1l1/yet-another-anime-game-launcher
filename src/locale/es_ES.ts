@@ -120,10 +120,9 @@ export const es_ES: typeof zh_CN = {
 
   SETTING_GAME_MODE: "Modo Juego",
   SETTING_GAME_MODE_DESC:
-    "Se aplica en el próximo inicio. Requiere pantalla completa nativa de macOS, Apple Silicon, macOS 14+ y Wine 11.0 DXMT (firmado y con parches). Inicia en ventana; usa el botón verde para pantalla completa. macOS controla la activación y recuerda tu elección. Inactivo sin pantalla completa nativa.",
+    "Permitir el modo Juego de macOS en pantalla completa nativa.",
   SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
-  SETTING_NATIVE_FULLSCREEN_DESC:
-    "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
+  SETTING_NATIVE_FULLSCREEN_DESC: "Botón verde: pantalla completa.",
   SETTING_ENABLE_HDR: "Activar HDR",
 
   SETTING_PROXY_ENABLED: "Activar Proxy HTTP",

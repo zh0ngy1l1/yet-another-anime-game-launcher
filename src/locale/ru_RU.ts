@@ -122,10 +122,9 @@ export const ru_RU: typeof zh_CN = {
 
   SETTING_GAME_MODE: "Игровой режим",
   SETTING_GAME_MODE_DESC:
-    "Применяется при следующем запуске. Требуются нативный полноэкранный режим macOS, Apple Silicon, macOS 14+ и Wine 11.0 DXMT (подписанный, с патчами). Игра запускается в окне; зелёная кнопка включает полный экран. Активацией управляет macOS, сохраняя ваш выбор. Без поддержки нативного полного экрана опция не действует.",
+    "Разрешить игровой режим macOS в нативном полноэкранном режиме.",
   SETTING_NATIVE_FULLSCREEN: "Native macOS fullscreen",
-  SETTING_NATIVE_FULLSCREEN_DESC:
-    "Enable the game window’s green fullscreen button. Launch windowed and remember its windowed size.",
+  SETTING_NATIVE_FULLSCREEN_DESC: "Зелёная кнопка: полный экран.",
   SETTING_ENABLE_HDR: "Включить HDR",
 
   SETTING_PROXY_ENABLED: "Использовать HTTP-прокси",

@@ -1,6 +1,6 @@
 import type { Locale } from "@locale";
 import type { Config } from "@config";
-import { createWorkaround3Config } from "./config/workaround-3";
+import { loadWorkaround3Config } from "./config/workaround-3";
 import createPatchOff from "./config/patch-off";
 import createSteamPatch from "./config/steam-patch";
 import createBlockNet from "./config/block-net";
@@ -16,7 +16,7 @@ export async function createHk4eSettings(
   config: Partial<Config>,
   gameVersion: () => string
 ) {
-  const [W3] = await createWorkaround3Config({ locale, config });
+  await loadWorkaround3Config(config);
   const [PO] = await createPatchOff({ locale, config });
   const [SP] = await createSteamPatch({ locale, config });
   const [BN] = await createBlockNet({ locale, config });
@@ -35,7 +35,6 @@ export async function createHk4eSettings(
       <NF />,
       <GM />,
       <HDR />,
-      <W3 />,
       <PO />,
       <SP />,
       <BN />,
