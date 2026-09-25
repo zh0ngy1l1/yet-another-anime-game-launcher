@@ -308,8 +308,14 @@ explain the limitation without switching runtimes. Disable **Game Mode** and
 relaunch to return to the accepted ordinary route. Changes apply to the next
 launch and do not edit a running session. See [user instructions](game-mode.md).
 
-**A/B testing not performed; performance benefit unmeasured; branch awaiting the
-next authorized A/B stage and later explicit merge authorization.**
+**September 25 deployment authorization:** after manually testing the fixed
+candidate built from `4358518`, the user approved merging and pushing the feature
+to `main` and replacing the normal installed app. The user explicitly removed
+performance A/B testing as a deployment prerequisite. A/B testing was not
+performed, and performance benefit remains unmeasured.
 
-No comparative FPS sampling, benchmarks, speedup conclusions, merge, push,
-publication or production replacement was performed.
+This authorization covers the verified candidate and preservation of the existing
+production profile, settings, game and Wine installation, with a reversible app
+backup. No release or artifact publication is authorized. The documentation-only
+deployment commit uses `[skip ci]` because the main-branch workflow uploads app
+artifacts; no workflow configuration or tested application code is changed.
