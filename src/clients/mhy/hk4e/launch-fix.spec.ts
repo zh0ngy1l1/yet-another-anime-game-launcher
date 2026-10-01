@@ -297,7 +297,7 @@ it("reports pending readiness without inferring termination or issuing a second 
   const f = fixture(),
     starting = f.fix.start();
   await vi.advanceTimersByTimeAsync(30001);
-  expect(f.problem).toHaveBeenCalledWith(
+  expect(f.io.event).toHaveBeenCalledWith(
     expect.stringContaining("readiness remains pending")
   );
   expect(f.io.execute).toHaveBeenCalledOnce();
@@ -306,7 +306,7 @@ it("reports pending readiness without inferring termination or issuing a second 
   await starting;
   const finishing = f.fix.finish();
   await vi.advanceTimersByTimeAsync(30001);
-  expect(f.problem).toHaveBeenCalledWith(
+  expect(f.io.event).toHaveBeenCalledWith(
     expect.stringContaining("foreground completion/restoration remains pending")
   );
   f.state("restored");

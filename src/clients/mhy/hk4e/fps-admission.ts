@@ -1,3 +1,4 @@
+import { operationError } from "../../../utils/errors";
 import { stats } from "../../../utils/neu";
 import { join } from "path-browserify";
 import type { Config } from "../../../config";
@@ -34,8 +35,13 @@ export async function admitFpsLaunch(
   if (!settings.value.enabled) return undefined;
   const { config, wine, server, gameDir, gameExecutable } = input;
   if (native.os !== "Darwin" || native.version !== "4.11.0-yaagl-owned3")
-    throw new Error(
-      "FPS unlocking requires the local HK4E runtime with normal-quit protection; run scripts/build-hk4e-native.py"
+    throw operationError(
+      "FPS unlocking requires a compatible Yaagl macOS app with safe-quit support. Use the matching Yaagl build, or disable FPS unlocking to launch without it.",
+      {
+        required: "Darwin / 4.11.0-yaagl-owned3",
+        received: native,
+        developerBuild: "scripts/build-hk4e-native.py",
+      }
     );
   if (
     !(

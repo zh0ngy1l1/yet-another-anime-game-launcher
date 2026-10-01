@@ -1,3 +1,4 @@
+import { errorMessage, logDiagnostic } from "../utils/errors";
 import type { CommonUpdateProgram } from "../common-update-ui";
 import {
   LaunchFailure,
@@ -29,14 +30,15 @@ export async function* runStartupRecovery(
   try {
     yield* initialize();
   } catch (error) {
-    const message = `Startup restoration remains unresolved: ${String(
+    logDiagnostic(error);
+    const message = `The launcher could not restore settings or files from the previous session. Closing and another launch are blocked. Keep the launcher open and share neutralinojs.log with the developer. ${errorMessage(
       error
-    )}. Keep the launcher and logs for review.`;
+    )}`;
     owner.problem(message);
     // A rejected restore is not proof that every operation/sidecar is done.
     // Keep the existing close/launch guard; do not offer an unproven retry.
     throw new LaunchFailure(message, error);
   }
-  owner.succeed("Startup restoration completed");
+  owner.succeed();
   owner.finish();
 }

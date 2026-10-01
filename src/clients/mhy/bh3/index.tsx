@@ -223,7 +223,10 @@ export async function createBH3ChannelClient({
       )
         .filter(x => x != null)
         .map(x => {
-          assertValueDefined(x);
+          assertValueDefined(
+            x,
+            "The game update information is missing a required package. See neutralinojs.log for details."
+          );
           return x;
         });
       yield* predownloadGameProgram({
@@ -268,7 +271,10 @@ export async function createBH3ChannelClient({
       )
         .filter(x => x != null)
         .map(x => {
-          assertValueDefined(x);
+          assertValueDefined(
+            x,
+            "The game update information is missing a required package. See neutralinojs.log for details."
+          );
           return x;
         });
       yield* updateGameProgram({

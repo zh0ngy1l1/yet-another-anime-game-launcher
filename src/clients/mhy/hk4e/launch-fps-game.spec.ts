@@ -1,3 +1,4 @@
+import { errorDetails } from "../../../utils/errors";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { launchFpsGame } from "./launch-fps-game";
 import { prepareFpsBridge } from "./fps-bridge";
@@ -265,57 +266,61 @@ it("retains a pre-worker game failure after otherwise successful Steam cleanup",
   expect(rig.native.events).not.toContain("start");
   rig.native.status.exitCode = 0xc0000005;
   const failure = await rig.finish(transaction);
-  expect(String(failure)).toContain(
+  expect(errorDetails(failure?.primary)).toContain(
     "with code 0xc0000005; worker generation 0"
   );
-  expect(String(failure).match(/with code 0xc0000005/g)).toHaveLength(1);
+  expect(
+    errorDetails(failure?.primary).match(/with code 0xc0000005/g)
+  ).toHaveLength(1);
   expect(failure?.cleanupErrors).toEqual([]);
-  expect(failure?.observationErrors).toHaveLength(1);
+  expect(failure?.observationErrors).toHaveLength(0);
   expect(String(failure)).toContain("Cleanup completed.");
   expect(String(failure)).not.toContain("cleanup:");
   expect(rig.native.events).not.toContain("start");
   expect(rig.native.events).toContain("registry:restore");
   expect(rig.native.events).toContain("files-restored");
   expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
-  expect(rig.ownership.state().detail).toBe(failure?.message);
+  expect(rig.ownership.state().error).toBe(failure?.message);
 });
 
-it("unconfirmed Steam cleanup remains visibly failed and guarded until later confirmed completion", async () => {
+it("pending Steam cleanup stays guarded without presenting bookkeeping as failure", async () => {
   const rig = launch("60", true),
     transaction = rig.start();
   await tick(11000);
-  rig.native.status.primaryExited = 1;
-  rig.native.status.active = 0;
+  Object.assign(rig.native.status, {
+    primaryExited: 1,
+    active: 0,
+    exitCodeKnown: 1,
+  });
   await tick(32000);
-  expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
-  expect(rig.ownership.state().detail).toMatch(
-    /Steam job completion remains pending/
+  expect(rig.ownership.state()).toMatchObject({ held: true, failed: false });
+  expect(rig.ownership.state().detail).toBe(
+    "Game has exited. Finishing cleanup…"
   );
   expect(rig.ownership.beginClose()).toBe(false);
   expect(rig.ownership.reserve()).toBeUndefined();
   expect(rig.journal.restore).not.toHaveBeenCalled();
-  const result = await rig.finish(transaction);
-  expect(
-    result?.observationErrors.some(error =>
-      String(error).includes("Steam job completion")
-    )
-  ).toBe(true);
-  expect(result?.cleanupErrors).toEqual([]);
-  expect(result?.message).toContain("Cleanup completed.");
-  expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
+  expect(await rig.finish(transaction)).toBeUndefined();
+  expect(transaction.diagnostics().map(String).join("; ")).toContain(
+    "Steam job completion"
+  );
+  expect(rig.ownership.state()).toMatchObject({ held: false, failed: false });
 });
-
-it("early Steam exit fails observation without retargeting or restoring a living game", async () => {
+it("early Steam exit warns about FPS without retargeting or restoring a living game", async () => {
   const rig = launch("120", true),
     transaction = rig.start();
   await tick(11000);
   rig.native.status.shimExited = 1;
   rig.native.status.steamActive = 1;
   await tick(2000);
-  expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
+  expect(rig.ownership.state()).toMatchObject({ held: true, failed: false });
+  expect(rig.ownership.state().warning).toContain("FPS unlock is unavailable");
   expect(rig.native.status.pid).toBe(42);
   expect(rig.journal.restore).not.toHaveBeenCalled();
-  expect(await rig.finish(transaction)).toBeInstanceOf(Error);
+  expect(await rig.finish(transaction)).toBeUndefined();
+  expect(transaction.diagnostics().map(String).join("; ")).toContain(
+    "Steam shim failed"
+  );
 });
 
 it("cancellation during pending Steam child attribution accounts for late game creation", async () => {
@@ -385,7 +390,12 @@ it("independent registry and file failures remain guarded and recover through re
   rig.ownership.retry();
   await tick(50);
   const error = await transaction.completion;
-  expect(error?.cleanupErrors).toHaveLength(2);
+  expect(error).toBeUndefined();
+  expect(rig.ownership.state()).toMatchObject({
+    failed: false,
+    error: "",
+    detail: "",
+  });
   expect(rig.ownership.state().held).toBe(false);
 });
 it("a failed post-registry Wine wait must be retried before restoring Wine/game files", async () => {
@@ -410,7 +420,12 @@ it("a failed post-registry Wine wait must be retried before restoring Wine/game 
   expect(rig.ownership.state().held).toBe(true);
   pendingWait.resolve({ exitCode: 0, stdOut: "", stdErr: "", pid: 1 });
   await tick(30);
-  expect((await transaction.completion)?.cleanupErrors).toHaveLength(1);
+  expect(await transaction.completion).toBeUndefined();
+  expect(rig.ownership.state()).toMatchObject({
+    failed: false,
+    error: "",
+    detail: "",
+  });
   expect(rig.journal.restore).toHaveBeenCalledOnce();
 });
 it("cancellation during initialization leaves the game observed and prevents a worker spawn", async () => {
@@ -577,7 +592,7 @@ it("cancellation retains a late bridge spawn through cooperative release and dir
   await tick(50);
   transaction.cancel();
   await tick(30000);
-  expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
+  expect(rig.ownership.state()).toMatchObject({ held: true, failed: false });
   expect(rig.journal.restore).not.toHaveBeenCalled();
   expect(rig.native.events).not.toContain("launch");
   ready.resolve();
@@ -648,7 +663,7 @@ it("a durable bridge log failure rejects Steam admission but permits cooperative
   expect(String(failure)).toContain(
     "initial capability/lifecycle handshake failed"
   );
-  expect(String(failure)).toContain(
+  expect(failure?.observationErrors.map(String).join("; ")).toContain(
     "durable bridge diagnostics failed with error 5"
   );
   expect(String(failure)).toContain("Cleanup completed");
@@ -688,7 +703,7 @@ it.each([false, true])(
     wine.resolve({ exitCode: 0, stdOut: "", stdErr: "", pid: 1 });
     await tick(30);
     const failure = await transaction.completion;
-    expect(String(failure)).toContain(
+    expect(failure?.observationErrors.map(String).join("; ")).toContain(
       "durable bridge diagnostics failed with error 80"
     );
     expect(String(failure)).toContain("Cleanup completed");
@@ -742,55 +757,8 @@ it("initial diagnostics failure cannot authorize terminal cleanup when a game li
   expect(rig.journal.restore).not.toHaveBeenCalled();
   void transaction;
 });
-it("helper scan failure remains visibly failed while observing the live game", async () => {
-  const rig = launch(),
-    transaction = rig.start();
-  await tick(11000);
-  rig.native.status.workerError = 1168;
-  rig.native.status.workerState = 4;
-  rig.native.status.workerDone = 1;
-  await tick(1500);
-  expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
-  expect(rig.journal.restore).not.toHaveBeenCalled();
-  expect((await rig.finish(transaction))?.message).toContain(
-    "scan/write failed"
-  );
-});
-
-it("keeps delayed worker87 and game access violation primary when cleanup succeeds", async () => {
-  const rig = launch("150", true),
-    transaction = rig.start();
-  await tick(11000);
-  expect(rig.native.status.generation).toBe(1);
-  rig.native.status.workerError = 87;
-  rig.native.status.workerState = 4;
-  rig.native.status.workerDone = 1;
-  // The worker completion is observed first; the game's already-raised fault
-  // reaches its retained exit HANDLE later, as in the preserved manual run.
-  await tick(1200);
-  expect(rig.ownership.state().held).toBe(true);
-  expect(rig.journal.restore).not.toHaveBeenCalled();
-  rig.native.status.exitCode = 0xc0000005;
-  const failure = await rig.finish(transaction);
-  expect(String(failure?.primary)).toContain(
-    "FPS target scan/write failed: 87"
-  );
-  expect(failure?.observationErrors.map(String).join("; ")).toContain(
-    "0xc0000005"
-  );
-  expect(failure?.cleanupErrors).toEqual([]);
-  expect(
-    String(failure).match(/FPS target scan\/write failed: 87/g)
-  ).toHaveLength(1);
-  expect(String(failure)).toContain("Cleanup completed.");
-  expect(String(failure)).not.toContain("Earlier cleanup errors");
-  expect(rig.native.events).toContain("registry:restore");
-  expect(rig.native.events).toContain("files-restored");
-  expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
-});
-
-it.each([87, 998])(
-  "does not erase live-target error %i when the game later exits successfully",
+it.each([1168, 87, 998])(
+  "FPS scan failure %i warns while retaining live game ownership and diagnostic evidence",
   async workerError => {
     const rig = launch("150", true),
       transaction = rig.start();
@@ -800,16 +768,47 @@ it.each([87, 998])(
       workerState: 4,
       workerDone: 1,
     });
-    await tick(1200);
-    expect(rig.ownership.state()).toMatchObject({ held: true, failed: true });
-    const failure = await rig.finish(transaction);
-    expect(String(failure?.primary)).toContain(
+    await tick(1500);
+    expect(rig.ownership.state()).toMatchObject({
+      held: true,
+      failed: false,
+      detail: "game is running (DO NOT CLOSE THE LAUNCHER)",
+    });
+    expect(rig.ownership.state().warning).toContain(
+      "FPS unlock is unavailable"
+    );
+    expect(rig.journal.restore).not.toHaveBeenCalled();
+    expect(await rig.finish(transaction)).toBeUndefined();
+    expect(transaction.diagnostics().map(String).join("; ")).toContain(
       `FPS target scan/write failed: ${workerError}`
     );
-    expect(failure?.cleanupErrors).toEqual([]);
     expect(rig.native.status.exitCode).toBe(0);
   }
 );
+it("keeps optional worker failure evidence separate from a later genuine game crash", async () => {
+  const rig = launch("150", true),
+    transaction = rig.start();
+  await tick(11000);
+  Object.assign(rig.native.status, {
+    workerError: 87,
+    workerState: 4,
+    workerDone: 1,
+  });
+  await tick(1200);
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  rig.native.status.exitCode = 0xc0000005;
+  const failure = await rig.finish(transaction);
+  expect(errorDetails(failure?.primary)).toContain("0xc0000005");
+  expect(failure?.observationErrors.map(String).join("; ")).toContain(
+    "FPS target scan/write failed: 87"
+  );
+  expect(failure?.cleanupErrors).toEqual([]);
+  expect(String(failure)).not.toContain("FPS target scan/write failed");
+  expect(String(failure)).toContain("Cleanup completed.");
+  expect(rig.native.events).toContain("registry:restore");
+  expect(rig.native.events).toContain("files-restored");
+  expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
+});
 
 it.each([0, 0xc0000005])(
   "clean native termination preserves independent game exit classification %i",
@@ -834,9 +833,110 @@ it.each([0, 0xc0000005])(
       });
       expect(rig.native.diagnostic).not.toHaveBeenCalled();
     } else {
-      expect(String(result)).toContain("0xc0000005");
+      expect(errorDetails(result?.primary)).toContain("0xc0000005");
       expect(String(result)).not.toContain("FPS target scan/write failed");
     }
     expect(rig.native.events).toContain("files-restored");
   }
 );
+
+it("a timed-out probe of the confirmed game cannot fail launch or abandon a late observation", async () => {
+  const rig = launch(),
+    transaction = rig.start();
+  await tick(100);
+  expect(rig.ownership.state().detail).toBe(
+    "game is running (DO NOT CLOSE THE LAUNCHER)"
+  );
+  const gate = deferred<void>(),
+    command = rig.native.command;
+  rig.native.io.command.mockImplementation(async (directory, text) => {
+    if (text.includes(" probe ")) await gate.promise;
+    await command(directory, text);
+  });
+  await tick(22000);
+  expect(rig.ownership.state()).toMatchObject({
+    held: true,
+    failed: false,
+    detail: "game is running (DO NOT CLOSE THE LAUNCHER)",
+  });
+  expect(rig.ownership.state().warning).toContain("FPS unlock is unavailable");
+  expect(rig.ownership.beginClose()).toBe(false);
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  expect(rig.native.status.primaryExited).toBe(0);
+  gate.resolve();
+  await tick(1000);
+  expect(await rig.finish(transaction)).toBeUndefined();
+  expect(transaction.diagnostics().map(String).join("; ")).toContain(
+    "Game probe timed out"
+  );
+  expect(rig.ownership.state()).toMatchObject({ held: false, failed: false });
+});
+
+it("a successful transaction clears an earlier launch error without losing its evidence", async () => {
+  const rig = launch();
+  rig.setup.mockRejectedValueOnce(new Error("fixture preparation failed"));
+  const failed = rig.start();
+  await tick(50);
+  expect((await failed.completion)?.primary).toEqual(
+    new Error("fixture preparation failed")
+  );
+  expect(rig.ownership.state()).toMatchObject({ held: false, failed: true });
+  expect(rig.ownership.state().error).toContain("fixture preparation failed");
+  const successful = rig.start();
+  await tick(11000);
+  expect(rig.ownership.state()).toMatchObject({
+    held: true,
+    failed: false,
+    error: "",
+    detail: "game is running (DO NOT CLOSE THE LAUNCHER)",
+  });
+  expect(await rig.finish(successful)).toBeUndefined();
+  expect(rig.ownership.state()).toMatchObject({
+    held: false,
+    failed: false,
+    error: "",
+  });
+  expect((await failed.completion)?.primary).toEqual(
+    new Error("fixture preparation failed")
+  );
+});
+
+it("warns about unknown exit status while still waiting for descendants and cleanup", async () => {
+  const rig = launch("120", true),
+    transaction = rig.start();
+  await tick(11000);
+  Object.assign(rig.native.status, {
+    primaryExited: 1,
+    exitCodeKnown: 0,
+    exitCodeError: 5,
+  });
+  await tick(1200);
+  expect(rig.ownership.state()).toMatchObject({
+    held: true,
+    failed: false,
+    error: "",
+  });
+  expect(rig.ownership.state().warning).toContain(
+    "could not determine its exit status"
+  );
+  expect(rig.journal.restore).not.toHaveBeenCalled();
+  expect(rig.ownership.beginClose()).toBe(false);
+  Object.assign(rig.native.status, {
+    active: 0,
+    shimExited: 1,
+    steamActive: 0,
+  });
+  rig.native.stopped();
+  rig.native.direct.resolve({ confirmed: true, status: 0 });
+  await tick(2000);
+  expect(await transaction.completion).toBeUndefined();
+  expect(rig.ownership.state()).toMatchObject({
+    held: false,
+    failed: false,
+    error: "",
+    detail: "",
+  });
+  expect(transaction.diagnostics().map(String).join("; ")).toContain(
+    "unavailable exit status (error 5)"
+  );
+});

@@ -59,7 +59,8 @@ json status() {
 }
 
 void requestClose();
-void displayFailure(const std::string &message);
+void displayFailure(const std::string &message, const std::string &heading = "Yaagl OS could not finish starting.");
+void displayCleanup();
 // stateMutex must be held. Check elapsed time at admission too: dispatch_after
 // delivery can be delayed by other AppKit work, and must not extend the budget.
 bool expireLocked() {
@@ -78,7 +79,7 @@ void fail(const std::string &message) {
     }
     changed.notify_all();
     debug::log(debug::LogTypeError, "Bootstrap failure: " + message);
-    displayFailure(message);
+    displayFailure(message, status()["phase"] == "cancelled" ? "Cleanup could not finish." : "Yaagl OS could not finish starting.");
     events::dispatch("bootstrapFailure", {{"message", message}});
 }
 }
@@ -92,7 +93,7 @@ void fail(const std::string &message) {
 @end
 
 namespace {
-void displayFailure(const std::string &message) {
+void displayFailure(const std::string &message, const std::string &heading) {
     if (!failurePanel) {
         failureController = [[YaaglBootstrapFailureController alloc] init];
         failurePanel = [[NSPanel alloc]
@@ -118,11 +119,18 @@ void displayFailure(const std::string &message) {
         [quit release];
         [failurePanel center];
     }
-    const std::string text = "Yaagl OS could not finish starting.\n\n" + message +
+    const std::string text = heading + "\n\n" + message +
         "\n\nQuit uses normal cleanup. If cleanup cannot finish, keep the launcher and its logs for review.";
     [failureText setStringValue:[NSString stringWithUTF8String:text.c_str()]];
     [failurePanel makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
+}
+
+void displayCleanup() {
+    std::string previous;
+    { std::lock_guard<std::mutex> lock(stateMutex); previous = failureMessage; }
+    displayFailure("Waiting for cleanup to finish. Keep the launcher open." +
+        (previous.empty() ? "" : "\n\n" + previous), "Closing Yaagl OS.");
 }
 
 void requestClose() {
@@ -131,7 +139,7 @@ void requestClose() {
         if (phase != "ready") phase = "cancelled";
     }
     changed.notify_all();
-    displayFailure("Waiting for normal cleanup. No forced exit has been requested.");
+    displayCleanup();
     // This is the existing JS ownership/termination gate, never app.exit.
     events::dispatch("windowClose", nullptr);
 }
@@ -147,7 +155,7 @@ void observeBootstrapClose() {
     }
     if (!pending) return;
     changed.notify_all();
-    displayFailure("Waiting for normal cleanup.");
+    displayCleanup();
 }
 
 void armBootstrap() {
@@ -216,7 +224,7 @@ json bootstrap(const json &input) {
             if (op == "cancel") {
                 { std::lock_guard<std::mutex> lock(stateMutex); if (phase != "ready") phase = "cancelled"; }
                 changed.notify_all();
-                displayFailure("Waiting for normal cleanup.");
+                displayCleanup();
             } else fail(message);
         });
     } else if (op == "begin") {

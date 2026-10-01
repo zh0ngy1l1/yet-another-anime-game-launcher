@@ -157,12 +157,31 @@ export async function createLauncher({
             bg="$danger3"
             color="$danger12"
           >
-            {launchOwnership.state().detail}
+            {launchOwnership.state().error}
             <Show when={launchOwnership.state().canRetry}>
               <Button onClick={() => launchOwnership.retry()}>
-                Retry safe cleanup
+                {launchOwnership.state().retryLabel}
               </Button>
             </Show>
+          </Box>
+        </Show>
+        <Show
+          when={
+            launchOwnership.state().warning && !launchOwnership.state().failed
+          }
+        >
+          <Box
+            role="status"
+            position="absolute"
+            top={16}
+            left={16}
+            right={16}
+            zIndex={10}
+            p={12}
+            bg="$warning3"
+            color="$warning12"
+          >
+            {launchOwnership.state().warning}
           </Box>
         </Show>
         <Show when={background_video}>
@@ -245,29 +264,37 @@ export async function createLauncher({
                   ></ProgressIndicator>
                 </Progress>
               </Show>
-              <Show when={programBusy() || launchOwnership.state().held}>
+              <Show
+                when={
+                  programBusy() ||
+                  launchOwnership.state().held ||
+                  launchOwnership.state().detail
+                }
+              >
                 <h3
                   style={
                     "text-shadow: 1px 1px 2px #333;color:white;margin-bottom:5px;margin-top:8px;"
                   }
                 >
-                  {launchOwnership.state().held
+                  {launchOwnership.state().held || !programBusy()
                     ? launchOwnership.state().detail
                     : statusText()}
                 </h3>
-                <Progress
-                  value={progress()}
-                  indeterminate={
-                    progress() == 0 && !launchOwnership.state().failed
-                  }
-                  size="sm"
-                  borderRadius={8}
-                >
-                  <ProgressIndicator
-                    style={"transition: none;"}
+                <Show when={programBusy() || launchOwnership.state().held}>
+                  <Progress
+                    value={progress()}
+                    indeterminate={
+                      progress() == 0 && !launchOwnership.state().failed
+                    }
+                    size="sm"
                     borderRadius={8}
-                  ></ProgressIndicator>
-                </Progress>
+                  >
+                    <ProgressIndicator
+                      style={"transition: none;"}
+                      borderRadius={8}
+                    ></ProgressIndicator>
+                  </Progress>
+                </Show>
               </Show>
             </Box>
             <Popover

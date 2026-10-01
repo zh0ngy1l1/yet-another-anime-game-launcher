@@ -1,3 +1,4 @@
+import { errorMessage, logDiagnostic } from "../../../utils/errors";
 import type {
   CommonProgressUICommand,
   CommonUpdateProgram,
@@ -6,6 +7,7 @@ import {
   LaunchFailure,
   launchOwnership,
 } from "../../../launcher/launch-ownership";
+import { log } from "../../../utils";
 import { deferred } from "../../../utils/operation";
 import type { createFpsCompanion } from "./fps-companion";
 
@@ -15,6 +17,9 @@ export interface LaunchTransactionOperations {
     progress: (command: CommonProgressUICommand) => void
   ): Promise<void>;
   launch(): Promise<void>;
+  /** True only for the retained, request-attributed game handle. */
+  gameRunning?(): boolean;
+  gameFailure?(): unknown;
   gameExit(): Promise<void>;
   companion(): ReturnType<typeof createFpsCompanion>;
   /** Observation history, not evidence of a failed cleanup operation. */
@@ -55,21 +60,40 @@ export function createLaunchTransaction(
     commands.push(command);
     wake();
   };
+  const diagnostic = (text: string) => {
+    void Promise.resolve()
+      .then(() => log(text))
+      .catch(() => undefined);
+  };
+  const optionalProblem = (error: unknown) => {
+    observe(error);
+    diagnostic(`FPS companion: ${String(error)}`);
+    owner.warning(
+      "FPS unlock is unavailable for this session. See the launch log for details."
+    );
+  };
   const problem = (error: unknown) => {
+    logDiagnostic(error);
     if (primary === undefined) primary = error;
     else observe(error);
     owner.problem(
-      `Launch failed: ${String(
+      `${
+        operations.gameRunning?.()
+          ? "Game monitoring failed"
+          : issued
+          ? "Game launch or monitoring could not be confirmed"
+          : "Launch failed"
+      }: ${errorMessage(
         primary
-      )}. Ownership retained until safe cleanup.${
-        String(primary) !== String(error) ? ` ${String(error)}` : ""
+      )}. Keep the launcher open while cleanup finishes.${
+        String(primary) !== String(error) ? ` ${errorMessage(error)}` : ""
       }`
     );
   };
   async function watch<T>(promise: Promise<T>, label: string): Promise<T> {
     const timer = setTimeout(
       () =>
-        owner.problem(
+        diagnostic(
           `${label} is still pending. Close and new launch remain blocked; observation continues. See the launch log for the request and retained paths.`
         ),
       30000
@@ -95,12 +119,14 @@ export function createLaunchTransaction(
       lifetime = operations.gameExit();
       void lifetime.catch(() => undefined);
       helper = operations.companion();
-      owner.phase(
+      diagnostic(
         "Observing the attributed game; FPS discovery and initialization"
       );
+      if (operations.gameRunning?.()) owner.running();
+      else owner.phase("Waiting for the game to start…");
       const terminal = helper.start().then(outcome => {
         if (outcome.error !== undefined || outcome.cleanup !== "confirmed")
-          problem(
+          optionalProblem(
             outcome.error ??
               new Error(
                 `FPS companion cleanup ${
@@ -119,7 +145,8 @@ export function createLaunchTransaction(
       );
       if (cancellation.signal.aborted) void helper.stop();
       await lifetime;
-      owner.phase("Game lifetime ended; stopping FPS worker");
+      owner.ended();
+      diagnostic("Game lifetime ended; stopping FPS worker");
       await helper.stop();
       await terminal;
     } catch (error) {
@@ -134,30 +161,34 @@ export function createLaunchTransaction(
           } catch (error) {
             problem(error);
             await owner.waitForRetry(
-              `Game lifetime unconfirmed: ${String(
+              `The launcher cannot confirm whether this game has finished. Closing and another launch are blocked. Keep the launcher open and check the game status again. ${errorMessage(
                 error
-              )}. Retry observation of this request; close and new launch remain blocked.`
+              )}`,
+              "Check game status again"
             );
             lifetime = undefined;
           }
         }
       }
+      if (issued) owner.ended();
+      else owner.phase("Finishing launch cleanup…");
       if (helper) {
         const publicResult = await helper.stop();
         if (publicResult.cleanup === "unresolved")
-          owner.problem(
+          diagnostic(
             `FPS stop timed out; observing eventual completion. Retained mailboxes: ${
               publicResult.retainedDirectories.join(", ") || "see launch log"
             }`
           );
         const final = await watch(helper.completion, "FPS helper completion");
-        if (final.error !== undefined) problem(final.error);
-        for (const error of final.observationErrors ?? []) problem(error);
+        if (final.error !== undefined) optionalProblem(final.error);
+        for (const error of final.observationErrors ?? [])
+          optionalProblem(error);
         cleanupErrors.push(...final.cleanupErrors);
         if (final.cleanup !== "confirmed") {
           // A failed adapter outcome is not evidence of termination. Production
           // bridge completion must still independently confirm its worker/job.
-          owner.problem(
+          diagnostic(
             `FPS controller reported cleanup failure; confirming bridge handles before restoration. ${final.cleanupErrors
               .map(String)
               .join("; ")}`
@@ -168,7 +199,7 @@ export function createLaunchTransaction(
         let errors: readonly unknown[];
         try {
           errors = await watch(
-            operations.cleanup(owner.phase),
+            operations.cleanup(diagnostic),
             "Safe launch cleanup"
           );
         } catch (error) {
@@ -176,42 +207,36 @@ export function createLaunchTransaction(
         }
         if (!errors.length) break;
         cleanupErrors.push(...errors);
+        errors.forEach(logDiagnostic);
         await owner.waitForRetry(
-          `Cleanup failed; ownership retained. ${errors
-            .map(String)
-            .join(
-              "; "
-            )}. Retry safe cleanup after addressing the reported cause.`
+          `The launcher could not finish restoring settings or files. Closing and another launch are blocked. Address the reported problem, then retry cleanup. ${errors
+            .map(errorMessage)
+            .join("; ")}`
         );
       }
-      for (const error of operations.reportedErrors?.() ?? []) observe(error);
-      if (
-        primary !== undefined ||
-        observationErrors.length ||
-        cleanupErrors.length
-      ) {
-        const errors = [
-          ...(primary === undefined ? [] : [primary]),
-          ...observationErrors,
-        ];
-        // Reaching this point means the existing lifetime/cleanup gates have
-        // completed. Earlier failures remain evidence, not pending cleanup.
-        const message = `Launch finished with errors${
-          errors.length ? `: ${errors.map(String).join("; ")}` : ""
-        }. Cleanup completed.${
-          cleanupErrors.length
-            ? ` Earlier cleanup errors: ${cleanupErrors.map(String).join("; ")}`
-            : ""
-        }`;
+      for (const error of operations.reportedErrors?.() ?? []) {
+        observe(error);
+        diagnostic(String(error));
+      }
+      primary ??= operations.gameFailure?.();
+      const uniqueObservations = observationErrors.filter(
+        error => String(error) !== String(primary)
+      );
+      cleanupErrors.forEach(logDiagnostic);
+      if (primary !== undefined) {
+        // Cleanup is now confirmed. Only a genuine primary failure remains red.
+        const message = `Launch finished with an error: ${errorMessage(
+          primary
+        )} Cleanup completed. See the launch log for details.`;
         failure = new LaunchFailure(
           message,
           primary,
           cleanupErrors,
-          observationErrors
+          uniqueObservations
         );
         owner.problem(message);
-      } else
-        owner.succeed("Game, FPS worker, Wine wait and restoration completed");
+        owner.phase("Launch stopped. See the error above.");
+      } else owner.succeed();
       owner.finish();
       ended = true;
       wake();
@@ -232,5 +257,10 @@ export function createLaunchTransaction(
       await completion;
     }
   }
-  return { program, completion, cancel: () => cancellation.abort() };
+  return {
+    program,
+    completion,
+    diagnostics: () => [...observationErrors],
+    cancel: () => cancellation.abort(),
+  };
 }

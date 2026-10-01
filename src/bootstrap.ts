@@ -1,3 +1,4 @@
+import { errorMessage, logDiagnostic } from "./utils/errors";
 import { setBootstrapClock } from "./bootstrap-clock";
 
 export type BootstrapPhase = "starting" | "ready" | "failed" | "cancelled";
@@ -36,6 +37,10 @@ export class BootstrapSession {
     return this.phase === "starting";
   }
 
+  isCancelled() {
+    return this.phase === "cancelled";
+  }
+
   isReady() {
     return this.phase === "ready";
   }
@@ -60,7 +65,10 @@ export class BootstrapSession {
     const status = await this.native({ op: "wait", milliseconds });
     if (status.phase === "ready") throw Error("Bootstrap wait released");
     if (status.phase !== "starting") {
-      this.stop(status.message || "Launcher startup has stopped");
+      this.stop(
+        status.message || "Launcher startup has stopped",
+        status.phase === "cancelled"
+      );
     }
     this.assertActive();
     return milliseconds;
@@ -144,9 +152,11 @@ export async function startBootstrap<T>(options: {
     }
     await session.ready();
   } catch (error) {
-    session.stop(String(error));
+    if (session.isCancelled()) return;
+    logDiagnostic(error);
+    session.stop(errorMessage(error));
     options.failure(error);
-    await session.native({ op: "fail", message: String(error) });
+    await session.native({ op: "fail", message: errorMessage(error) });
   } finally {
     releasePresentation?.();
   }

@@ -1,3 +1,4 @@
+import { operationError } from "./utils/errors";
 import { WebSocket as RPC } from "libaria2-ts";
 import { log, sha256_16, wait, timeout } from "./utils";
 
@@ -45,7 +46,10 @@ export async function createAria2({
       } else if (status.status == "complete") {
         return;
       } else {
-        throw new Error("FIXME: implmenet me (aria2.ts) " + status.status);
+        throw operationError(
+          `Cannot resume the download to ${options.absDst}: the download manager reports “${status.status}”. See neutralinojs.log for details.`,
+          { operation: "Aria2 download admission", options, status }
+        );
       }
     } catch (e: unknown) {
       if (typeof e == "object" && e != null && "code" in e && e["code"] == 1) {

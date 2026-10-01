@@ -112,3 +112,47 @@ it("rejects malformed creation identities and preserves unresolved lifetime", as
     "acknowledgement remains unresolved"
   );
 });
+
+it("does not send a failure or call the failure UI when startup is deliberately cancelled", async () => {
+  const { startBootstrap } = await import("./bootstrap");
+  const native = vi.fn(async () => ({ phase: "starting" as const }));
+  const session = new BootstrapSession(native),
+    failure = vi.fn();
+  const pending = startBootstrap({
+    session,
+    create: () =>
+      new Promise(() => {
+        /* Startup stays pending until cancellation. */
+      }),
+    render: vi.fn(),
+    failure,
+  });
+  await settle();
+  session.stop("Launcher startup cancelled", true);
+  await pending;
+  expect(failure).not.toHaveBeenCalled();
+  expect(native.mock.calls.flat()).not.toContainEqual(
+    expect.objectContaining({ op: "fail" })
+  );
+});
+
+it("still presents a genuine startup error", async () => {
+  const { startBootstrap } = await import("./bootstrap");
+  const native = vi.fn(async () => ({ phase: "starting" as const }));
+  const session = new BootstrapSession(native),
+    failure = vi.fn();
+  const original = Error("Service failed to start");
+  await startBootstrap({
+    session,
+    create: async () => {
+      throw original;
+    },
+    render: vi.fn(),
+    failure,
+  });
+  expect(failure).toHaveBeenCalledWith(original);
+  expect(native).toHaveBeenCalledWith({
+    op: "fail",
+    message: "Service failed to start",
+  });
+});

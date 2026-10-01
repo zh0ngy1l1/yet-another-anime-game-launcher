@@ -1,3 +1,4 @@
+import { errorMessage, logDiagnostic } from "./utils/errors";
 import { render } from "solid-js/web";
 import { createApp } from "./app";
 import { HopeProvider, NotificationsProvider } from "@hope-ui/solid";
@@ -46,12 +47,12 @@ if (typeof Neutralino == "undefined") {
   let closing: Promise<void> | undefined;
   let exitRequested = false;
   const showFailure = async (error: unknown) => {
-    void logerror(String(error)).catch(() => undefined);
+    logDiagnostic(error);
     try {
       if (session.isReady()) throw error;
       const status = await session.native({
         op: "fail",
-        message: String(error),
+        message: errorMessage(error),
       });
       // Native ready may have committed while its response is still pending
       // and local cancellation has already stopped the startup session.
@@ -59,7 +60,7 @@ if (typeof Neutralino == "undefined") {
     } catch {
       await Neutralino.os.showMessageBox(
         "Yaagl OS",
-        String(error),
+        errorMessage(error),
         "OK",
         "ERROR"
       );
@@ -85,13 +86,12 @@ if (typeof Neutralino == "undefined") {
           await exit(0);
           exitRequested = true;
         } else if (!session.isReady()) {
-          await showFailure(
-            "Cleanup remains guarded. Keep the launcher and logs for review."
-          );
+          await session.native({ op: "cancel" });
         }
       } catch (error) {
         launchOwnership.cancelClose();
-        await showFailure(`Cleanup could not finish: ${String(error)}`);
+        logDiagnostic(error);
+        await showFailure(`Cleanup could not finish: ${errorMessage(error)}`);
       }
     })().finally(() => {
       closing = undefined;
@@ -133,7 +133,7 @@ if (typeof Neutralino == "undefined") {
     },
     prepare: () => prepareBootstrapArtwork(root),
     failure: error => {
-      root.textContent = `Launcher startup failed.\n${String(error)}`;
+      root.textContent = `Launcher startup failed.\n${errorMessage(error)}`;
       root.setAttribute("role", "alert");
       void logerror(String(error));
     },

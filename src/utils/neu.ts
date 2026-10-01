@@ -1,6 +1,7 @@
+import { errorMessage, logDiagnostic, operationError } from "./errors";
 import { launchOwnership } from "../launcher/launch-ownership";
 import { getBootstrapClock } from "../bootstrap-clock";
-import { join } from "path-browserify";
+import { basename, join } from "path-browserify";
 import { build, CommandSegments, rawString } from "./command-builder";
 
 export function resolve(path: string): string {
@@ -13,9 +14,49 @@ export function resolve(path: string): string {
     );
     // await Neutralino.os.showMessageBox("1", command, "OK");
     if (!path.startsWith("/") || path == "/")
-      throw new Error("Assertation failed " + path);
+      throw operationError(
+        `Cannot locate the launcher file: ${path}. The launcher data directory is invalid.`,
+        new Error("Assertation failed " + path)
+      );
   }
   return path;
+}
+
+function commandError(
+  segments: CommandSegments,
+  code: number,
+  command: string,
+  stdout: string,
+  stderr: string
+) {
+  const tool =
+    typeof segments[0] === "string" ? basename(segments[0]) : "launcher helper";
+  const operations: Record<string, string> = {
+    tar: "Archive extraction",
+    unzip: "Archive extraction",
+    curl: "Download",
+    cp: "File copying",
+    mv: "File move",
+    rm: "File removal",
+    rmdir: "Directory removal",
+    mkdir: "Directory creation",
+    chmod: "File permission update",
+    ln: "File link creation",
+    perl: "File preparation or cleanup",
+    wine: "Wine operation",
+    wine64: "Wine operation",
+    wineserver: "Waiting for Wine to finish",
+    osascript: "macOS helper operation",
+    xdelta3: "File patching",
+  };
+  return operationError(
+    `${
+      operations[tool] ?? `Launcher helper “${tool}”`
+    } failed (exit status ${code}). See neutralinojs.log for details.`,
+    new Error(
+      `Command return non-zero code (${code}) \n${command}\nStdOut:\n${stdout}\nStdErr:\n${stderr}`
+    )
+  );
 }
 
 export async function exec(
@@ -31,9 +72,7 @@ export async function exec(
   await log(sudo ? runInSudo(cmd) : cmd);
   const ret = await Neutralino.os.execCommand(sudo ? runInSudo(cmd) : cmd, {});
   if (ret.exitCode != 0) {
-    throw new Error(
-      `Command return non-zero code (${ret.exitCode}) \n${cmd}\nStdOut:\n${ret.stdOut}\nStdErr:\n${ret.stdErr}`
-    );
+    throw commandError(segments, ret.exitCode, cmd, ret.stdOut, ret.stdErr);
   }
   return ret;
 }
@@ -68,11 +107,7 @@ export async function exec2(
               stdOut,
             });
           } else {
-            rej(
-              new Error(
-                `Command return non-zero code (${exit}) \n${cmd}\nStdOut:\n${stdOut}\nStdErr:\n${stdErr}`
-              )
-            );
+            rej(commandError(segments, exit, cmd, stdOut, stdErr));
           }
 
           Neutralino.events.off("spawnedProcess", handler);
@@ -193,11 +228,8 @@ export function restart() {
 }
 
 export async function fatal(error: unknown) {
-  await Neutralino.os.showMessageBox(
-    "Fatal error",
-    `${error instanceof Error ? String(error) : JSON.stringify(error)}`,
-    "OK"
-  );
+  logDiagnostic(error);
+  await Neutralino.os.showMessageBox("Fatal error", errorMessage(error), "OK");
   await shutdown();
   Neutralino.app.exit(-1);
 }
@@ -373,7 +405,10 @@ export function addTerminationHook(fn: (forced: boolean) => Promise<boolean>) {
   const len = hooks.length;
   return () => {
     if (hooks.length !== len) {
-      throw new Error("Unexpected behavior!");
+      throw operationError(
+        "The launcher could not complete shutdown safely because its cleanup steps changed. Keep it open and share neutralinojs.log with the developer.",
+        new Error("Unexpected behavior: termination hooks removed out of order")
+      );
     }
     hooks.pop();
   };

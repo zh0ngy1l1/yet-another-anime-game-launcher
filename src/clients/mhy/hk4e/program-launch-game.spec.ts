@@ -251,6 +251,11 @@ it("rejects invalid enabled settings before resource acquisition or setup", asyn
   await expect(drain(launchGameProgram(request, resources))).rejects.toThrow(
     "Invalid enabled Target FPS"
   );
+  expect(launchOwnership.state()).toMatchObject({
+    held: false,
+    failed: true,
+    detail: "Launch stopped. See the error above.",
+  });
   expect(resources).not.toHaveBeenCalled();
   expect(request.wine.setProps).not.toHaveBeenCalled();
   expect(prepareFpsBridge).not.toHaveBeenCalled();

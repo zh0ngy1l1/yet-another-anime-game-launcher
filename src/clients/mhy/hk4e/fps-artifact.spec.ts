@@ -1,3 +1,4 @@
+import { errorDetails } from "../../../utils/errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { dirname, join } from "path-browserify";
 import { stageFpsArtifact, fpsArtifactIO } from "./fps-artifact";
@@ -430,9 +431,11 @@ describe("FPS artifact native boundaries", () => {
       stdErr: "read error",
       pid: 1,
     });
-    await expect(
-      fpsArtifactIO.sha256(finalPath, manifest.size)
-    ).rejects.toThrow("read error");
+    const error = await fpsArtifactIO
+      .sha256(finalPath, manifest.size)
+      .catch(error => error);
+    expect(String(error)).toContain("File preparation or cleanup failed");
+    expect(errorDetails(error)).toContain("read error");
   });
 
   it.each([

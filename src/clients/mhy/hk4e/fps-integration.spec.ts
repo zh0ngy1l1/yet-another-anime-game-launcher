@@ -456,7 +456,7 @@ describe("transaction admission, queue lifetime and normal close", () => {
       await guarded();
       expect(rig.events).toContain("stop");
       await tick(150);
-      expect(launchOwnership.state().failed).toBe(true);
+      expect(launchOwnership.state().failed).toBe(false);
       await guarded();
       rig.stopped();
       await tick(30);
@@ -526,9 +526,9 @@ describe("transaction admission, queue lifetime and normal close", () => {
       new Error("additional observation"),
     ]);
     expect(error.message).toBe(
-      "Launch finished with errors: Error: primary setup failure; Error: additional observation. Cleanup completed. Earlier cleanup errors: Error: secondary restore failure"
+      "Launch finished with an error: primary setup failure Cleanup completed. See the launch log for details."
     );
-    expect(own.state().detail).toBe(error.message);
+    expect(own.state().error).toBe(error.message);
     expect(own.state().held).toBe(false);
   });
   it("generator early return cannot abandon background preparation or cleanup", async () => {

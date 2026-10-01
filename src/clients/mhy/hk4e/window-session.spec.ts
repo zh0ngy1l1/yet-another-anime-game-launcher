@@ -132,9 +132,13 @@ it("ordinary borderless/fullscreen registry dimensions cannot replace windowed m
 it("partial apply and retry restore the original snapshot without saving again", async () => {
   commandFailure = "apply";
   const session = await createWindowSession(input());
-  await expect(session.prepare()).rejects.toThrow("apply failed");
+  await expect(session.prepare()).rejects.toThrow(
+    "Window settings operation “apply” failed"
+  );
   commandFailure = "restore";
-  await expect(session.finish(false)).rejects.toThrow("restore failed");
+  await expect(session.finish(false)).rejects.toThrow(
+    "Window settings operation “restore” failed"
+  );
   expect(storage.has("hk4e_window_controls_pending")).toBe(true);
   commandFailure = undefined;
   await session.finish(false);
@@ -182,7 +186,9 @@ it("wrong server/executable is rejected before artifact or registry activity", a
 it("save failure discards only an unapplied transaction", async () => {
   commandFailure = "save";
   const session = await createWindowSession(input());
-  await expect(session.prepare()).rejects.toThrow("save failed");
+  await expect(session.prepare()).rejects.toThrow(
+    "Window settings operation “save” failed"
+  );
   expect(
     JSON.parse(storage.get("hk4e_window_controls_pending") ?? "").saved
   ).toBe(false);
@@ -201,7 +207,7 @@ it("startup retains an applied transaction when its original snapshot cannot be 
   ).toBe(true);
   commandFailure = "restore";
   await expect(recoverWindowSession(request.wine)).rejects.toThrow(
-    "restore failed"
+    "Window settings operation “restore” failed"
   );
   expect(storage.has("hk4e_window_controls_pending")).toBe(true);
   expect(calls).not.toContain("discard");

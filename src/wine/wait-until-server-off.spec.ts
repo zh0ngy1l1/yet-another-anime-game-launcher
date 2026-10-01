@@ -1,3 +1,4 @@
+import { errorDetails } from "../utils/errors";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn } from "../utils/neu";
 import { createWine } from "./wine";
@@ -161,7 +162,7 @@ describe("Wine shutdown wait request ownership", () => {
     const wine = await createTestWine();
     const waiting = wine.waitUntilServerOff();
     const rejection = expect(waiting).rejects.toThrow(
-      "Command return non-zero code (143)"
+      "Waiting for Wine to finish failed (exit status 143)"
     );
 
     try {
@@ -173,7 +174,8 @@ describe("Wine shutdown wait request ownership", () => {
         stdErr: "own failure",
       });
       await rejection;
-      await expect(waiting).rejects.toThrow(
+      const error = await waiting.catch(error => error);
+      expect(errorDetails(error)).toContain(
         "StdOut:\nown stdout\nStdErr:\nown failure"
       );
     } finally {

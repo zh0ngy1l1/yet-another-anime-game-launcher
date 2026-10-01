@@ -158,7 +158,6 @@ export function createLaunchFix(
       const message = `Launch Fix ${token}: ${phase} remains pending; close and new launch stay blocked. Evidence: ${
         directory ?? "directory preparation pending"
       }`;
-      problem(message);
       io.event(message);
     }, 30000);
   }

@@ -1,3 +1,4 @@
+import { operationError } from "./errors";
 import { getBootstrapClock } from "../bootstrap-clock";
 export async function waitImageReady(url: string) {
   const image = new Image();
@@ -86,10 +87,14 @@ export function humanFileSize(bytes: number, si = false, dp = 1) {
 }
 
 export function assertValueDefined<V>(
-  value: V
+  value: V,
+  message = "A required launcher setting could not be loaded. See neutralinojs.log for details."
 ): asserts value is NonNullable<V> {
   if (value === null || value === undefined) {
-    throw new Error("Assertation failed: value is either null or undefined.");
+    throw operationError(
+      message,
+      new Error("Assertation failed: value is either null or undefined.")
+    );
   }
 }
 

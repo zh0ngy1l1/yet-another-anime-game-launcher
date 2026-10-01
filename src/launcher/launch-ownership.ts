@@ -1,6 +1,8 @@
 import { createSignal } from "solid-js";
 import { deferred } from "../utils/operation";
 
+export const RUNNING_STATUS = "game is running (DO NOT CLOSE THE LAUNCHER)";
+
 export class LaunchFailure extends Error {
   constructor(
     message: string,
@@ -26,7 +28,11 @@ export function createLaunchOwnership() {
     held: false,
     detail: "",
     failed: false,
+    error: "",
+    warning: "",
+    running: false,
     canRetry: false,
+    retryLabel: "Retry safe cleanup",
   });
   let current:
     | { id: symbol; claimed: boolean; done: ReturnType<typeof deferred<void>> }
@@ -45,7 +51,11 @@ export function createLaunchOwnership() {
       held: true,
       detail: "Preparing launch",
       failed: false,
+      error: "",
+      warning: "",
+      running: false,
       canRetry: false,
+      retryLabel: "Retry safe cleanup",
     });
     return {
       release() {
@@ -57,7 +67,12 @@ export function createLaunchOwnership() {
     if (current !== mine) throw new Error("Stale launch ownership release");
     current = undefined;
     retry = undefined;
-    setState(value => ({ ...value, held: closing, canRetry: false }));
+    setState(value => ({
+      ...value,
+      held: closing,
+      canRetry: false,
+      detail: !value.failed && !value.warning ? "" : value.detail,
+    }));
     mine.done.resolve();
   }
   function claim() {
@@ -70,25 +85,50 @@ export function createLaunchOwnership() {
     mine.claimed = true;
     const update = (detail: string, failed: boolean) => {
       if (current === mine)
-        setState(value => ({
-          ...value,
-          detail,
-          failed: value.failed || failed,
-        }));
+        setState(value =>
+          failed
+            ? { ...value, error: detail, failed: true }
+            : { ...value, detail: value.running ? RUNNING_STATUS : detail }
+        );
     };
     return {
-      succeed: (detail: string) => {
+      succeed: (detail = "") => {
         if (current === mine)
-          setState(value => ({ ...value, detail, failed: false }));
+          setState(value => ({
+            ...value,
+            detail,
+            running: false,
+            error: "",
+            failed: false,
+          }));
+      },
+      running: () => {
+        if (current === mine)
+          setState(value => ({
+            ...value,
+            running: true,
+            detail: RUNNING_STATUS,
+          }));
+      },
+      ended: () => {
+        if (current === mine)
+          setState(value => ({
+            ...value,
+            running: false,
+            detail: "Game has exited. Finishing cleanup…",
+          }));
+      },
+      warning: (warning: string) => {
+        if (current === mine) setState(value => ({ ...value, warning }));
       },
       phase: (detail: string) => update(detail, false),
       problem: (detail: string) => update(detail, true),
       finish: () => finish(mine),
-      async waitForRetry(detail: string) {
+      async waitForRetry(detail: string, retryLabel = "Retry safe cleanup") {
         update(detail, true);
         const waiting = deferred<void>();
         retry = () => waiting.resolve();
-        setState(value => ({ ...value, canRetry: true }));
+        setState(value => ({ ...value, canRetry: true, retryLabel }));
         await waiting.promise;
         retry = undefined;
         setState(value => ({ ...value, canRetry: false }));
@@ -114,7 +154,7 @@ export function createLaunchOwnership() {
         setState(value => ({
           ...value,
           held: false,
-          detail: "Close cancelled",
+          detail: value.failed ? value.detail : "",
         }));
     },
     releaseUnclaimed() {

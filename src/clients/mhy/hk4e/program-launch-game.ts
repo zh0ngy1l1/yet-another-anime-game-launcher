@@ -1,3 +1,4 @@
+import { errorMessage, logDiagnostic } from "../../../utils/errors";
 import { createWindowSession } from "./window-session";
 import { admitGameMode } from "./game-mode";
 import { validateHk4eExecutable } from "./window-state";
@@ -122,7 +123,7 @@ async function* launchGameDisabledProgram(
   async function waitWine() {
     const timer = setTimeout(
       () =>
-        owner.problem(
+        void log(
           `Wine lifetime/cleanup remains pending; close and launch stay blocked. Journal: ${directory}`
         ),
       30000
@@ -236,9 +237,10 @@ cd /d "${wine.toWinePath(gameDir)}"
         errors.push(error);
       }
       secondary.push(...errors);
+      errors.forEach(logDiagnostic);
       await owner.waitForRetry(
-        `Launch cleanup failed; retained ${directory}. ${errors
-          .map(String)
+        `The launcher could not finish restoring settings or files. Closing and another launch are blocked. Address the reported problem, then retry cleanup. ${errors
+          .map(errorMessage)
           .join("; ")}`
       );
     }
@@ -251,9 +253,10 @@ cd /d "${wine.toWinePath(gameDir)}"
       String(error) !== String(primary) &&
       !secondary.some(previous => String(previous) === String(error))
   );
-  if (primary !== undefined || secondary.length || observations.length)
+  secondary.forEach(logDiagnostic);
+  if (primary !== undefined || observations.length)
     throw new LaunchFailure(
-      String(primary ?? observations[0] ?? secondary[0]),
+      errorMessage(primary ?? observations[0]),
       primary,
       secondary,
       observations
@@ -452,10 +455,14 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
       signal.removeEventListener("abort", transaction.cancel);
     }
   } catch (error) {
-    if (!delegated) owner.problem(String(error));
+    if (!delegated) {
+      logDiagnostic(error);
+      owner.problem(errorMessage(error));
+      owner.phase("Launch stopped. See the error above.");
+    }
     throw error instanceof LaunchFailure
       ? error
-      : new LaunchFailure(String(error), error);
+      : new LaunchFailure(errorMessage(error), error);
   } finally {
     if (!delegated) {
       await windowSession?.finish(false);

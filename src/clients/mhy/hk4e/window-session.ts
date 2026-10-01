@@ -1,3 +1,4 @@
+import { operationError } from "../../../utils/errors";
 import { basename, dirname, join } from "path-browserify";
 import type { Config } from "../../../config";
 import type { Wine } from "../../../wine";
@@ -97,7 +98,8 @@ function commands(
       const result = await execution.completion;
       await settle();
       if (!result.confirmed || result.status !== 0 || result.error)
-        throw new Error(
+        throw operationError(
+          `Window settings operation “${operation}” failed. See the launch log for details.`,
           `Window registry ${operation} failed; retained ${directory}: ${JSON.stringify(
             result
           )}`

@@ -441,7 +441,7 @@ it("shows cleanup failures and coalesces repeated close requests", async () => {
   expect(exit).not.toHaveBeenCalled();
   expect(native).toHaveBeenCalledWith({
     op: "fail",
-    message: "Cleanup could not finish: Error: cleanup acknowledgement missing",
+    message: "Cleanup could not finish: cleanup acknowledgement missing",
   });
 });
 
@@ -455,7 +455,7 @@ it("keeps an exit RPC failure visible, and does not repeat a successful exit", a
   await handlers.windowClose?.({ detail: null });
   expect(native).toHaveBeenCalledWith({
     op: "fail",
-    message: "Cleanup could not finish: Error: exit rejected",
+    message: "Cleanup could not finish: exit rejected",
   });
   await handlers.windowClose?.({ detail: null });
   await handlers.windowClose?.({ detail: null });

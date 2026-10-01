@@ -48,7 +48,7 @@ it("retains an unhandled restoration failure without forcing release or an autom
     failed: true,
     canRetry: false,
   });
-  expect(ownership.state().detail).toContain("restore acknowledgement lost");
+  expect(ownership.state().error).toContain("restore acknowledgement lost");
   expect(ownership.beginClose()).toBe(false);
   expect(ownership.reserve()).toBeUndefined();
 });
@@ -72,6 +72,7 @@ it("preserves an initialization program's handled recovery and releases after th
   await running;
   expect(ownership.state().held).toBe(false);
   expect(ownership.state().failed).toBe(false);
+  expect(ownership.state().detail).toBe("");
 });
 
 it("does not begin restoration if normal close already owns the launcher", async () => {

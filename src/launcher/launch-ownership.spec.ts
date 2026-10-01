@@ -138,7 +138,7 @@ it("the actual queue retains failed transaction cleanup and accepts a fresh task
   await queued;
   expect(busy()).toBe(false);
   expect(status()).toBe(
-    "Launch finished with errors: Error: setup failed. Cleanup completed. Earlier cleanup errors: Error: restore denied"
+    "Launch finished with an error: setup failed Cleanup completed. See the launch log for details."
   );
   expect(launchOwnership.state().held).toBe(false);
   let ran = false;
@@ -186,4 +186,78 @@ it("preserves separate observation and cleanup history when wrapping a launch fa
     new Error("game observation delayed"),
     new Error("Wine observation delayed"),
   ]);
+});
+
+it("keeps progress independent from errors, pins confirmed running status, and clears stale errors on the next launch", () => {
+  const own = createLaunchOwnership(),
+    owner = own.claim();
+  owner.phase("Preparing game…");
+  expect(own.state()).toMatchObject({ failed: false, error: "" });
+  owner.problem("A genuine preparation failure");
+  owner.phase("Restoring files");
+  expect(own.state().error).toBe("A genuine preparation failure");
+  expect(own.state().detail).toBe("Restoring files");
+  owner.finish();
+  const next = own.claim();
+  expect(own.state()).toMatchObject({ failed: false, error: "", warning: "" });
+  next.running();
+  next.phase("FPS discovery");
+  expect(own.state().detail).toBe(
+    "game is running (DO NOT CLOSE THE LAUNCHER)"
+  );
+  expect(own.state().error).toBe("");
+  next.ended();
+  next.succeed();
+  next.finish();
+  expect(own.state()).toMatchObject({ held: false, failed: false, error: "" });
+});
+
+it("clears only the completing operation's status and preserves newer progress and warnings", () => {
+  const own = createLaunchOwnership(),
+    old = own.claim();
+  old.succeed();
+  old.finish();
+  expect(own.state().detail).toBe("");
+  const newer = own.claim();
+  newer.phase("Preparing game…");
+  newer.warning("An optional feature is unavailable");
+  old.succeed();
+  expect(own.state()).toMatchObject({
+    detail: "Preparing game…",
+    warning: "An optional feature is unavailable",
+  });
+  newer.succeed();
+  newer.finish();
+  expect(own.state()).toMatchObject({
+    detail: "",
+    warning: "An optional feature is unavailable",
+    failed: false,
+  });
+});
+
+it("labels observation and cleanup retries without changing either retry gate", async () => {
+  const own = createLaunchOwnership(),
+    owner = own.claim();
+  const observation = owner.waitForRetry(
+    "Cannot confirm game exit",
+    "Check game status again"
+  );
+  expect(own.state()).toMatchObject({
+    canRetry: true,
+    retryLabel: "Check game status again",
+    held: true,
+  });
+  expect(own.beginClose()).toBe(false);
+  own.retry();
+  await observation;
+  const cleanup = owner.waitForRetry("Could not restore settings");
+  expect(own.state()).toMatchObject({
+    canRetry: true,
+    retryLabel: "Retry safe cleanup",
+    held: true,
+  });
+  own.retry();
+  await cleanup;
+  owner.succeed();
+  owner.finish();
 });

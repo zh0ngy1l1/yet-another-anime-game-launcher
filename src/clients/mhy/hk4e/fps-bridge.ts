@@ -1,3 +1,4 @@
+import { operationError } from "../../../utils/errors";
 import { join } from "path-browserify";
 import { exec, readFile, resolve, writeFile } from "../../../utils/neu";
 import { deferred, delay, operationClock } from "../../../utils/operation";
@@ -233,6 +234,9 @@ export async function prepareFpsBridge(
     gameDxmtConfig: string;
     log: string;
     diagnostic: (text: string) => void;
+    running?: () => void;
+    ended?: () => void;
+    gameFailure?: (text: string, exitCodeKnown: boolean) => void;
     event?: (text: string) => void;
   },
   io = bridgeIO
@@ -276,7 +280,8 @@ export async function prepareFpsBridge(
       if (result.confirmed && result.cleanupError && running.retryCleanup)
         result = await running.retryCleanup();
       if (!result.confirmed || result.cleanupError)
-        throw new Error(
+        throw operationError(
+          "The launcher cannot confirm that the FPS settings helper has finished. Keep the launcher open. See the launch log for details.",
           `FPS registry process/mailbox completion unconfirmed: ${JSON.stringify(
             result
           )}; retained ${directory}`
@@ -362,6 +367,14 @@ export async function prepareFpsBridge(
           )
             input.event?.(`FPS request ${token}: ${JSON.stringify(value)}`);
           last = value;
+          if (
+            launchIssued &&
+            value.launched &&
+            value.pid &&
+            !value.primaryExited
+          )
+            input.running?.();
+          if (value.primaryExited) input.ended?.();
           if (value.diagnosticError && !diagnosticFailureReported) {
             diagnosticFailureReported = true;
             input.diagnostic(
@@ -370,20 +383,24 @@ export async function prepareFpsBridge(
           }
           if (value.primaryExited && !gameExitReported) {
             gameExitReported = true;
-            if (!value.exitCodeKnown || value.exitCode !== 0)
-              input.diagnostic(
-                `FPS request ${token}: game PID ${value.pid} exited ${
-                  value.exitCodeKnown
-                    ? `with code 0x${value.exitCode
-                        .toString(16)
-                        .padStart(8, "0")}`
-                    : `with unavailable exit status (error ${value.exitCodeError})`
-                }; worker generation ${
-                  value.generation
-                }. Continuing job/worker cleanup; Wine output: ${
-                  input.log
-                }.wine.log; bridge output: ${input.log}.bridge.log`
-              );
+            if (!value.exitCodeKnown || value.exitCode !== 0) {
+              const text = `FPS request ${token}: game PID ${
+                value.pid
+              } exited ${
+                value.exitCodeKnown
+                  ? `with code 0x${value.exitCode
+                      .toString(16)
+                      .padStart(8, "0")}`
+                  : `with unavailable exit status (error ${value.exitCodeError})`
+              }; worker generation ${
+                value.generation
+              }. Continuing job/worker cleanup; Wine output: ${
+                input.log
+              }.wine.log; bridge output: ${input.log}.bridge.log`;
+              if (input.gameFailure)
+                input.gameFailure(text, value.exitCodeKnown === 1);
+              else input.diagnostic(text);
+            }
           }
           return value;
         }
@@ -702,6 +719,7 @@ export async function prepareFpsBridge(
         await io.pause();
       }
     },
+    gameRunning: () => !!(last?.launched && last.pid && !last.primaryExited),
     normalGameExit: () =>
       last?.primaryExited === 1 &&
       last.exitCodeKnown === 1 &&
@@ -744,7 +762,12 @@ export async function prepareFpsBridge(
         result.cleanupError
       )
         throw Object.assign(
-          new Error(
+          operationError(
+            `Could not ${
+              operation === "save"
+                ? "save the original"
+                : "restore the original"
+            } FPS display settings. See the launch log for details.`,
             `FPS registry ${operation} failed: ${JSON.stringify(
               result
             )}; retained ${directory}`

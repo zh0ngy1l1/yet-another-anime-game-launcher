@@ -52,6 +52,35 @@ patch = '''    // YAAGL: normal Dock/menu quit must use the same asynchronous JS
 if text.count(anchor) != 1:
     raise SystemExit("Native quit patch context changed")
 text = text.replace(anchor, anchor + patch)
+# Native key equivalents must be routed by AppKit to the focused WebView
+# responder. No JavaScript key interception or clipboard permissions required.
+menu_anchor = "    // Delegate\n"
+menu_patch = '''    NSMenu *mainMenu = [[NSMenu alloc] initWithTitle:@""];
+    NSMenuItem *applicationItem = [[NSMenuItem alloc] initWithTitle:@"Yaagl" action:nil keyEquivalent:@""];
+    NSMenu *applicationMenu = [[NSMenu alloc] initWithTitle:@"Yaagl"];
+    [applicationMenu addItemWithTitle:@"Quit Yaagl" action:@selector(terminate:) keyEquivalent:@"q"];
+    [applicationItem setSubmenu:applicationMenu];
+    [mainMenu addItem:applicationItem];
+    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit" action:nil keyEquivalent:@""];
+    NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+    [editMenu addItemWithTitle:@"Undo" action:@selector(undo:) keyEquivalent:@"z"];
+    NSMenuItem *redo = [editMenu addItemWithTitle:@"Redo" action:@selector(redo:) keyEquivalent:@"z"];
+    [redo setKeyEquivalentModifierMask:(NSEventModifierFlagCommand | NSEventModifierFlagShift)];
+    [editMenu addItem:[NSMenuItem separatorItem]];
+    [editMenu addItemWithTitle:@"Cut" action:@selector(cut:) keyEquivalent:@"x"];
+    [editMenu addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+    [editMenu addItemWithTitle:@"Paste" action:@selector(paste:) keyEquivalent:@"v"];
+    [editMenu addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+    [editItem setSubmenu:editMenu];
+    [mainMenu addItem:editItem];
+    [(NSApplication *)app setMainMenu:mainMenu];
+
+'''
+if text.count(menu_anchor) != 1:
+    raise SystemExit("Native Edit menu patch context changed")
+text = text.replace(menu_anchor, menu_patch + menu_anchor)
+text = '#import <Cocoa/Cocoa.h>\n' + text
+
 # Explicit app.exit is already approved by JS. Avoid re-entering the veto.
 termination = '''    ((void (*)(id, SEL, id))objc_msgSend)("NSApp"_cls, "terminate:"_sel,
                                           nullptr);
@@ -72,6 +101,14 @@ webview.write_text(text.replace(initial_order, ""))
 # must enqueue the existing close rather than invoking AppKit directly.
 window_source = source / "api/window/window.cpp"
 window_text = window_source.read_text()
+# Upstream setIcon also replaces the app menu with Quit alone. Icon changes
+# must leave the standard responder-chain Edit menu installed above intact.
+menu_start = window_text.index("    @autoreleasepool {", window_text.index("void setIcon")) if "void setIcon" in window_text else window_text.index("    @autoreleasepool {")
+menu_end = window_text.index("    #elif defined(_WIN32)", menu_start)
+icon_menu = window_text[menu_start:menu_end]
+if icon_menu.count("setMainMenu") != 1 or "NSMenu *menu" not in icon_menu:
+    raise SystemExit("Native icon menu patch context changed")
+window_text = window_text[:menu_start] + window_text[menu_end:]
 close = "        nativeWindow->terminate(exitCode);\n        delete nativeWindow;"
 if window_text.count(close) != 1:
     raise SystemExit("Native main-thread exit patch context changed")

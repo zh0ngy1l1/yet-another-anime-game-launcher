@@ -40,6 +40,7 @@ const sourceNames = [
   "src/sophon.ts",
   "src/utils/helper.ts",
   "src/utils/neu.ts",
+  "src/utils/errors.ts",
   "src/launcher/launch-ownership.ts",
   "native/bootstrap/bootstrap.cpp",
   "scripts/build-hk4e-native.py",
@@ -428,6 +429,12 @@ async function run() {
         assert.equal(exists("ready-result"), false);
         assert.equal(read("close-veto").forced, false);
         assert.equal(read("wait-released").status.phase, "cancelled");
+        assert.equal(
+          exists("failed"),
+          false,
+          "Intentional cancellation must not report startup failure"
+        );
+        assert.notEqual(read("close-veto").role, "alert");
         screenshot("guarded-cancel");
         fs.writeFileSync(
           path.join(dir, "allow-close"),

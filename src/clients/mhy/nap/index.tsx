@@ -1,3 +1,4 @@
+import { operationError } from "../../../utils/errors";
 import { batch, createSignal } from "solid-js";
 import { CommonUpdateProgram } from "@common-update-ui";
 import {
@@ -237,12 +238,18 @@ export async function createNAPChannelClient({
       )
         .filter(x => x != null)
         .map(x => {
-          assertValueDefined(x);
+          assertValueDefined(
+            x,
+            "The game update information is missing a required package. See neutralinojs.log for details."
+          );
           return x;
         });
       if (updateTarget.game_pkgs.length != 1) {
-        throw new Error(
-          "assertation failed (game_pkgs.length!= 1)! please file an issue."
+        throw operationError(
+          `This game update uses an unsupported package layout (${updateTarget.game_pkgs.length} packages). Share neutralinojs.log with the developer.`,
+          new Error(
+            "assertation failed (game_pkgs.length!= 1)! please file an issue."
+          )
         );
       }
       yield* predownloadGameProgram({
@@ -287,12 +294,18 @@ export async function createNAPChannelClient({
       )
         .filter(x => x != null)
         .map(x => {
-          assertValueDefined(x);
+          assertValueDefined(
+            x,
+            "The game update information is missing a required package. See neutralinojs.log for details."
+          );
           return x;
         });
       if (updateTarget.game_pkgs.length != 1) {
-        throw new Error(
-          "assertation failed (game_pkgs.length!= 1)! please file an issue."
+        throw operationError(
+          `This game update uses an unsupported package layout (${updateTarget.game_pkgs.length} packages). Share neutralinojs.log with the developer.`,
+          new Error(
+            "assertation failed (game_pkgs.length!= 1)! please file an issue."
+          )
         );
       }
       yield* updateGameProgram({

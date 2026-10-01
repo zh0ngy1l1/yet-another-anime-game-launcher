@@ -1,3 +1,4 @@
+import { operationError } from "../../../utils/errors";
 import type {
   CommonProgressUICommand,
   CommonUpdateProgram,
@@ -38,6 +39,7 @@ export function launchFpsGame(
     companion: {} as Parameters<typeof createFpsCompanion>[1],
   }
 ) {
+  let gameFailure: unknown;
   let bridge: Awaited<ReturnType<typeof prepareFpsBridge>> | undefined;
   let preparationRecovery: (() => Promise<void>) | undefined;
   function preparedBridge() {
@@ -72,7 +74,7 @@ export function launchFpsGame(
   function diagnostic(text: string) {
     if (!observationErrors.some(error => String(error) === `Error: ${text}`))
       observationErrors.push(new Error(text));
-    owner.problem(text);
+
     void log(text).catch(() => undefined);
   }
   async function waitWine(phase: (text: string) => void) {
@@ -95,7 +97,8 @@ export function launchFpsGame(
         const check = () => {
           if (signal.aborted) throw new Error("Launch preparation cancelled");
         };
-        owner.phase("Acquiring and verifying the request-private FPS bridge");
+        owner.phase("Preparing game…");
+        void log("Acquiring and verifying the request-private FPS bridge");
         await mkdirp(resolve("./logs"));
         try {
           bridge = await dependencies.bridge({
@@ -106,6 +109,21 @@ export function launchFpsGame(
             gameDxmtConfig: admitted.plan.gameDxmtConfig,
             log: resolve(`./logs/game_${Date.now()}.log`),
             diagnostic,
+            running: owner.running,
+            ended: owner.ended,
+            gameFailure: (text, exitCodeKnown) => {
+              if (exitCodeKnown) {
+                const message =
+                  "The game exited unexpectedly. See the launch log for details.";
+                gameFailure = operationError(message, new Error(text));
+                owner.problem(message);
+              } else {
+                diagnostic(text);
+                owner.warning(
+                  "The game has exited, but the launcher could not determine its exit status. See the launch log for details."
+                );
+              }
+            },
             event: text => {
               void log(text).catch(() => undefined);
             },
@@ -140,9 +158,11 @@ export function launchFpsGame(
           );
         // A shared prefix may have previous users. Waiting here is a preparation
         // prerequisite, not attribution of the new game. No helper is alive yet.
-        await waitWine(owner.phase);
+        await waitWine(text => {
+          void log(text).catch(() => undefined);
+        });
         check();
-        owner.phase(
+        void log(
           "Snapshotting original registry values and preparing game files"
         );
         await bridge.registry(
@@ -173,6 +193,8 @@ export function launchFpsGame(
         await preparedBridge().launch();
       },
       gameExit: () => preparedBridge().waitForGameExit(),
+      gameRunning: () => bridge?.gameRunning?.() ?? false,
+      gameFailure: () => gameFailure,
       companion: () =>
         createFpsCompanion(
           {
