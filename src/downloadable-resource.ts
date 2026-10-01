@@ -1,4 +1,3 @@
-import { eq } from "semver";
 import { Aria2 } from "@aria2";
 import { CommonUpdateProgram } from "@common-update-ui";
 import {
@@ -7,6 +6,7 @@ import {
   humanFileSize,
   setKey,
   getKeyOrDefault,
+  fileOrDirExists,
   doStreamUnzip,
   forceMove,
   readBinary,
@@ -18,16 +18,84 @@ import {
 } from "@utils";
 import { Wine } from "@wine";
 import { join } from "path-browserify";
+
+const CURRENT_MVK_VERSION = "1.2.2";
+
+export async function* checkAndDownloadMoltenVK(
+  aria2: Aria2
+): CommonUpdateProgram {
+  if (
+    (await fileOrDirExists("./moltenvk/libMoltenVK.dylib")) &&
+    CURRENT_MVK_VERSION ===
+      (await getKeyOrDefault("installed_moltenvk_version", "0.0.0"))
+  ) {
+    return;
+  }
+
+  await mkdirp("./moltenvk");
+  yield ["setStateText", "DOWNLOADING_ENVIRONMENT"];
+  for await (const progress of aria2.doStreamingDownload({
+    uri: "https://github.com/3Shain/winecx/releases/download/gi-wine-1.0/libMoltenVK.dylib",
+    absDst: resolve("./moltenvk/libMoltenVK.dylib"),
+  })) {
+    yield [
+      "setProgress",
+      Number((progress.completedLength * BigInt(100)) / progress.totalLength),
+    ];
+    yield [
+      "setStateText",
+      "DOWNLOADING_ENVIRONMENT_SPEED",
+      `${humanFileSize(Number(progress.downloadSpeed))}`,
+    ];
+  }
+  setKey("installed_moltenvk_version", CURRENT_MVK_VERSION);
+}
+
+export const DXVK_FILES = [
+  "d3d9.dll",
+  "d3d10core.dll",
+  "d3d11.dll",
+  "dxgi.dll",
+];
+const CURRENT_DXVK_VERSION = "1.10.4-alpha.20230402"; // there is no 1.10.4! I have to make up something greater than 1.10.3
 const CURRENT_JADEITE_VERSION = "4.1.0";
+
+export async function* checkAndDownloadDXVK(aria2: Aria2): CommonUpdateProgram {
+  if (
+    CURRENT_DXVK_VERSION ===
+    (await getKeyOrDefault("installed_dxvk_version", "0.0.0"))
+  ) {
+    return;
+  }
+
+  await mkdirp("./dxvk");
+  yield ["setStateText", "DOWNLOADING_ENVIRONMENT"];
+  for (const file of DXVK_FILES) {
+    for await (const progress of aria2.doStreamingDownload({
+      uri: `https://github.com/3Shain/winecx/releases/download/gi-wine-1.0/${file}`,
+      absDst: resolve(`./dxvk/${file}`),
+    })) {
+      yield [
+        "setProgress",
+        Number((progress.completedLength * BigInt(100)) / progress.totalLength),
+      ];
+      yield [
+        "setStateText",
+        "DOWNLOADING_ENVIRONMENT_SPEED",
+        `${humanFileSize(Number(progress.downloadSpeed))}`,
+      ];
+    }
+  }
+
+  setKey("installed_dxvk_version", CURRENT_DXVK_VERSION);
+}
 
 export async function* checkAndDownloadJadeite(
   aria2: Aria2
 ): CommonUpdateProgram {
   if (
-    eq(
-      CURRENT_JADEITE_VERSION,
-      await getKeyOrDefault("installed_jadeite_version", "0.0.0")
-    )
+    CURRENT_JADEITE_VERSION ===
+    (await getKeyOrDefault("installed_jadeite_version", "0.0.0"))
   ) {
     return;
   }
@@ -63,14 +131,12 @@ export async function* checkAndDownloadJadeite(
 
 export const DXMT_FILES = ["d3d10core.dll", "d3d11.dll", "dxgi.dll"];
 
-const CURRENT_DXMT_VERSION = "0.80.0";
+const CURRENT_DXMT_VERSION = "654f547";
 
 export async function* checkAndDownloadDXMT(aria2: Aria2): CommonUpdateProgram {
   if (
-    eq(
-      CURRENT_DXMT_VERSION,
-      await getKeyOrDefault("installed_dxmt_version", "0.0.0")
-    )
+    CURRENT_DXMT_VERSION ===
+    (await getKeyOrDefault("installed_dxmt_version", "0.0.0"))
   ) {
     return;
   }
@@ -78,9 +144,9 @@ export async function* checkAndDownloadDXMT(aria2: Aria2): CommonUpdateProgram {
   await rmrf_dangerously(resolve(`./dxmt`));
   await mkdirp("./dxmt");
   yield ["setStateText", "DOWNLOADING_ENVIRONMENT"];
-  const archiveName = "dxmt-v0.80-builtin.tar.gz";
+  const archiveName = "dxmt-654f547ffab4e0c395ee368aad52bb4586b04576.zip";
   for await (const progress of aria2.doStreamingDownload({
-    uri: `https://github.com/3Shain/dxmt/releases/download/v0.80/${archiveName}`,
+    uri: `https://github.com/yaagl/anime-game-wine/releases/download/dxmt-654f547/${archiveName}`,
     absDst: resolve(`./dxmt/${archiveName}`),
   })) {
     yield [
@@ -96,27 +162,44 @@ export async function* checkAndDownloadDXMT(aria2: Aria2): CommonUpdateProgram {
 
   yield ["setStateText", "EXTRACT_ENVIRONMENT"];
   yield ["setUndeterminedProgress"];
+
+  for await (const [dec, total] of doStreamUnzip(
+    resolve(`./dxmt/${archiveName}`),
+    resolve(`./dxmt`)
+  )) {
+    yield ["setProgress", (dec / total) * 100];
+  }
+
+  const tarName = "dxmt-654f547ffab4e0c395ee368aad52bb4586b04576.tar.gz";
+
   await exec([
     "tar",
     "-xvf",
-    resolve(`./dxmt/${archiveName}`),
+    resolve(`./dxmt/${tarName}`),
     "-C",
     resolve("./dxmt"),
   ]);
 
+  const extractedFolder = "654f547ffab4e0c395ee368aad52bb4586b04576";
+
   await exec([
     "sh",
     "-c",
-    `mv "${resolve("./dxmt/v0.80/x86_64-windows/")}"* "${resolve("./dxmt/")}"`,
+    `mv "${resolve(`./dxmt/${extractedFolder}/x86_64-windows/`)}"* "${resolve(
+      "./dxmt/"
+    )}"`,
   ]);
   await exec([
     "sh",
     "-c",
-    `mv "${resolve("./dxmt/v0.80/x86_64-unix/")}"* "${resolve("./dxmt/")}"`,
+    `mv "${resolve(`./dxmt/${extractedFolder}/x86_64-unix/`)}"* "${resolve(
+      "./dxmt/"
+    )}"`,
   ]);
 
-  await rmrf_dangerously(resolve(`./dxmt/v0.80`));
+  await rmrf_dangerously(resolve(`./dxmt/${extractedFolder}`));
   await removeFile(resolve(`./dxmt/${archiveName}`));
+  await removeFile(resolve(`./dxmt/${tarName}`));
 
   setKey("installed_dxmt_version", CURRENT_DXMT_VERSION);
 }
@@ -132,10 +215,8 @@ export async function* checkAndDownloadReshade(
   const reshaderDir = resolve("./reshade");
 
   if (
-    eq(
-      CURRENT_RESHADE_VERSION,
-      await getKeyOrDefault("installed_reshade", "0.0.0")
-    )
+    CURRENT_RESHADE_VERSION ===
+    (await getKeyOrDefault("installed_reshade", "0.0.0"))
   ) {
     return;
   }
