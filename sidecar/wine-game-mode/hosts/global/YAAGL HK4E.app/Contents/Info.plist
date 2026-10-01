@@ -13,9 +13,11 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>YAAGL HK4E</string>
+	<string>Genshin Impact</string>
 	<key>CFBundleDisplayName</key>
-	<string>YAAGL HK4E</string>
+	<string>Genshin Impact</string>
+	<key>CFBundleIconFile</key>
+	<string>GameIcon.icns</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

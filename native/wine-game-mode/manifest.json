@@ -12,54 +12,91 @@
   "ntdll": {
     "plain": {
       "path": "ntdll.so",
-      "sha256": "2a413dc54a28f35008aea06cbf5b5bd06885a1924978dd7212b35c3f2d806d77",
+      "sha256": "5c14399a38dace1e65c7cd8ec4b4b8eb8cd89541f6dd4507faf278ef5dcf8aa2",
       "size": 616560
     },
     "r2": {
       "path": "ntdll-r2.so",
-      "sha256": "9ffbd02c9f108718b9748a76988fe083ad785307fd4912432c10ea06814dbd17",
+      "sha256": "db2a82a355acbc3fd20ce69a6ae15b58aea19613881dd02e1e82b8ec69318e9a",
       "size": 616576
     }
+  },
+  "hosts": {
+    "GenshinImpact.exe": "hosts/global/YAAGL HK4E.app",
+    "YuanShen.exe": "hosts/cn/YAAGL HK4E.app"
   },
   "sourceFiles": {
     "native/wine-game-mode/loader.c": "f84c5ace53c95de48a2329db7a0238b4533d5536845172c41055007843cf3c04",
     "native/wine-game-mode/main.h": "ed0a9f8950a71d30ff70b1e0bf1d6cc2b32ab267b77833ebe4843e8eaaebe1bf",
     "native/wine-game-mode/routing.h": "9765eda57b8ba150d64122c3d35815ef389e4b087f69ca46d535fc8fc5aac9e3",
-    "native/wine-game-mode/Info.plist": "d0ea6195f181e7bf1472bd9b3684288aad8e80ec7092c46404b7baab8f9f4218",
+    "native/wine-game-mode/Info.plist": "3d0cc97bfa1d3335971ab477425fe4a3b1c5b88e28566636a9af104944dd68a6",
+    "native/wine-game-mode/Info-cn.plist": "3e1f5e78a68ca84c6eea94cb034078cff29fdf3e581290e898d3123ac5c8823a",
+    "native/wine-game-mode/genshin.ico": "1e94e4cc67e39a844bc26b57e103d5f8767b175fc5e7fd3930165d6559768709",
+    "native/wine-game-mode/icon-source.json": "e0d23ea319d20e831495547af25a78d084e01665722b6ec21c22cd998668f058",
     "native/wine-game-mode/resolved-image.patch": "a26134ea959db8679278df0a0c3ac1355961f4c02341c3aaeef56384d75e444f",
     "native/wine-r2/0001-ntdll-use-current-protection-for-rosetta-toggle.patch": "88dd45f99c6438db828688239286192b1405c90f22d03ef5c54b62bb22c52458",
     "native/wine-fullscreen/prepare-sources.py": "2e1166adedfbab690549827fd014e9fc6b57cc29ee983c14f2a5ce36e33d1917",
     "native/wine-fullscreen/configure-engine.sh": "d15061465d0ad58b2d000cc1eb659b3c1c62bc5d96e677777f0b840edd29c309",
-    "scripts/build-game-mode.py": "69570f5b9c24225e0ac29ccf11325720b9d4f3374da0e601d048c7971c711f70"
+    "scripts/build-game-mode.py": "55c8b69b6a879c496d905d5959fcb0ccfb43186f979480a1aaafe87c5331df6f"
   },
   "files": [
     {
-      "path": "YAAGL HK4E.app/Contents/Info.plist",
-      "sha256": "d0ea6195f181e7bf1472bd9b3684288aad8e80ec7092c46404b7baab8f9f4218",
-      "size": 1069,
+      "path": "hosts/cn/YAAGL HK4E.app/Contents/Info.plist",
+      "sha256": "3e1f5e78a68ca84c6eea94cb034078cff29fdf3e581290e898d3123ac5c8823a",
+      "size": 1122,
       "mode": 420
     },
     {
-      "path": "YAAGL HK4E.app/Contents/MacOS/wine",
-      "sha256": "ee51c7affab7da180013d8f88e2475823bffba605d8eff13262b7830b2930c94",
+      "path": "hosts/cn/YAAGL HK4E.app/Contents/MacOS/wine",
+      "sha256": "13d18771d093b75a823783c08e9658862bc25551485cc77ff206e3fa873afbf8",
       "size": 33216,
       "mode": 493
     },
     {
-      "path": "YAAGL HK4E.app/Contents/_CodeSignature/CodeResources",
-      "sha256": "6686de10a28a2fe11b36cbb86dcbacc827cfc4ea116b4dabf1845e5aee629e9b",
-      "size": 2200,
+      "path": "hosts/cn/YAAGL HK4E.app/Contents/Resources/GameIcon.icns",
+      "sha256": "5f48289f02ecf1ff88a8a921389537324d7415fb1a7b38cbeb3bf4cadd0b0477",
+      "size": 229108,
+      "mode": 420
+    },
+    {
+      "path": "hosts/cn/YAAGL HK4E.app/Contents/_CodeSignature/CodeResources",
+      "sha256": "ddd47cf4960a078fecdd4073cc8410db46d7dcd249906d18f57a3ed2b4ad7a0c",
+      "size": 2448,
+      "mode": 420
+    },
+    {
+      "path": "hosts/global/YAAGL HK4E.app/Contents/Info.plist",
+      "sha256": "3d0cc97bfa1d3335971ab477425fe4a3b1c5b88e28566636a9af104944dd68a6",
+      "size": 1138,
+      "mode": 420
+    },
+    {
+      "path": "hosts/global/YAAGL HK4E.app/Contents/MacOS/wine",
+      "sha256": "829608ab8b65ea986327cd3e2fe061d9a9352b044a57e9849ead839e65841e8a",
+      "size": 33216,
+      "mode": 493
+    },
+    {
+      "path": "hosts/global/YAAGL HK4E.app/Contents/Resources/GameIcon.icns",
+      "sha256": "5f48289f02ecf1ff88a8a921389537324d7415fb1a7b38cbeb3bf4cadd0b0477",
+      "size": 229108,
+      "mode": 420
+    },
+    {
+      "path": "hosts/global/YAAGL HK4E.app/Contents/_CodeSignature/CodeResources",
+      "sha256": "ddd47cf4960a078fecdd4073cc8410db46d7dcd249906d18f57a3ed2b4ad7a0c",
+      "size": 2448,
       "mode": 420
     },
     {
       "path": "ntdll-r2.so",
-      "sha256": "9ffbd02c9f108718b9748a76988fe083ad785307fd4912432c10ea06814dbd17",
+      "sha256": "db2a82a355acbc3fd20ce69a6ae15b58aea19613881dd02e1e82b8ec69318e9a",
       "size": 616576,
       "mode": 493
     },
     {
       "path": "ntdll.so",
-      "sha256": "2a413dc54a28f35008aea06cbf5b5bd06885a1924978dd7212b35c3f2d806d77",
+      "sha256": "5c14399a38dace1e65c7cd8ec4b4b8eb8cd89541f6dd4507faf278ef5dcf8aa2",
       "size": 616560,
       "mode": 493
     },

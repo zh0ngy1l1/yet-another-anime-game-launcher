@@ -1,0 +1,11 @@
+{
+  "publisher": "HoYoverse / miHoYo",
+  "purpose": "Official Genshin Impact desktop shortcut artwork, used only to identify the game host. Artwork remains the property of its publisher; not covered by the loader LGPL license.",
+  "retrieved": "2026-10-01",
+  "metadataUrl": "https://sg-hyp-api.hoyoverse.com/hyp/hyp-connect/api/getGames?launcher_id=VYTpXlbWo8&language=en-us",
+  "gameBiz": "hk4e_global",
+  "sourceUrl": "https://fastcdn.hoyoverse.com/static-resource-v2/2026/09/14/76b5976b82c35c33f25245aff00d2f19_1157367121378934713.ico",
+  "publisherMd5": "76b5976b82c35c33f25245aff00d2f19",
+  "sha256": "1e94e4cc67e39a844bc26b57e103d5f8767b175fc5e7fd3930165d6559768709",
+  "conversion": "Use the original 256px PNG representation; downsample with macOS sips and package using iconutil. No runtime download or game resource mutation."
+}

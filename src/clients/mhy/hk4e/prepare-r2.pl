@@ -64,7 +64,7 @@ my $apply_r2 = !exists($m->{applyR2}) || $m->{applyR2};
 my $game_mode = $m->{gameMode};
 my $output = $game_mode ? $game_mode->{ntdll}{$apply_r2 ? 'r2' : 'plain'}{sha256} :
     $apply_r2 ? $m->{outputSha256} : $input;
-my ($game_target, $game_prefix, @game_stat);
+my ($game_target, $game_prefix, $game_host, @game_stat);
 if ($game_mode) {
     die "Game Mode requires fullscreen/compatible manifest" unless $m->{fullscreen} && $game_mode->{schema} == 1 &&
         $game_mode->{bundleIdentifier} eq 'com.zh0ngy1l1.yaagl.hk4e-game';
@@ -75,8 +75,6 @@ if ($game_mode) {
         die "Game Mode bundled asset mismatch: $a->{path}" unless
             hash_file("$m->{gameModeAssets}/$a->{path}") eq $a->{sha256};
     }
-    system('/usr/bin/codesign', '--verify', '--strict', "$m->{gameModeAssets}/YAAGL HK4E.app") == 0
-        or die "Game Mode host signature invalid";
     for my $path ($m->{gameModeExecutable}, $m->{gameModePrefix}) {
         die "Game Mode requires absolute paths without control characters" unless defined($path) &&
             $path =~ m{^/} && $path !~ /[\x00-\x1f\x7f]/;
@@ -87,6 +85,13 @@ if ($game_mode) {
         -f $game_target && -d $game_prefix &&
         basename($game_target) =~ /^(?:GenshinImpact|YuanShen)\.exe$/;
     @game_stat = stat($game_target);
+    # Select sealed metadata by the admitted executable, including universal
+    # packages. Both variants retain the fixed runtime path and bundle identity.
+    $game_host = $game_mode->{hosts}{basename($game_target)};
+    die "Invalid regional Game Mode host" unless defined($game_host) &&
+        $game_host =~ m{^hosts/(?:global|cn)/YAAGL HK4E\.app$};
+    system('/usr/bin/codesign', '--verify', '--strict', "$m->{gameModeAssets}/$game_host") == 0
+        or die "Game Mode host signature invalid";
 }
 if ($m->{fullscreen}) {
     die "fullscreen architecture/manifest" unless $m->{fullscreen}{schema} == 1 &&
@@ -135,7 +140,12 @@ my $ok = eval {
         $copied->{$rel}[2] = $asset->{size};
         for my $a (@{$game_mode->{files}}) {
             next if $a->{path} eq 'ntdll.so' || $a->{path} eq 'ntdll-r2.so';
-            my $p = "/lib/wine/x86_64-unix/$a->{path}";
+            my $path = $a->{path};
+            if ($path =~ m{^hosts/}) {
+                next unless index($path, "$game_host/") == 0;
+                $path = 'YAAGL HK4E.app/' . substr($path, length($game_host) + 1);
+            }
+            my $p = "/lib/wine/x86_64-unix/$path";
             for my $dir (make_path(dirname($copy . $p))) {
                 $copied->{substr($dir, length($copy))} = ['directory', (stat($dir))[2] & 07777];
             }

@@ -61,8 +61,10 @@ def macho(path):
 assert macho(assets / 'ntdll.so')[2] != macho(assets / 'ntdll-r2.so')[2], \
     'R2 has identical machine code to plain ntdll; rebuild the patched virtual.o'
 
-app = assets / 'YAAGL HK4E.app'
-for relative in ['wine', 'ntdll.so', 'ntdll-r2.so', 'YAAGL HK4E.app/Contents/MacOS/wine']:
+assert manifest['hosts'] == {'GenshinImpact.exe': 'hosts/global/YAAGL HK4E.app',
+                             'YuanShen.exe': 'hosts/cn/YAAGL HK4E.app'}
+hosts = {path + '/Contents/MacOS/wine': executable for executable, path in manifest['hosts'].items()}
+for relative in ['wine', 'ntdll.so', 'ntdll-r2.so', *hosts]:
     p = assets / relative
     subprocess.run(['codesign', '--verify', '--strict', str(p)], check=True)
     assert subprocess.check_output(['lipo', '-archs', str(p)], text=True).strip() == 'x86_64'
@@ -80,11 +82,21 @@ for relative in ['wine', 'ntdll.so', 'ntdll-r2.so', 'YAAGL HK4E.app/Contents/Mac
         assert segments['WINE_TOP_DOWN'] == (0x7ff000000000, 0x001ff0000)
         assert '_wine_main_preload_info' in subprocess.check_output(['nm', '-gU', str(p)], text=True)
         if relative != 'wine':
-            assert info == plistlib.loads((app / 'Contents/Info.plist').read_bytes()) == plistlib.loads((here / 'Info.plist').read_bytes())
+            app = assets / manifest['hosts'][hosts[relative]]
+            cn = hosts[relative] == 'YuanShen.exe'
+            source = here / ('Info-cn.plist' if cn else 'Info.plist')
+            assert info == plistlib.loads((app / 'Contents/Info.plist').read_bytes()) == plistlib.loads(source.read_bytes())
+            assert info['CFBundleName'] == info['CFBundleDisplayName'] == ('原神' if cn else 'Genshin Impact')
+            assert info['CFBundleIconFile'] == 'GameIcon.icns'
+            icon = app / 'Contents/Resources' / info['CFBundleIconFile']
+            data = icon.read_bytes()
+            assert data[:4] == b'icns' and struct.unpack_from('>I', data, 4)[0] == len(data)
+            dimensions = subprocess.check_output(['sips', '-g', 'pixelWidth', '-g', 'pixelHeight', str(icon)], text=True)
+            assert 'pixelWidth: 256' in dimensions and 'pixelHeight: 256' in dimensions
+            subprocess.run(['codesign', '--verify', '--strict', str(app)], check=True)
             assert info['CFBundleIdentifier'] == manifest['bundleIdentifier']
             assert info['LSSupportsGameMode'] is True and info['LSApplicationCategoryType'] == 'public.app-category.games'
             assert 'LSUIElement' not in info
         else:
             assert 'LSSupportsGameMode' not in info
-subprocess.run(['codesign', '--verify', '--strict', str(app)], check=True)
-print('Game Mode: pinned source/assets, x86_64 ABI, reservations, exports, matching plists, signatures and dependencies verified')
+print('Game Mode: pinned source/assets, x86_64 ABI, reservations, exports, regional plists/icons, signatures and dependencies verified')

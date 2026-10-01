@@ -13,9 +13,9 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Genshin Impact</string>
+	<string>原神</string>
 	<key>CFBundleDisplayName</key>
-	<string>Genshin Impact</string>
+	<string>原神</string>
 	<key>CFBundleIconFile</key>
 	<string>GameIcon.icns</string>
 	<key>CFBundlePackageType</key>

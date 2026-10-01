@@ -2,8 +2,16 @@
 
 The fixed `YAAGL HK4E.app` is the actual Wine game process, not a forwarding
 parent. Its stable identity is `com.zh0ngy1l1.yaagl.hk4e-game`. External and
-embedded plists match, declare the games category and `LSSupportsGameMode`, and
-omit `LSUIElement`. These metadata request eligibility, not observed activation.
+embedded plists match. Sealed Global and China variants display `Genshin Impact`
+and `原神` respectively, declare the games category and `LSSupportsGameMode`, and
+omit `LSUIElement`. Preparation selects the variant using the admitted Windows
+executable and copies it to the same fixed runtime bundle path. Both retain the
+same identifier. Their `GameIcon.icns` resources derive from the pinned official
+HoYoPlay shortcut in `genshin.ico`; `icon-source.json` records source URL, hashes
+and publisher attribution. The developer recipe extracts the original 256px PNG,
+downsamples with macOS `sips`, packages with `iconutil`, and seals the resource
+when signing. Normal builds and game launches need no icon download or extraction.
+These metadata request eligibility, not observed activation.
 
 `loader.c` and `main.h` derive from upstream Wine 11.0
 `db11d0fe6a169c457e23d007e20404643d067aa8`, under LGPL-2.1-or-later. Original
@@ -92,7 +100,7 @@ the complete matching MacPorts overlay, public runtime dependencies and headers
 through the checked-in fullscreen source recipe. Only native ntdll and the small
 loaders are compiled. `--record` deliberately replaces tracked assets/manifests
 after source review; normal builds never invoke it. Ad-hoc signatures, x86_64
-architecture, ntdll exports, preload reservations, dependencies and both plists
+architecture, ntdll exports, preload reservations, dependencies and both regional embedded/external plists plus icons
 are checked. Bit-identical builds across compilers/SDKs are not claimed.
 
 Focused developer checks:

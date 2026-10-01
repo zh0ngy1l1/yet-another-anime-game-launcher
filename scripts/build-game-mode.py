@@ -10,6 +10,7 @@ from pathlib import Path
 import plistlib
 import shutil
 import subprocess
+import struct
 
 root = Path(__file__).resolve().parent.parent
 here = root / 'native/wine-game-mode'
@@ -32,7 +33,8 @@ diff = subprocess.check_output(['git', 'diff', 'yaagl-baseline', '--', 'dlls/ntd
 assert not diff, 'Use a fresh --work: ntdll has changes'
 run('git', 'apply', here / 'resolved-image.patch', cwd=source)
 run('bash', root / 'native/wine-fullscreen/configure-engine.sh', env=env)
-stage.mkdir(exist_ok=True)
+if stage.exists(): shutil.rmtree(stage)
+stage.mkdir()
 ntdll = {}
 for name in ('plain', 'r2'):
     if name == 'r2':
@@ -68,13 +70,41 @@ flags = ['-arch', 'x86_64', '-m64', '-O2', '-mmacosx-version-min=14.0',
          '-fPIE', '-fvisibility=hidden', '-fno-stack-protector', '-fno-strict-aliasing',
          '-fcf-protection=none', '-U_FORTIFY_SOURCE', '-D_FORTIFY_SOURCE=0',
          '-I' + str(work), '-Wno-deprecated-declarations']
-for host in (False, True):
-    app = stage / 'YAAGL HK4E.app'
+# The publisher's pinned shortcut icon provides a sealed fallback before Wine
+# can read the Windows image's icon. Normal builds use the tracked signed assets.
+icon_source = json.loads((here / 'icon-source.json').read_text())
+icon = here / 'genshin.ico'
+assert sha(icon) == icon_source['sha256']
+assert hashlib.md5(icon.read_bytes()).hexdigest() == icon_source['publisherMd5']
+data = icon.read_bytes()
+assert struct.unpack_from('<HH', data) == (0, 1)
+png = None
+for i in range(struct.unpack_from('<H', data, 4)[0]):
+    width, height, _, _, _, _, size, offset = struct.unpack_from('<BBBBHHII', data, 6 + 16*i)
+    candidate = data[offset:offset + size]
+    if width == 0 and height == 0 and candidate.startswith(b'\x89PNG\r\n\x1a\n'):
+        png = candidate
+assert png, 'Pinned shortcut must contain its 256px PNG representation'
+image = work / 'game-icon.png'; image.write_bytes(png)
+iconset = work / 'GameIcon.iconset'; iconset.mkdir(exist_ok=True)
+for name, size in [('16x16', 16), ('16x16@2x', 32), ('32x32', 32), ('32x32@2x', 64),
+                   ('128x128', 128), ('128x128@2x', 256), ('256x256', 256)]:
+    run('sips', '-z', size, size, image, '--out', iconset / ('icon_' + name + '.png'),
+        stdout=subprocess.DEVNULL)
+icns = work / 'GameIcon.icns'
+run('iconutil', '-c', 'icns', iconset, '-o', icns)
+hosts = {'GenshinImpact.exe': 'hosts/global/YAAGL HK4E.app',
+         'YuanShen.exe': 'hosts/cn/YAAGL HK4E.app'}
+for region in (None, 'global', 'cn'):
+    host = region is not None
+    app = stage / ('hosts/' + region + '/YAAGL HK4E.app') if host else None
     dest = app / 'Contents/MacOS/wine' if host else stage / 'wine'
     dest.parent.mkdir(parents=True, exist_ok=True)
-    info = here / 'Info.plist'
+    info = here / ('Info-cn.plist' if region == 'cn' else 'Info.plist')
     if host:
         shutil.copy2(info, app / 'Contents/Info.plist')
+        (app / 'Contents/Resources').mkdir()
+        shutil.copy2(icns, app / 'Contents/Resources/GameIcon.icns')
     else:
         info = work / 'ordinary.plist'
         original = (source / 'loader/wine_info.plist.in').read_text().replace('@PACKAGE_VERSION@', '11.0')
@@ -96,9 +126,10 @@ manifest = {
     'compiler': subprocess.check_output(['clang', '--version'], text=True).splitlines()[0],
     'sdk': subprocess.check_output(['xcrun', '--show-sdk-version'], text=True).strip(),
     'inputLoaderSha256': sha(work / 'runtime/lib/wine/x86_64-unix/wine'),
-    'ntdll': ntdll,
+    'ntdll': ntdll, 'hosts': hosts,
     'sourceFiles': {str(p.relative_to(root)): sha(p) for p in (
-        here / 'loader.c', here / 'main.h', here / 'routing.h', here / 'Info.plist', here / 'resolved-image.patch',
+        here / 'loader.c', here / 'main.h', here / 'routing.h', here / 'Info.plist', here / 'Info-cn.plist',
+        here / 'genshin.ico', here / 'icon-source.json', here / 'resolved-image.patch',
         root / 'native/wine-r2/0001-ntdll-use-current-protection-for-rosetta-toggle.patch',
         root / 'native/wine-fullscreen/prepare-sources.py', root / 'native/wine-fullscreen/configure-engine.sh',
         root / 'scripts/build-game-mode.py')},
@@ -107,7 +138,8 @@ manifest = {
               for p in sorted(stage.rglob('*')) if p.is_file()],
 }
 if args.record:
-    shutil.copytree(stage, root / 'sidecar/wine-game-mode', dirs_exist_ok=True)
+    shutil.rmtree(root / 'sidecar/wine-game-mode')
+    shutil.copytree(stage, root / 'sidecar/wine-game-mode')
     (here / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 else:
     assert json.loads((here / 'manifest.json').read_text()) == manifest, 'Inspect changed build before --record'

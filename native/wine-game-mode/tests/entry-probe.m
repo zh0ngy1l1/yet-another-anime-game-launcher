@@ -23,6 +23,9 @@ void __wine_main(int argc, char **argv)
             @"cwd": NSFileManager.defaultManager.currentDirectoryPath,
             @"environment": NSProcessInfo.processInfo.environment,
             @"bundle": bundle.bundleIdentifier ?: @"",
+            @"name": [bundle objectForInfoDictionaryKey:@"CFBundleName"] ?: @"",
+            @"displayName": [bundle objectForInfoDictionaryKey:@"CFBundleDisplayName"] ?: @"",
+            @"iconReadable": @([NSData dataWithContentsOfFile:[bundle pathForResource:@"GameIcon" ofType:@"icns"]].length > 0),
             @"gameMode": [bundle objectForInfoDictionaryKey:@"LSSupportsGameMode"] ?: @NO,
         };
         NSData *json = [NSJSONSerialization dataWithJSONObject:record options:0 error:nil];

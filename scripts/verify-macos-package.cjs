@@ -45,6 +45,9 @@ for (const asset of fullscreen.outputs) {
 }
 const windowHelper = JSON.parse(fs.readFileSync(path.join(resources,"sources/window-state/manifest.json")));
 const gameMode = JSON.parse(fs.readFileSync(path.join(resources,"sources/wine-game-mode/manifest.json")));
+for (const [executable, host] of Object.entries(gameMode.hosts)) {
+  assert(js.includes(executable) && js.includes(host), "Frontend must select both packaged regional hosts");
+}
 for (const asset of gameMode.files) {
   assert(js.includes(asset.sha256), "Frontend must pin packaged Game Mode asset");
   assert.equal(hash(fs.readFileSync(path.join(resources,"sidecar/wine-game-mode",asset.path))),asset.sha256);

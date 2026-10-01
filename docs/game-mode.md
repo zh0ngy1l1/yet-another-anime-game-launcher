@@ -28,7 +28,11 @@ existing behavior. Window memory, registry recovery and normal ownership-based
 cleanup remain as described in [native fullscreen](native-fullscreen.md).
 
 The actual game runs in a small, fixed, signed `YAAGL HK4E.app` inside the existing
-request-private runtime. The signed Steam shim, setup tools and FPS helpers keep
+request-private runtime. Its displayed name is **Genshin Impact** for Global or
+**原神** for China, with the official Genshin shortcut icon as a bundle fallback.
+Both regional variants retain `com.zh0ngy1l1.yaagl.hk4e-game`; the executable and
+internal bundle path are routing identities and are not renamed. Wine may replace
+the Dock icon with the game executable’s own icon after its window is created. The signed Steam shim, setup tools and FPS helpers keep
 ordinary identities. A narrow ntdll child-routing change is required to identify
 the resolved executable reliably; Game Mode off retains the accepted runtime
 bytes. See [source, licensing, runtime identities and rebuild recipe](../native/wine-game-mode/README.md).
@@ -42,3 +46,6 @@ A/B testing is a separate stage. No performance benefit is asserted by this
 integration or by the previous fullscreen measurements, which had Game Mode off.
 See the [implementation and brief functional validation report](game-mode-validation-20260923.md)
 for the qualified configuration, native identities, checks and remaining limits.
+
+See [running-game presentation](hk4e-presentation.md) for icon provenance,
+Game Mode on/off behavior, non-game coverage and manual acceptance.
