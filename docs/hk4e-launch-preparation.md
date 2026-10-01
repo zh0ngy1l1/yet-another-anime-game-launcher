@@ -6,6 +6,10 @@
 > See [the bounded real-launch analysis](hk4e-real-launch-followup-20261001.md).
 > The independent experiments and historical observations below remain distinct.
 
+The follow-up [complete hashing change](hk4e-complete-hashing-20261001.md)
+retains every inventory and reduces the isolated recipe median from 21.068 to
+15.994 s using the existing system digest command for large opened files.
+
 The measured recurring filesystem bottleneck is **four complete runtime
 inventories**, not APFS cloning or signature verification. They consume
 19.65–23.62 seconds of a 21.47–25.47 second preparation recipe. Existing logs

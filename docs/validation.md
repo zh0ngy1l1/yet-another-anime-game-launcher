@@ -47,6 +47,10 @@ Both create fresh temporary prefixes and launch authored harmless fixtures only.
 `scripts/test-r2-preparation.py --runtime WINE_ROOT --output RESULT` verifies APFS
 copying, exact R2 bytes, links, pins and rejected inputs without launching Wine.
 Use the pinned public runtime described in [R2 inputs](../native/wine-r2/README.md).
+`scripts/test-r2-hashing.py --runtime WINE_ROOT --output RESULT` checks complete
+receipt equivalence, descriptor-based hashing, source/copy mutations, child
+failure/reaping and interrupted publication using disposable files and injected
+recipe copies. It never executes Wine or a game and adds no production test flags.
 The native bootstrap, normal-close, rendered-settings and runtime RPC fixtures
 remain separate entrypoints because they exercise different application boundaries.
 

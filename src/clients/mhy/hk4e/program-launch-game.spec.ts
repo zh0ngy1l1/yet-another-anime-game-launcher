@@ -182,6 +182,77 @@ it.each([false, true])(
 );
 
 it.each([false, true])(
+  "cancelling pending runtime preparation retains ownership through late success=%s and cleanup",
+  async succeeds => {
+    stored.set(FPS_UNLOCK_ENABLED_KEY, "true");
+    stored.set(FPS_UNLOCK_TARGET_KEY, "60");
+    const request = input(),
+      preparation = deferred<void>(),
+      restored = deferred<void>();
+    Object.assign(request.wine, {
+      distributionId: "11.0-dxmt-signed-with-patches",
+      executionContext: { loader: "/wine/bin/wine", prefix: "/prefix" },
+      attributes: { renderBackend: "dxmt", winePath: "wine" },
+    });
+    vi.spyOn(Neutralino.filesystem, "getStats").mockImplementation(
+      async path =>
+        ({
+          isFile: path !== "/prefix",
+          isDirectory: path === "/prefix",
+        } as never)
+    );
+    vi.mocked(prepareR2Wine).mockImplementationOnce(async () => {
+      await preparation.promise;
+      if (!succeeds) throw Error("digest child failed after cancellation");
+      return request.wine;
+    });
+    if (succeeds)
+      vi.mocked(disposeR2Wine).mockImplementationOnce(() => restored.promise);
+    const iterator = launchGameProgram(request),
+      observed = drain(iterator).catch(error => error);
+    await settle();
+    expect(prepareR2Wine).toHaveBeenCalledOnce();
+    const returning = iterator.return();
+    await settle();
+    expect(launchOwnership.state().held).toBe(true);
+    expect(disposeR2Wine).not.toHaveBeenCalled();
+    expect(prepareFpsBridge).not.toHaveBeenCalled();
+    expect(request.wine.exec2).not.toHaveBeenCalled();
+    expect(
+      timingEvents().filter(
+        event => event.phase === "request" && event.event === "end"
+      )
+    ).toHaveLength(0);
+    preparation.resolve();
+    await settle();
+    expect(prepareFpsBridge).not.toHaveBeenCalled();
+    expect(request.wine.exec2).not.toHaveBeenCalled();
+    if (succeeds) {
+      expect(disposeR2Wine).toHaveBeenCalledOnce();
+      expect(disposeR2Wine).toHaveBeenCalledWith(request.wine);
+      expect(launchOwnership.state().held).toBe(true);
+      expect(
+        timingEvents().filter(
+          event => event.phase === "request" && event.event === "end"
+        )
+      ).toHaveLength(0);
+      restored.resolve();
+    } else expect(disposeR2Wine).not.toHaveBeenCalled();
+    await observed;
+    await returning;
+    expect(launchOwnership.state().held).toBe(false);
+    expect(
+      timingEvents().filter(event => event.event === "game-execution-boundary")
+    ).toHaveLength(0);
+    expect(
+      timingEvents().filter(
+        event => event.phase === "request" && event.event === "end"
+      )
+    ).toMatchObject([{ outcome: "cancelled" }]);
+  }
+);
+
+it.each([false, true])(
   "cancelling pending Launch Fix readiness with FPS=%s cannot create the game",
   async fps => {
     vi.useFakeTimers();

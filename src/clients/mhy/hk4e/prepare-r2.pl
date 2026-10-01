@@ -10,6 +10,7 @@ use File::Basename qw(dirname basename);
 use JSON::PP;
 use Fcntl qw(O_RDONLY O_NOFOLLOW);
 use Time::HiRes qw(clock_gettime CLOCK_MONOTONIC);
+use POSIX ();
 
 # All paths are argv data. A fresh private copy is never selected before the
 # complete receipt is committed. Abandoned preparations are never reused.
@@ -53,6 +54,40 @@ sub hash_file {
     my ($path) = @_;
     sysopen(my $f, $path, O_RDONLY | O_NOFOLLOW) or die "open $path: $!";
     die "not regular: $path" unless -f $f;
+    # The system digest is faster for large files; small files avoid fork/exec.
+    # Pass the admitted descriptor, never a path that the child could reopen.
+    if (-s $f >= 2 * 1024 * 1024) {
+        my $pid = open(my $output, '-|');
+        die "openssl fork: $!" unless defined($pid);
+        if (!$pid) {
+            if (!open(STDIN, '<&', $f)) {
+                print STDERR "openssl stdin: $!\n";
+                POSIX::_exit(126);
+            }
+            exec('/usr/bin/openssl', 'dgst', '-sha256', '-binary') or do {
+                print STDERR "openssl exec: $!\n";
+                POSIX::_exit(127);
+            };
+        }
+        my $digest = '';
+        my ($n, $error);
+        while (length($digest) <= 32) {
+            $n = read($output, my $chunk, 33 - length($digest));
+            if (!defined($n)) { $error = "$!"; last; }
+            last unless $n;
+            $digest .= $chunk;
+        }
+        # Settle the sole child even after read failure or excess output. No
+        # publication or staging cleanup may race an outstanding digest child.
+        my $closed = close($output);
+        my $status = $?;
+        my $file_closed = close($f);
+        die "openssl read: $error" if defined($error);
+        die "openssl failed: $status" unless $closed && $status == 0;
+        die "openssl digest length" unless length($digest) == 32;
+        die "close $path: $!" unless $file_closed;
+        return unpack('H*', $digest);
+    }
     my $hash = Digest::SHA->new(256)->addfile($f)->hexdigest;
     close($f) or die "close $path: $!";
     return $hash;
