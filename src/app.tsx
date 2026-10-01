@@ -114,6 +114,14 @@ export async function createApp() {
       );
       return;
     }
+    if (result.manualUpdate) {
+      await Neutralino.os.showMessageBox(
+        "Launcher updates",
+        "To update this launcher, install a complete app bundle. Its native components must be updated together.",
+        "OK"
+      );
+      return;
+    }
     if (result.latest) {
       await locale.alert("SETTING_YAAGL_VERSION", "ALREADY_LATEST_VERSION");
     } else {

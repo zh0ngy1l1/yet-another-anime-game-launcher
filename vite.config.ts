@@ -23,6 +23,9 @@ export default defineConfig({
   }, solidPlugin()],
 
   // Build output/tool paths are host-only inputs, never frontend settings.
+  define: {
+    "import.meta.env.YAAGL_LOCAL_BUILD": process.env.YAAGL_LOCAL_BUILD === "1",
+  },
   envPrefix: ["VITE_", "YAAGL_CHANNEL_CLIENT", "YAAGL_VERSION", "YAAGL_ADVANCED_ENABLE"],
   build: {
     target: "safari13",

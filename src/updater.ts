@@ -17,6 +17,12 @@ const owner = "3shain";
 const repo = "yet-another-anime-game-launcher";
 
 export async function createUpdater(deps: { github: Github; aria2: Aria2 }) {
+  if (import.meta.env.YAAGL_LOCAL_BUILD === true) {
+    return {
+      latest: true,
+      manualUpdate: true,
+    } as const;
+  }
   if (CURRENT_YAAGL_VERSION === "development") {
     return {
       latest: true,
@@ -85,6 +91,8 @@ export async function createUpdater(deps: { github: Github; aria2: Aria2 }) {
     };
   }
 }
+
+export type Updater = Awaited<ReturnType<typeof createUpdater>>;
 
 export async function* downloadProgram(
   aria2: Aria2,
