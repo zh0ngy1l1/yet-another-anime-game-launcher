@@ -8,6 +8,12 @@ macOS releases is untested. This build does not claim Intel-native, universal,
 Linux or Windows application support. Wine, Sophon and several helpers are Intel
 binaries, so Rosetta 2 must already be installed.
 
+The separately downloaded DXMT `654f547` graphics library declares macOS 15.0
+as its minimum (also true of the previous `0.80` artifact). The launcher's
+macOS 14 bundle minimum is not a gameplay compatibility claim. See the
+[DXMT artifact audit](dxmt-654f547-audit.md); the new graphics/runtime combination
+still requires manual in-game acceptance.
+
 Install Xcode Command Line Tools, Git, npm, Python 3.13 (`python3.13`), `uv`, and
 `x86_64-w64-mingw32-gcc` on PATH. The tested tools are Apple Clang 21.0.0,
 MinGW GCC 16.2.0 and uv 0.12.10. Homebrew's `mingw-w64` provides the cross compiler.
@@ -52,6 +58,34 @@ complete standalone Sophon, then packages the frontend, signed Steam pair,
 runtime-preparation inputs, manifests, licenses and corresponding xdelta source.
 It uses no installed launcher, profile, private evidence directory or Wine prefix.
 No game or Wine process is started by building.
+
+The existing `YAAGL_CHANNEL_CLIENT=hk4ecn node build-app.js`, `hk4eos` and
+`hk4euniversal` packaging commands now delegate to this same verified builder
+before modifying configuration. They retain the root `Yaagl.app`/`Yaagl OS.app`/
+`Yaagl Uni.app` names and the tag workflow's `dist/Yaagl/resources.neu` output.
+Root app outputs must not already
+exist; intermediate packages use a unique `.tmp/hk4e-package-*` directory, retained
+if a build fails. These commands require committed source and the same Apple
+Silicon/native prerequisites above. `YAAGL_TEST=1` retains the legacy ` Test` app
+suffix and `.test` bundle identifier, and additionally selects a separate profile
+ending in ` Test`. Direct `build-macos.sh` test builds default to
+`build/<channel>-test/Yaagl OS.app`. Other channels keep their legacy builder with
+an initially visible window.
+
+`YAAGL_CHANNEL_CLIENT=hk4euniversal ./build-macos.sh` produces
+`build/hk4euniversal/Yaagl OS.app` with the distinct `Yaagl Universal R2` profile.
+It preserves the existing selector: `YAAGL_OVERSEA=1` in the launch environment
+chooses Global; otherwise it chooses China. Package checks require both server
+implementations and the selector. This build coverage is not gameplay qualification
+of the universal channel or safe migration of a profile between game regions.
+
+The tag workflow uses the same macOS runner prerequisites and pinned Node/pnpm
+versions. This repairs packaging compatibility, not release/update qualification.
+Custom HK4E packages require complete-bundle updates; the inherited `3shain`
+frontend/sidecar update mechanism cannot preserve their matching native runtime.
+Their build mode disables that updater and explains manual complete-app replacement.
+Ordinary upstream-style channel builds retain their existing updater. Successful
+packaging does not qualify a release, an update migration or gameplay.
 
 ## Artifact identities and verification
 

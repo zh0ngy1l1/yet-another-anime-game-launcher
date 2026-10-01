@@ -1,5 +1,19 @@
 # Developer handoff
 
+## Upstream synchronization follow-up (2026-09-30)
+
+Upstream `fc56d843461a313fdc5c19af2a2a47eaf8f2f6ac` has now been merged with
+both histories preserved. The sections below describe the earlier `29d16dc`
+handoff and its historical installed build. For the new candidate, checks,
+installation, rollback and pending in-game acceptance, use the
+[synchronization verification](upstream-sync-20260930.md),
+[DXMT artifact audit](dxmt-654f547-audit.md) and
+[upstream contribution plan](upstream-contribution-plan.md).
+The current English running text is exactly
+`Game is running (DO NOT CLOSE THE LAUNCHER)` as requested for this integration.
+
+## Previous handoff
+
 Reviewed 2026-09-30. This fork makes HK4E FPS unlocking, launch supervision,
 recovery and macOS integration usable together. Its recent polish keeps normal
 progress out of red error panels and restores native clipboard shortcuts.
