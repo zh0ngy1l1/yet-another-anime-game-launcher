@@ -122,7 +122,8 @@ checks pass with the existing nine lint warnings and no errors.
 The package verifier additionally requires the descriptor-based hashing recipe
 to reach the built frontend, alongside its existing complete bundle and ASAR
 identity checks. Candidate build and live validation are recorded in the delivery
-follow-up after building from committed source.
+[follow-up](hk4e-launch-followup-delivery-20261001.md) after building from committed
+source.
 
 Raw paths, logs and prototype files remain ignored under
 `.tmp/launch-followup-20261001/`. The main comparison is

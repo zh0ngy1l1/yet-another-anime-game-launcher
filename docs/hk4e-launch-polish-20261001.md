@@ -6,6 +6,10 @@
 > See [the acceptance and real-launch analysis](hk4e-real-launch-followup-20261001.md).
 > The first-stage account below is retained as historical context.
 
+The subsequent [follow-up delivery](hk4e-launch-followup-delivery-20261001.md)
+records the separately staged hashing candidate, measured savings and validation
+boundaries while retaining this accepted package.
+
 This first stage corrects the running Game Mode host's presentation and supplies
 measured preparation evidence for selecting the next optimization. No real game
 was launched, no performance shortcut/cache was implemented, and the working
