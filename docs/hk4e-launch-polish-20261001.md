@@ -1,5 +1,11 @@
 # HK4E launch polish delivery — 2026-10-01
 
+> Later 2026-10-01 follow-up: the user accepted this candidate after real
+> gameplay on their selected route, reporting correct name/icon and acceptable
+> launch time. Its existing logs supplied a complete preparation/cleanup trace.
+> See [the acceptance and real-launch analysis](hk4e-real-launch-followup-20261001.md).
+> The first-stage account below is retained as historical context.
+
 This first stage corrects the running Game Mode host's presentation and supplies
 measured preparation evidence for selecting the next optimization. No real game
 was launched, no performance shortcut/cache was implemented, and the working

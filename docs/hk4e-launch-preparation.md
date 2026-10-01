@@ -1,5 +1,11 @@
 # HK4E preparation investigation — 2026-10-01
 
+> Later 2026-10-01 follow-up: the accepted candidate's existing real-launch trace
+> measures 47.841 s preparation, 0.973 s execution acknowledgement and 22.508 s
+> of nested complete inventory work. The user now reports acceptable launch time.
+> See [the bounded real-launch analysis](hk4e-real-launch-followup-20261001.md).
+> The independent experiments and historical observations below remain distinct.
+
 The measured recurring filesystem bottleneck is **four complete runtime
 inventories**, not APFS cloning or signature verification. They consume
 19.65–23.62 seconds of a 21.47–25.47 second preparation recipe. Existing logs

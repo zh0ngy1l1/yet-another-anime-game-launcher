@@ -1,5 +1,11 @@
 # HK4E running-game presentation
 
+> 2026-10-01 follow-up: the user launched the `4dfd3ad` candidate and played,
+> reporting that the name and icon are correct and launch time is acceptable.
+> This qualifies their tested route/settings, not every surface or combination.
+> See [the acceptance record and recovered trace](hk4e-real-launch-followup-20261001.md).
+> The original pre-gameplay verification account below is retained for context.
+
 The Game Mode host now displays **Genshin Impact** for `GenshinImpact.exe` and
 **原神** for `YuanShen.exe`. Both carry the official Genshin desktop shortcut icon
 and retain `com.zh0ngy1l1.yaagl.hk4e-game`. The launcher remains **Yaagl OS**.
