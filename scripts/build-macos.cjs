@@ -34,8 +34,9 @@ async function main() {
   assert.equal(process.platform,"darwin");
   assert.equal(output("uname",["-m"]),"arm64", "This app build is qualified for Apple Silicon only");
   const channel = process.env.YAAGL_CHANNEL_CLIENT || "hk4eos";
-  assert(["hk4eos","hk4ecn"].includes(channel),"Use the existing build-app.js for other channels");
-  const destination = path.resolve(process.env.YAAGL_BUILD_OUTPUT || `build/${channel}`);
+  assert(["hk4eos","hk4ecn","hk4euniversal"].includes(channel),"Use the existing build-app.js for other channels");
+  const testBuild = !!process.env.YAAGL_TEST;
+  const destination = path.resolve(process.env.YAAGL_BUILD_OUTPUT || `build/${channel}${testBuild ? "-test" : ""}`);
   assert(!fs.existsSync(destination), "Build output already exists; set YAAGL_BUILD_OUTPUT to a new directory");
   const commit = output("git",["rev-parse","HEAD"]);
   assert.equal(output("git",["status","--porcelain","--untracked-files=no"]),"", "Commit source changes before building");
@@ -68,7 +69,7 @@ async function main() {
   fs.copyFileSync("neutralino.js",path.join(stage,"dist/neutralino.js"));
   copyTracked("src/icons",path.join(stage,"src/icons"));
   const config = JSON.parse(fs.readFileSync("neutralino.config.json"));
-  config.applicationId = `com.zh0ngy1l1.yaagl.${channel}`;
+  config.applicationId = `com.zh0ngy1l1.yaagl.${channel}${testBuild ? ".test" : ""}`;
   assert.equal(config.modes.window.title,"Yaagl OS"); assert.equal(config.modes.window.hidden,true);
   write(path.join(stage,"neutralino.config.json"),config);
   const neuRequire = require("module").createRequire(require.resolve("@neutralinojs/neu/package.json"));
@@ -90,7 +91,7 @@ async function main() {
     fs.copyFileSync(path.join("scripts",script),path.join(resources,"sources",script));
   copyTracked("native/xdelta",path.join(resources,"sources/xdelta"));
   fs.copyFileSync("scripts/build-xdelta.py",path.join(resources,"sources/xdelta/build-xdelta.py"));
-  const profile = channel === "hk4eos" ? "Yaagl OS R2" : "Yaagl China R2";
+  const profile = {hk4eos:"Yaagl OS R2",hk4ecn:"Yaagl China R2",hk4euniversal:"Yaagl Universal R2"}[channel] + (testBuild ? " Test" : "");
   fs.writeFileSync(path.join(mac,"parameterized"),`#!/bin/bash
 set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "\${BASH_SOURCE[0]}")" && pwd)"
@@ -120,7 +121,7 @@ PATH_LAUNCH="$(dirname -- "$CONTENTS_DIR")" exec "$SCRIPT_DIR/Yaagl" --path="$PR
   write(path.join(resources,"manifests/sidecar-files.json"),inventory(path.join(resources,"sidecar")));
   const members = asar.listPackage(path.join(resources,"resources.neu")).map(name=>name.replace(/^\//, "")).filter(name=>!asar.statFile(path.join(resources,"resources.neu"),name).files).map(name=>({path:name,sha256:crypto.createHash("sha256").update(asar.extractFile(path.join(resources,"resources.neu"),name)).digest("hex")}));
   write(path.join(resources,"manifests/asar-files.json"),members);
-  write(path.join(resources,"manifests/build.json"),{sourceCommit:commit,channel,node:process.version,pnpm:"7.33.7",native,bridge,resourcesSha256:sha(path.join(resources,"resources.neu")),runtimeDeltaSha256:sha("native/wine-r2/delta.json"),lockfiles:{"pnpm-lock.yaml":sha("pnpm-lock.yaml"),"sophon_server/uv.lock":sha("sophon_server/uv.lock")},profile:`~/Library/Application Support/${profile}`,signing:"ad-hoc native; outer bundle unsigned, not notarized",procedureReproducible:true,byteIdenticalBuildClaim:false});
+  write(path.join(resources,"manifests/build.json"),{sourceCommit:commit,channel,testBuild,node:process.version,pnpm:"7.33.7",native,bridge,resourcesSha256:sha(path.join(resources,"resources.neu")),runtimeDeltaSha256:sha("native/wine-r2/delta.json"),lockfiles:{"pnpm-lock.yaml":sha("pnpm-lock.yaml"),"sophon_server/uv.lock":sha("sophon_server/uv.lock")},profile:`~/Library/Application Support/${profile}`,signing:"ad-hoc native; outer bundle unsigned, not notarized",procedureReproducible:true,byteIdenticalBuildClaim:false});
   const files = inventory(app);
   assert(!files.some(x=> /(^|\/)(\.storage|wineprefix|logs|authorization)(\/|$)/i.test(x.path)),"Private package data");
   write(path.join(result,"bundle-manifest.json"),{sourceCommit:commit,channel,files});

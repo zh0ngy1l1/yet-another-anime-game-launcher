@@ -4,6 +4,42 @@ const path = require("path");
 const { IconIcns } = require("@shockpkg/icon-encoder");
 
 (async () => {
+  const channel = process.env["YAAGL_CHANNEL_CLIENT"];
+  if (["hk4ecn", "hk4eos", "hk4euniversal"].includes(channel)) {
+    const distribution = {
+      hk4ecn: "Yaagl",
+      hk4eos: "Yaagl OS",
+      hk4euniversal: "Yaagl Uni",
+    }[channel];
+    const appName = `${distribution}${process.env.YAAGL_TEST ? " Test" : ""}.app`;
+    const destination = path.resolve(appName);
+    if (await fs.pathExists(destination)) {
+      throw new Error(`Build output already exists: ${destination}`);
+    }
+    await fs.ensureDir(".tmp");
+    const temporary = await fs.mkdtemp(path.resolve(".tmp/hk4e-package-"));
+    const output = path.join(temporary, "package");
+    try {
+      // HK4E requires the matching bootstrap/ownership runtime and native assets.
+      // Delegate before changing tracked config: this builder requires clean source.
+      await execa("./build-macos.sh", [], {
+        stdio: "inherit",
+        env: { YAAGL_BUILD_OUTPUT: output },
+      });
+      const app = path.join(output, "Yaagl OS.app");
+      await fs.copy(
+        path.join(app, "Contents/Resources/resources.neu"),
+        path.resolve("dist/Yaagl/resources.neu")
+      );
+      await fs.move(app, destination, { overwrite: false });
+      await fs.remove(temporary);
+      console.log(`Built ${destination} with the verified HK4E package builder`);
+    } catch (error) {
+      console.error(`HK4E build evidence retained in ${temporary}`);
+      throw error;
+    }
+    return;
+  }
   const icns = new IconIcns();
   const raw = true;
 
@@ -12,25 +48,11 @@ const { IconIcns } = require("@shockpkg/icon-encoder");
   const config = await fs.readJSON(
     path.resolve(process.cwd(), "neutralino.config.json")
   );
+  // Legacy clients use ordinary startup and must not inherit HK4E's hidden window.
+  config.modes.window.hidden = false;
   let bundleId;
   let appDistributionName;
-  let includeSophon = false;
   switch (process.env["YAAGL_CHANNEL_CLIENT"]) {
-    case "hk4ecn":
-      bundleId = config.applicationId;
-      appDistributionName = config.cli.binaryName;
-      includeSophon = true;
-      break;
-    case "hk4eos":
-      bundleId = config.applicationId + ".os";
-      appDistributionName = config.cli.binaryName + " OS";
-      includeSophon = true;
-      break;
-    case "hk4euniversal":
-      bundleId = config.applicationId + ".uni";
-      appDistributionName = config.cli.binaryName + " Uni";
-      includeSophon = true;
-      break;
     case "hkrpgcn":
       bundleId = config.applicationId + ".hkrpg.cn";
       appDistributionName = config.cli.binaryName + " HSR";
@@ -252,14 +274,6 @@ PATH_LAUNCH="$(dirname "$CONTENTS_DIR")" exec "$SCRIPT_DIR/${appname}" --path="$
     `Resources`,
     `sidecar`
   );
-  // copy sophon binary to sidecar
-  if (includeSophon) {
-    await fs.copy(
-      path.resolve(process.cwd(), `sophon_server`, `build`, `server.dist`),
-      path.resolve(sidecarDst, `sophon_server`), {
-      preserveTimestamps: true,
-    });
-  }
   // Remove potentially existing dev sophon_server from sidecar
   await fs.remove(path.resolve(process.cwd(), `sidecar`, `sophon_server`));
   await fs.copy(path.resolve(process.cwd(), `sidecar`), sidecarDst, {
@@ -331,4 +345,7 @@ PATH_LAUNCH="$(dirname "$CONTENTS_DIR")" exec "$SCRIPT_DIR/${appname}" --path="$
     </dict>
     </plist>`
   );
-})();
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

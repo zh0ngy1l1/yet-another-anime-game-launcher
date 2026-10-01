@@ -11,48 +11,32 @@ permissions:
   pull-requests: "read"
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-26
+    timeout-minutes: 90
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Install UV
-        run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
+      - name: Build prerequisites
+        run: brew install mingw-w64 uv python@3.13
 
-      - name: Sophon Build Cache
-        id: sophon-build-cache
+      - name: Sophon Compiler Cache
         uses: actions/cache@v4
         with:
           key: cache-key-${{ hashFiles('scripts/build-sophon.py', 'sophon_server/*.proto', 'sophon_server/*.py', 'sophon_server/uv.lock', 'sophon_server/.python-version', 'sophon_server/pyproject.toml') }}
           path: |
-            ./sophon_server/build/
-            ./sophon_server/.cache/
-
-      - name: Sophon Build
-        if: ${{ steps.sophon-build-cache.outputs.cache-hit != 'true' }}
-        run: |
-          python3 scripts/build-sophon.py
-
-      - name: Save Sophon Build Cache
-        if: ${{ steps.sophon-build-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v4
-        with:
-          key: cache-key-${{ hashFiles('scripts/build-sophon.py', 'sophon_server/*.proto', 'sophon_server/*.py', 'sophon_server/uv.lock', 'sophon_server/.python-version', 'sophon_server/pyproject.toml') }}
-          path: |
-            ./sophon_server/build/
             ./sophon_server/.cache/
 
       - name: Install Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 16
+          node-version: 16.20.2
 
       - uses: pnpm/action-setup@v2
         name: Install pnpm
         id: pnpm-install
         with:
-          version: 7
+          version: 7.33.7
           run_install: false
 
       - name: Get pnpm store directory
@@ -70,7 +54,7 @@ jobs:
             ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build app
         run: |
