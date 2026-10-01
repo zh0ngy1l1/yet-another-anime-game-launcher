@@ -203,7 +203,7 @@ it("keeps progress independent from errors, pins confirmed running status, and c
   next.running();
   next.phase("FPS discovery");
   expect(own.state().detail).toBe(
-    "game is running (DO NOT CLOSE THE LAUNCHER)"
+    "Game is running (DO NOT CLOSE THE LAUNCHER)"
   );
   expect(own.state().error).toBe("");
   next.ended();

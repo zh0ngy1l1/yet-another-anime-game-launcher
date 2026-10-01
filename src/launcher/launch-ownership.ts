@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { deferred } from "../utils/operation";
 
-export const RUNNING_STATUS = "game is running (DO NOT CLOSE THE LAUNCHER)";
+export const RUNNING_STATUS = "Game is running (DO NOT CLOSE THE LAUNCHER)";
 
 export class LaunchFailure extends Error {
   constructor(

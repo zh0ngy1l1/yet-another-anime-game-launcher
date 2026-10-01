@@ -7,6 +7,7 @@ import {
   setKey,
   getKeyOrDefault,
   fileOrDirExists,
+  stats,
   doStreamUnzip,
   forceMove,
   readBinary,
@@ -131,12 +132,33 @@ export async function* checkAndDownloadJadeite(
 
 export const DXMT_FILES = ["d3d10core.dll", "d3d11.dll", "dxgi.dll"];
 
+const DXMT_FILES_WITH_UNIXLIB = [
+  ...DXMT_FILES,
+  "winemetal.dll",
+  "winemetal.so",
+  "nvngx.dll",
+  "nvapi64.dll",
+];
+
 const CURRENT_DXMT_VERSION = "654f547";
+
+async function dxmtInstallationComplete() {
+  for (const file of DXMT_FILES_WITH_UNIXLIB) {
+    try {
+      const info = await stats(resolve(`./dxmt/${file}`));
+      if (!info.isFile || info.size === 0) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
 
 export async function* checkAndDownloadDXMT(aria2: Aria2): CommonUpdateProgram {
   if (
     CURRENT_DXMT_VERSION ===
-    (await getKeyOrDefault("installed_dxmt_version", "0.0.0"))
+      (await getKeyOrDefault("installed_dxmt_version", "0.0.0")) &&
+    (await dxmtInstallationComplete())
   ) {
     return;
   }
@@ -185,23 +207,30 @@ export async function* checkAndDownloadDXMT(aria2: Aria2): CommonUpdateProgram {
   await exec([
     "sh",
     "-c",
-    `mv "${resolve(`./dxmt/${extractedFolder}/x86_64-windows/`)}"* "${resolve(
-      "./dxmt/"
-    )}"`,
+    'mv "$1"/* "$2"/',
+    "dxmt-install",
+    resolve(`./dxmt/${extractedFolder}/x86_64-windows/`),
+    resolve("./dxmt/"),
   ]);
   await exec([
     "sh",
     "-c",
-    `mv "${resolve(`./dxmt/${extractedFolder}/x86_64-unix/`)}"* "${resolve(
-      "./dxmt/"
-    )}"`,
+    'mv "$1"/* "$2"/',
+    "dxmt-install",
+    resolve(`./dxmt/${extractedFolder}/x86_64-unix/`),
+    resolve("./dxmt/"),
   ]);
+
+  if (!(await dxmtInstallationComplete()))
+    throw new Error(
+      "DXMT extraction is incomplete. Please retry the download."
+    );
 
   await rmrf_dangerously(resolve(`./dxmt/${extractedFolder}`));
   await removeFile(resolve(`./dxmt/${archiveName}`));
   await removeFile(resolve(`./dxmt/${tarName}`));
 
-  setKey("installed_dxmt_version", CURRENT_DXMT_VERSION);
+  await setKey("installed_dxmt_version", CURRENT_DXMT_VERSION);
 }
 
 const CURRENT_RESHADE_VERSION = "5.8.0";

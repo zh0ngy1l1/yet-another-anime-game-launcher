@@ -16,7 +16,7 @@ fs.copyFileSync("src/icons/Paimon.cr.png", path.join(directory,"icon.png"));
 fs.mkdirSync(path.join(directory,"dist"));
 fs.copyFileSync("neutralino.js", path.join(directory,"dist/neutralino.js"));
 fs.writeFileSync(path.join(directory,"neutralino.config.json"), JSON.stringify(config));
-const running = "game is running (DO NOT CLOSE THE LAUNCHER)";
+const running = "Game is running (DO NOT CLOSE THE LAUNCHER)";
 const error = "A genuine launch failure remains visible.";
 fs.writeFileSync(path.join(directory,"dist/index.html"), `<!doctype html><html><body>
 <p id="status">${running}</p><p id="error" role="alert">${error}</p>

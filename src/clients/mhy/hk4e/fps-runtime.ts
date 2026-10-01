@@ -4,7 +4,7 @@ import type { FpsUnlockConfig } from "./config/fps-unlock-state";
 
 /**
  * Update the semicolon-separated DXMT_CONFIG assignment list used by YAAGL.
- * DXMT v0.80 src/util/config/config.cpp permits space, tab and CR around keys
+ * DXMT 654f547 src/util/config/config.cpp permits space, tab and CR around keys
  * and '=' (not all JS whitespace). Its last assignment wins. Semicolons split
  * entries before value parsing, even inside quotes; no escaping is added here.
  * Keep the first exact-key position, discard later duplicates and empty entries,
