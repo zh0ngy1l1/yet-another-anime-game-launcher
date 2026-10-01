@@ -1,3 +1,4 @@
+import type { LaunchTiming } from "./launch-timing";
 import { basename, dirname } from "path-browserify";
 import recipe from "./prepare-r2.pl?raw";
 import fullscreenManifest from "../../../../native/wine-fullscreen/manifest.json?raw";
@@ -13,7 +14,8 @@ export async function prepareR2Wine(
   features: { fps: boolean; fullscreen: boolean; gameMode?: string } = {
     fps: true,
     fullscreen: false,
-  }
+  },
+  timing?: LaunchTiming
 ) {
   if (features.gameMode && !features.fullscreen)
     throw new Error("Game Mode routing requires native fullscreen support");
@@ -26,35 +28,51 @@ export async function prepareR2Wine(
       "Native macOS fullscreen requires the qualified Wine 11.0 DXMT signed-with-patches runtime. Your preference is saved; select that runtime or disable native fullscreen."
     );
   const context = wine.executionContext;
-  await wine.waitUntilServerOff();
+  const timed = <T>(phase: string, operation: () => Promise<T>) =>
+    timing ? timing.measure(phase, operation) : operation();
+  await timed("private-runtime-wine-wait", () => wine.waitUntilServerOff());
   const parent = resolve("./fps-runtime");
-  const { stdOut } = await exec([
-    "/usr/bin/perl",
-    "-e",
-    "use MIME::Base64; my $code = decode_base64(shift @ARGV); eval $code; die $@ if $@;",
-    "--",
-    btoa(recipe),
-    dirname(dirname(context.loader)),
-    parent,
-    JSON.stringify({
-      ...JSON.parse(manifest),
-      applyR2: features.fps,
-      ...(features.gameMode
-        ? {
-            gameMode: JSON.parse(gameModeManifest),
-            gameModeAssets: resolve("./sidecar/wine-game-mode"),
-            gameModeExecutable: features.gameMode,
-            gameModePrefix: context.prefix,
-          }
-        : {}),
-      ...(features.fullscreen
-        ? {
-            fullscreen: JSON.parse(fullscreenManifest),
-            fullscreenAssets: resolve("./sidecar/wine-fullscreen"),
-          }
-        : {}),
-    }),
-  ]);
+  const { stdOut, stdErr } = await timed("private-runtime-recipe", () =>
+    exec([
+      "/usr/bin/perl",
+      "-e",
+      "use MIME::Base64; my $code = decode_base64(shift @ARGV); eval $code; die $@ if $@;",
+      "--",
+      btoa(recipe),
+      dirname(dirname(context.loader)),
+      parent,
+      JSON.stringify({
+        ...JSON.parse(manifest),
+        applyR2: features.fps,
+        ...(timing ? { timingRequest: timing.request } : {}),
+        ...(features.gameMode
+          ? {
+              gameMode: JSON.parse(gameModeManifest),
+              gameModeAssets: resolve("./sidecar/wine-game-mode"),
+              gameModeExecutable: features.gameMode,
+              gameModePrefix: context.prefix,
+            }
+          : {}),
+        ...(features.fullscreen
+          ? {
+              fullscreen: JSON.parse(fullscreenManifest),
+              fullscreenAssets: resolve("./sidecar/wine-fullscreen"),
+            }
+          : {}),
+      }),
+    ])
+  );
+  for (const line of (stdErr ?? "").split("\n"))
+    if (line.startsWith("HK4E_RUNTIME_TIMING ")) {
+      try {
+        timing?.emit({
+          event: "runtime-span",
+          native: JSON.parse(line.slice(20)),
+        });
+      } catch {
+        // Malformed diagnostics never alter runtime admission.
+      }
+    }
   const root = stdOut.replace(/\n$/, "");
   if (
     dirname(dirname(root)) !== parent ||

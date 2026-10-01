@@ -12,6 +12,7 @@ import { admitFpsLaunch } from "./fps-admission";
 import { launchFpsGame } from "./launch-fps-game";
 import { createLaunchFix } from "./launch-fix";
 import { hk4eWineDebug } from "./launch-diagnostics";
+import { createLaunchTiming, LaunchTiming } from "./launch-timing";
 import { join } from "path-browserify";
 import { CommonUpdateProgram } from "../../../common-update-ui";
 import { Server } from "../../../constants";
@@ -93,7 +94,10 @@ async function* launchGameDisabledProgram(
   },
   owner: ReturnType<typeof launchOwnership.claim>,
   signal: AbortSignal,
-  windowSession: Awaited<ReturnType<typeof createWindowSession>>
+  windowSession: Awaited<ReturnType<typeof createWindowSession>>,
+  timing: LaunchTiming,
+  prepared: () => void,
+  preparationStopped: (cancelled: boolean) => void
 ): CommonUpdateProgram {
   const result = await exec([
     "/usr/bin/mktemp",
@@ -139,15 +143,19 @@ async function* launchGameDisabledProgram(
     yield ["setStateText", "PATCHING"];
     originalPatched = await getKeyOrDefault("patched", "NOTFOUND");
     await journal.capture(resolve("winedrv_config.bat"));
-    await wine.setProps(config);
-    await windowSession.prepare();
+    await timing.measure("wine-properties", () => wine.setProps(config));
+    await timing.measure("window-registry-prepare", () =>
+      windowSession.prepare()
+    );
     if (config.hk4eEnableHDR) {
       await journal.capture(resolve("hk4e_enable_hdr.reg"));
       await journal.capture(resolve("hk4e_revert_hdr.reg"));
       hdr = true;
-      await applyHDRRegistry({ wine, server });
+      await timing.measure("hdr-registry", () =>
+        applyHDRRegistry({ wine, server })
+      );
     }
-    await waitWine();
+    await timing.measure("wine-wait-before-files", waitWine);
     const cmd = `@echo off
 cd "%~dp0"
 copy "${wine.toWinePath(
@@ -167,7 +175,10 @@ cd /d "${wine.toWinePath(gameDir)}"
     );
     await writeFile(resolve("config.bat"), cmd);
     patchedStateOwned = true;
-    yield* patchProgram(gameDir, wine, server, config, journal.capture);
+    yield* timing.program(
+      "patch-files",
+      patchProgram(gameDir, wine, server, config, journal.capture)
+    );
     await mkdirp(resolve("./logs"));
     yield ["setStateText", "GAME_RUNNING"];
     const logfile = resolve(`./logs/game_${Date.now()}.log`);
@@ -177,9 +188,10 @@ cd /d "${wine.toWinePath(gameDir)}"
       }; Launch Fix=${config.blockNet === true}; Wine output: ${logfile}`
     ).catch(() => undefined);
     check();
-    await launchFix?.start();
+    await timing.measure("launch-fix-ready", async () => launchFix?.start());
     check();
 
+    prepared();
     await wine.exec2(
       config.steamPatch ? "C:\\windows\\system32\\steam.exe" : "cmd",
       config.steamPatch
@@ -193,6 +205,7 @@ cd /d "${wine.toWinePath(gameDir)}"
   } catch (error) {
     primary = error;
   } finally {
+    preparationStopped(signal.aborted);
     // No yields in cleanup: an async-generator return may consume only one
     // value from finally. A request-bound Wine wait also follows command error.
     for (;;) {
@@ -332,10 +345,31 @@ async function* ownedLaunchGameProgram(
     server: Server;
   },
   resources: (enabledFps?: boolean) => CommonUpdateProgram,
-  signal: AbortSignal
+  signal: AbortSignal,
+  timing: LaunchTiming
 ): CommonUpdateProgram {
   const owner = launchOwnership.claim();
   input = { ...input, config: { ...input.config } };
+  const preparation = timing.begin("preparation");
+  timing.emit({ event: "ui-phase", phase: "Preparing launch" });
+  const preparationStopped = (cancelled: boolean) =>
+    preparation(cancelled ? "cancelled" : "error");
+  const prepared = () => {
+    timing.emit({ event: "game-execution-boundary" });
+    preparation();
+  };
+  timing.emit({
+    event: "settings",
+    server: input.server.id,
+    runtime: input.wine.distributionId,
+    fullscreen: input.config.hk4eNativeFullscreen === true,
+    gameMode: input.config.hk4eGameMode === true,
+    steam: input.config.steamPatch === true,
+    retina: input.config.retina === true,
+    hdr: input.config.hk4eEnableHDR === true,
+    reshade: input.config.reshade === true,
+    launchFix: input.config.blockNet === true,
+  });
   let delegated = false;
   let preparedRuntime: Wine | undefined;
   let windowSession:
@@ -343,27 +377,52 @@ async function* ownedLaunchGameProgram(
     | undefined;
   try {
     validateHk4eExecutable(input.server.id, input.gameExecutable);
-    const admission = await admitFpsLaunch({
-      ...input,
-      server: input.server.id,
+    const admission = await timing.measure("fps-admission", () =>
+      admitFpsLaunch({
+        ...input,
+        server: input.server.id,
+      })
+    );
+    timing.emit({
+      event: "fps-selection",
+      enabled: !!admission,
+      target: admission?.plan.companion.fpsArgument,
     });
-    const gameMode = await admitGameMode(input.config, input.wine);
+    const gameMode = await timing.measure("game-mode-admission", () =>
+      admitGameMode(input.config, input.wine)
+    );
     if (signal.aborted) throw new Error("Launch cancelled before preparation");
     if (admission || input.config.hk4eNativeFullscreen) {
-      preparedRuntime = await prepareR2Wine(input.wine, {
-        fps: !!admission,
-        fullscreen: input.config.hk4eNativeFullscreen === true,
-        ...(gameMode
-          ? { gameMode: join(input.gameDir, input.gameExecutable) }
-          : {}),
-      });
+      preparedRuntime = await timing.measure("private-runtime", () =>
+        prepareR2Wine(
+          input.wine,
+          {
+            fps: !!admission,
+            fullscreen: input.config.hk4eNativeFullscreen === true,
+            ...(gameMode
+              ? { gameMode: join(input.gameDir, input.gameExecutable) }
+              : {}),
+          },
+          timing
+        )
+      );
       input = { ...input, wine: preparedRuntime };
     }
-    windowSession = await createWindowSession(input);
+    windowSession = await timing.measure("window-session-admission", () =>
+      createWindowSession(input)
+    );
     const controls = windowSession;
     if (!admission) {
-      yield* resources();
-      yield* launchGameDisabledProgram(input, owner, signal, controls);
+      yield* timing.program("resources", resources());
+      yield* launchGameDisabledProgram(
+        input,
+        owner,
+        signal,
+        controls,
+        timing,
+        prepared,
+        preparationStopped
+      );
       return;
     }
     const admitted = { ...admission, wine: input.wine.executionContext };
@@ -373,6 +432,9 @@ async function* ownedLaunchGameProgram(
     const transaction = launchFpsGame(
       {
         admitted,
+        timing,
+        prepared,
+        preparationStopped,
         wine,
         config,
         server,
@@ -391,16 +453,24 @@ async function* ownedLaunchGameProgram(
           progress(["setUndeterminedProgress"]);
           progress(["setStateText", "PATCHING"]);
           await capture(resolve("winedrv_config.bat"));
-          await wine.setProps(config);
-          await controls.prepare();
+          await timing.measure("wine-properties", () => wine.setProps(config));
+          await timing.measure("window-registry-prepare", () =>
+            controls.prepare()
+          );
           if (config.hk4eEnableHDR) {
             await capture(resolve("hk4e_enable_hdr.reg"));
-            await applyHDRRegistry({ wine, server });
+            await timing.measure("hdr-registry", () =>
+              applyHDRRegistry({ wine, server })
+            );
           }
-          await wine.waitUntilServerOff();
+          await timing.measure("wine-wait-setup", () =>
+            wine.waitUntilServerOff()
+          );
           if (config.reshade) {
             await capture(join(gameDir, "ReShade.ini"));
-            await prepareReshadeConfiguration(wine, gameDir);
+            await timing.measure("reshade-configuration", () =>
+              prepareReshadeConfiguration(wine, gameDir)
+            );
           }
           await capture(resolve("config.bat"));
           const protection = atob("SG9Zb0tQcm90ZWN0LnN5cw==");
@@ -416,23 +486,24 @@ async function* ownedLaunchGameProgram(
 cd "%~dp0"
 copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
           );
-          for await (const command of patchProgram(
-            gameDir,
-            wine,
-            server,
-            config,
-            capture
+          for await (const command of timing.program(
+            "patch-files",
+            patchProgram(gameDir, wine, server, config, capture)
           ))
             progress(command);
           // The upstream Steam route writes but does not execute config.bat.
           if (!admitted.steamPatch)
-            await wine.exec(
-              "cmd",
-              ["/c", wine.toWinePath(resolve("config.bat"))],
-              {},
-              "/dev/null"
+            await timing.measure("protection-copy-helper", () =>
+              wine.exec(
+                "cmd",
+                ["/c", wine.toWinePath(resolve("config.bat"))],
+                {},
+                "/dev/null"
+              )
             );
-          await wine.waitUntilServerOff();
+          await timing.measure("wine-wait-setup", () =>
+            wine.waitUntilServerOff()
+          );
           await log(
             `FPS launch selected ${gameExecutable}; Steam Patch=${
               admitted.steamPatch
@@ -464,6 +535,7 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
       ? error
       : new LaunchFailure(errorMessage(error), error);
   } finally {
+    preparation(signal.aborted ? "cancelled" : "error");
     if (!delegated) {
       await windowSession?.finish(false);
       if (preparedRuntime) await disposeR2Wine(preparedRuntime);
@@ -483,10 +555,10 @@ export function launchGameProgram(
   }
 ): CommonUpdateProgram {
   const cancellation = new AbortController();
-  const iterator = ownedLaunchGameProgram(
-    input,
-    resources,
-    cancellation.signal
+  const timing = createLaunchTiming(cancellation.signal);
+  const iterator = timing.program(
+    "request",
+    ownedLaunchGameProgram(input, resources, cancellation.signal, timing)
   );
   return {
     next: (...args) => iterator.next(...args),

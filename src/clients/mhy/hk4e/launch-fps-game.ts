@@ -1,3 +1,4 @@
+import type { LaunchTiming } from "./launch-timing";
 import { operationError } from "../../../utils/errors";
 import type {
   CommonProgressUICommand,
@@ -17,6 +18,9 @@ import type { createLaunchFix } from "./launch-fix";
 
 export function launchFpsGame(
   input: {
+    timing?: LaunchTiming;
+    prepared?: () => void;
+    preparationStopped?: (cancelled: boolean) => void;
     admitted: NonNullable<Awaited<ReturnType<typeof admitFpsLaunch>>>;
     config: Config;
     wine: Wine;
@@ -39,6 +43,9 @@ export function launchFpsGame(
     companion: {} as Parameters<typeof createFpsCompanion>[1],
   }
 ) {
+  const timed = <T>(phase: string, operation: () => Promise<T>) =>
+    input.timing ? input.timing.measure(phase, operation) : operation();
+  let preparationSignal: AbortSignal | undefined;
   let gameFailure: unknown;
   let bridge: Awaited<ReturnType<typeof prepareFpsBridge>> | undefined;
   let preparationRecovery: (() => Promise<void>) | undefined;
@@ -94,103 +101,124 @@ export function launchFpsGame(
         ...(input.launchFix?.errors() ?? []),
       ],
       async prepare(signal, progress) {
-        const check = () => {
-          if (signal.aborted) throw new Error("Launch preparation cancelled");
-        };
-        owner.phase("Preparing game…");
-        void log("Acquiring and verifying the request-private FPS bridge");
-        await mkdirp(resolve("./logs"));
+        preparationSignal = signal;
         try {
-          bridge = await dependencies.bridge({
-            wine: context,
-            executable: admitted.executable,
-            steamPatch: admitted.steamPatch,
-            gameDirectory: admitted.gameDirectory,
-            gameDxmtConfig: admitted.plan.gameDxmtConfig,
-            log: resolve(`./logs/game_${Date.now()}.log`),
-            diagnostic,
-            running: owner.running,
-            ended: owner.ended,
-            gameFailure: (text, exitCodeKnown) => {
-              if (exitCodeKnown) {
-                const message =
-                  "The game exited unexpectedly. See the launch log for details.";
-                gameFailure = operationError(message, new Error(text));
-                owner.problem(message);
-              } else {
-                diagnostic(text);
-                owner.warning(
-                  "The game has exited, but the launcher could not determine its exit status. See the launch log for details."
-                );
-              }
-            },
-            event: text => {
+          const check = () => {
+            if (signal.aborted) throw new Error("Launch preparation cancelled");
+          };
+          owner.phase("Preparing game…");
+          input.timing?.emit({ event: "ui-phase", phase: "Preparing game…" });
+          void log("Acquiring and verifying the request-private FPS bridge");
+          await mkdirp(resolve("./logs"));
+          try {
+            bridge = await timed("fps-bridge-artifacts", () =>
+              dependencies.bridge({
+                wine: context,
+                executable: admitted.executable,
+                steamPatch: admitted.steamPatch,
+                gameDirectory: admitted.gameDirectory,
+                gameDxmtConfig: admitted.plan.gameDxmtConfig,
+                log: resolve(`./logs/game_${Date.now()}.log`),
+                diagnostic,
+                running: owner.running,
+                ended: owner.ended,
+                gameFailure: (text, exitCodeKnown) => {
+                  if (exitCodeKnown) {
+                    const message =
+                      "The game exited unexpectedly. See the launch log for details.";
+                    gameFailure = operationError(message, new Error(text));
+                    owner.problem(message);
+                  } else {
+                    diagnostic(text);
+                    owner.warning(
+                      "The game has exited, but the launcher could not determine its exit status. See the launch log for details."
+                    );
+                  }
+                },
+                event: text => {
+                  void log(text).catch(() => undefined);
+                },
+              })
+            );
+          } catch (error) {
+            if (error instanceof FpsBridgePreparationFailure)
+              preparationRecovery = error.retryCleanup;
+            throw error;
+          }
+          input.timing?.emit({ event: "bridge-identity", token: bridge.token });
+          const launchJournal = dependencies.journal(bridge.directory);
+          journal = launchJournal;
+          await log(
+            `FPS request ${bridge.token}: artifact=${bridge.path}; route=${
+              admitted.steamPatch ? "steam-patch" : "direct"
+            }; Launch Fix=${config.blockNet === true}; loader=${
+              context.loader
+            }; prefix=${context.prefix}; target=${
+              companion.fpsArgument
+            }; game DXMT_CONFIG=${
+              admitted.plan.gameDxmtConfig
+            }; companion DXMT_CONFIG=${companion.dxmtConfig}`
+          );
+          check();
+          for await (const command of input.timing
+            ? input.timing.program("resources", input.resources(true))
+            : input.resources(true)) {
+            progress(command);
+            check();
+          }
+          originalPatched = await getKeyOrDefault("patched", "NOTFOUND");
+          if (originalPatched !== "NOTFOUND")
+            throw new Error(
+              "An earlier patch state is still present; resolve it before FPS launch"
+            );
+          // A shared prefix may have previous users. Waiting here is a preparation
+          // prerequisite, not attribution of the new game. No helper is alive yet.
+          await timed("wine-wait-before-registry", () =>
+            waitWine(text => {
               void log(text).catch(() => undefined);
-            },
-          });
+            })
+          );
+          check();
+          void log(
+            "Snapshotting original registry values and preparing game files"
+          );
+          await timed("fps-registry-save", () =>
+            preparedBridge().registry(
+              "save",
+              server.id,
+              config.hk4eEnableHDR,
+              input.registryResolution
+            )
+          );
+          registrySaved = true;
+          check();
+          patchStateOwned = true;
+          await timed("setup", () =>
+            input.setup(async path => {
+              check();
+              await launchJournal.capture(path);
+            }, progress)
+          );
+          check();
+          await timed("wine-bridge-boot-ready", () => preparedBridge().boot());
+          booted = true;
+          check();
+          // The canonical Steam root is already established. Launch Fix is a
+          // separate foreground host operation; only its readiness admits game
+          // creation, and its completion remains part of transaction cleanup.
+          await timed("launch-fix-ready", async () => input.launchFix?.start());
+          check();
         } catch (error) {
-          if (error instanceof FpsBridgePreparationFailure)
-            preparationRecovery = error.retryCleanup;
+          input.preparationStopped?.(signal.aborted);
           throw error;
         }
-        const launchJournal = dependencies.journal(bridge.directory);
-        journal = launchJournal;
-        await log(
-          `FPS request ${bridge.token}: artifact=${bridge.path}; route=${
-            admitted.steamPatch ? "steam-patch" : "direct"
-          }; Launch Fix=${config.blockNet === true}; loader=${
-            context.loader
-          }; prefix=${context.prefix}; target=${
-            companion.fpsArgument
-          }; game DXMT_CONFIG=${
-            admitted.plan.gameDxmtConfig
-          }; companion DXMT_CONFIG=${companion.dxmtConfig}`
-        );
-        check();
-        for await (const command of input.resources(true)) {
-          progress(command);
-          check();
-        }
-        originalPatched = await getKeyOrDefault("patched", "NOTFOUND");
-        if (originalPatched !== "NOTFOUND")
-          throw new Error(
-            "An earlier patch state is still present; resolve it before FPS launch"
-          );
-        // A shared prefix may have previous users. Waiting here is a preparation
-        // prerequisite, not attribution of the new game. No helper is alive yet.
-        await waitWine(text => {
-          void log(text).catch(() => undefined);
-        });
-        check();
-        void log(
-          "Snapshotting original registry values and preparing game files"
-        );
-        await bridge.registry(
-          "save",
-          server.id,
-          config.hk4eEnableHDR,
-          input.registryResolution
-        );
-        registrySaved = true;
-        check();
-        patchStateOwned = true;
-        await input.setup(async path => {
-          check();
-          await launchJournal.capture(path);
-        }, progress);
-        check();
-        await bridge.boot();
-        booted = true;
-        check();
-        // The canonical Steam root is already established. Launch Fix is a
-        // separate foreground host operation; only its readiness admits game
-        // creation, and its completion remains part of transaction cleanup.
-        await input.launchFix?.start();
-        check();
       },
       async launch() {
+        input.prepared?.();
         launched = true;
-        await preparedBridge().launch();
+        await timed("game-create-acknowledged", () =>
+          preparedBridge().launch()
+        );
       },
       gameExit: () => preparedBridge().waitForGameExit(),
       gameRunning: () => bridge?.gameRunning?.() ?? false,
@@ -205,6 +233,10 @@ export function launchFpsGame(
           dependencies.companion
         ),
       async cleanup(phase) {
+        // Cancellation can arrive after prepare resolves but before launch.
+        // Close preparation before recovery even in that narrow interval.
+        if (!launched)
+          input.preparationStopped?.(preparationSignal?.aborted === true);
         await input.launchFix?.finish();
         if (!bridge) {
           if (preparationRecovery) {

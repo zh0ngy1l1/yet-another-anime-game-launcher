@@ -63,11 +63,17 @@ const stored = new Map<string, string>();
 const files = new Map<string, string>();
 const captured: string[] = [];
 const patchCalls: unknown[][] = [];
+const diagnostics: string[] = [];
+const timingEvents = () =>
+  diagnostics
+    .filter(line => line.startsWith("HK4E_TIMING "))
+    .map(line => JSON.parse(line.slice(12)));
 beforeEach(() => {
   stored.clear();
   files.clear();
   captured.length = 0;
   patchCalls.length = 0;
+  diagnostics.length = 0;
   vi.clearAllMocks();
   vi.stubGlobal("window", {
     NL_OS: "Darwin",
@@ -83,7 +89,11 @@ beforeEach(() => {
       },
       setData: async (key: string, value: string) => stored.set(key, value),
     },
-    debug: { log: async () => undefined },
+    debug: {
+      log: async (line: string) => {
+        diagnostics.push(line);
+      },
+    },
     os: {
       execCommand: async (command: string) => ({
         exitCode: 0,
@@ -160,6 +170,14 @@ it.each([false, true])(
     );
     expect(files.has("/app/config.bat")).toBe(false);
     expect(launchOwnership.state().held).toBe(false);
+    expect(
+      timingEvents().filter(
+        event => event.phase === "preparation" && event.event === "end"
+      )
+    ).toMatchObject([{ outcome: "ok" }]);
+    expect(
+      timingEvents().filter(event => event.event === "game-execution-boundary")
+    ).toHaveLength(1);
   }
 );
 
@@ -218,6 +236,21 @@ it.each([false, true])(
       expect(request.wine.exec2).not.toHaveBeenCalled();
       expect(fix.finish).toHaveBeenCalled();
       expect(launchOwnership.state().held).toBe(true);
+      expect(
+        timingEvents().filter(
+          event => event.phase === "preparation" && event.event === "end"
+        )
+      ).toMatchObject([{ outcome: "cancelled" }]);
+      expect(
+        timingEvents().filter(
+          event => event.phase === "request" && event.event === "end"
+        )
+      ).toHaveLength(0);
+      expect(
+        timingEvents().filter(
+          event => event.event === "game-execution-boundary"
+        )
+      ).toHaveLength(0);
       restored.resolve();
       native.direct.resolve({ confirmed: true, status: 0 });
       await vi.advanceTimersByTimeAsync(1000);
@@ -256,6 +289,16 @@ it("rejects invalid enabled settings before resource acquisition or setup", asyn
     failed: true,
     detail: "Launch stopped. See the error above.",
   });
+  expect(
+    timingEvents().filter(
+      event => event.phase === "fps-admission" && event.event === "end"
+    )
+  ).toMatchObject([{ outcome: "error" }]);
+  expect(
+    timingEvents().filter(
+      event => event.phase === "preparation" && event.event === "end"
+    )
+  ).toMatchObject([{ outcome: "error" }]);
   expect(resources).not.toHaveBeenCalled();
   expect(request.wine.setProps).not.toHaveBeenCalled();
   expect(prepareFpsBridge).not.toHaveBeenCalled();
@@ -632,13 +675,20 @@ it.each(
       await vi.advanceTimersByTimeAsync(11000);
       expect(prepareR2Wine).toHaveBeenCalledTimes(fps || fullscreen ? 1 : 0);
       if (fps || fullscreen)
-        expect(prepareR2Wine).toHaveBeenCalledWith(request.wine, {
-          fps,
-          fullscreen,
-          ...(gameMode && fullscreen
-            ? { gameMode: `/game/${request.gameExecutable}` }
-            : {}),
-        });
+        expect(prepareR2Wine).toHaveBeenCalledWith(
+          request.wine,
+          {
+            fps,
+            fullscreen,
+            ...(gameMode && fullscreen
+              ? { gameMode: `/game/${request.gameExecutable}` }
+              : {}),
+          },
+          expect.objectContaining({
+            measure: expect.any(Function),
+            request: expect.any(String),
+          })
+        );
       expect(request.wine.setProps).toHaveBeenCalledWith(
         expect.objectContaining({ retina: false })
       );

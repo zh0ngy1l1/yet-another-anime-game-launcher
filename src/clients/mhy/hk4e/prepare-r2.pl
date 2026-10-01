@@ -9,11 +9,40 @@ use File::Path qw(make_path remove_tree);
 use File::Basename qw(dirname basename);
 use JSON::PP;
 use Fcntl qw(O_RDONLY O_NOFOLLOW);
+use Time::HiRes qw(clock_gettime CLOCK_MONOTONIC);
 
 # All paths are argv data. A fresh private copy is never selected before the
 # complete receipt is committed. Abandoned preparations are never reused.
 my ($source, $parent, $manifest_json) = @ARGV;
 my $m = decode_json($manifest_json);
+# Diagnostics have a separate stream; stdout remains the publication contract.
+# CPU includes this process and waited children; intervals are sequential here.
+my ($timing_origin, $phase_start, $timing_phase, @phase_cpu);
+my $timing_done = 0;
+sub timing_end {
+    my ($outcome) = @_;
+    return unless defined($timing_phase);
+    my $now = clock_gettime(CLOCK_MONOTONIC);
+    my @cpu = times;
+    my $event = {request => $m->{timingRequest}, phase => $timing_phase,
+        atMs => 1000 * ($phase_start - $timing_origin),
+        elapsedMs => 1000 * ($now - $phase_start), outcome => $outcome,
+        userMs => 1000 * ($cpu[0] + $cpu[2] - $phase_cpu[0] - $phase_cpu[2]),
+        systemMs => 1000 * ($cpu[1] + $cpu[3] - $phase_cpu[1] - $phase_cpu[3])};
+    eval { print STDERR 'HK4E_RUNTIME_TIMING ' . encode_json($event) . "\n"; };
+    undef $timing_phase;
+}
+sub timing_phase {
+    my ($name) = @_;
+    return unless defined($m->{timingRequest});
+    timing_end('ok');
+    $timing_phase = $name;
+    $phase_start = clock_gettime(CLOCK_MONOTONIC);
+    $timing_origin //= $phase_start;
+    @phase_cpu = times;
+}
+END { timing_end($timing_done ? 'ok' : 'error'); }
+timing_phase('admission-assets');
 die "absolute canonical runtime required" unless defined($source) &&
     $source =~ m{^/} && abs_path($source) eq $source && -d $source;
 die "absolute preparation parent required" unless defined($parent) && $parent =~ m{^/};
@@ -107,20 +136,27 @@ if ($m->{fullscreen}) {
             hash_file("$m->{fullscreenAssets}/$a->{path}") eq $a->{sha256};
     }
 }
+timing_phase('source-inventory-before');
 my $before = inventory($source);
 my $directory = tempdir('r2-XXXXXXXXXX', DIR => $parent, CLEANUP => 0);
 my $copy = "$directory/wine";
 my $ok = eval {
+    timing_phase('clone');
     system('/bin/cp', '-cR', $source, $copy) == 0 or die "APFS runtime copy failed";
+    timing_phase('copied-inventory');
     my $copied = inventory($copy);
+    timing_phase('source-inventory-after');
+    my $after = inventory($source);
+    timing_phase('compare-inodes');
     die "runtime changed during preparation" unless
-        $json->encode($before) eq $json->encode(inventory($source)) &&
+        $json->encode($before) eq $json->encode($after) &&
         $json->encode($before) eq $json->encode($copied);
     for my $p (keys %$copied) {
         next unless $copied->{$p}[0] eq 'file';
         my @a = stat($source . $p); my @b = stat($copy . $p);
         die "shared inode: $p" if $a[0] == $b[0] && $a[1] == $b[1];
     }
+    timing_phase('patch-assets-signatures');
     if ($apply_r2 && !$game_mode && $input eq $m->{inputSha256}) {
         open(my $f, '<', $copy . $rel) or die "read ntdll: $!";
         binmode($f); local $/; my $bytes = <$f>; close($f) or die $!;
@@ -179,7 +215,9 @@ my $ok = eval {
             $copied->{"/$p"}[3] = $a->{sha256};
         }
     }
+    timing_phase('output-inventory');
     die "prepared runtime mismatch" unless $json->encode($copied) eq $json->encode(inventory($copy));
+    timing_phase('receipt');
     my $receipt = {schema => 1, source => $source, runtime => $copy,
         inputSha256 => $input, outputSha256 => $output,
         fullscreen => $m->{fullscreen},
@@ -189,6 +227,7 @@ my $ok = eval {
     print {$out} $json->encode($receipt) or die $!; close($out) or die $!;
     rename("$directory/receipt.json.tmp", "$directory/receipt.json") or die $!;
     print "$copy\n";
+    $timing_done = 1;
     1;
 };
 if (!$ok) {

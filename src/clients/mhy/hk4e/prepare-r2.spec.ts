@@ -2,6 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { createWine } from "../../../wine/wine";
 import { exec } from "../../../utils";
 import { disposeR2Wine, prepareR2Wine } from "./prepare-r2";
+import { createLaunchTiming } from "./launch-timing";
 import type { Wine } from "../../../wine/wine";
 import { build } from "../../../utils/command-builder";
 import { spawnSync } from "child_process";
@@ -121,6 +122,7 @@ it("transports the real multiline recipe and manifest through the shell boundary
         loader: join(directory, "wine/bin/wine"),
       },
     });
+    const timing = createLaunchTiming(undefined, () => undefined);
     vi.mocked(exec).mockImplementation(async command => {
       // Replace only the evidence parent; all recipe/manifest serialization is
       // production code. Invalid ntdll must reach the hash gate, never Wine.
@@ -131,9 +133,21 @@ it("transports the real multiline recipe and manifest through the shell boundary
       });
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("Unsupported Wine ntdll bytes");
+      const diagnostic = result.stderr
+        .split("\n")
+        .find(line => line.startsWith("HK4E_RUNTIME_TIMING "));
+      if (!diagnostic) throw new Error("Missing native failure timing");
+      expect(JSON.parse(diagnostic.slice(20))).toMatchObject({
+        request: timing.request,
+        phase: "admission-assets",
+        outcome: "error",
+      });
+      expect(result.stdout).toBe("");
       throw Error("verified rejection");
     });
-    await expect(prepareR2Wine(wine)).rejects.toThrow("verified rejection");
+    await expect(prepareR2Wine(wine, undefined, timing)).rejects.toThrow(
+      "verified rejection"
+    );
     expect(createWine).not.toHaveBeenCalled();
   } finally {
     rmSync(directory, { recursive: true });
@@ -192,4 +206,29 @@ it("cannot prepare a Game Mode host without fullscreen support", async () => {
     })
   ).rejects.toThrow("requires native fullscreen");
   expect(exec).not.toHaveBeenCalled();
+});
+
+it("forwards native subspans without treating malformed diagnostics as admission failure", async () => {
+  const lines: string[] = [];
+  const timing = createLaunchTiming(undefined, line => lines.push(line));
+  const native = {
+    request: timing.request,
+    phase: "clone",
+    elapsedMs: 2,
+    atMs: 5,
+    outcome: "ok",
+  };
+  vi.mocked(exec).mockResolvedValue({
+    stdOut: "/profile/fps-runtime/r2-0123456789/wine\n",
+    stdErr: `HK4E_RUNTIME_TIMING malformed\nHK4E_RUNTIME_TIMING ${JSON.stringify(
+      native
+    )}\n`,
+  } as never);
+  const prepared = input();
+  vi.mocked(createWine).mockResolvedValue(prepared);
+  expect(await prepareR2Wine(input(), undefined, timing)).toBe(prepared);
+  const forwarded = lines
+    .map(line => JSON.parse(line.slice(12)))
+    .filter(event => event.event === "runtime-span");
+  expect(forwarded).toMatchObject([{ request: timing.request, native }]);
 });
