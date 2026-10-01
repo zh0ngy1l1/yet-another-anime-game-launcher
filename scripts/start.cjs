@@ -27,9 +27,11 @@ run("vite", ["build", "--mode=development"], {
 });
 fs.copyFileSync("neutralino.js", "dist/neutralino.js");
 fs.mkdirSync(directory, { recursive: true });
-fs.copyFileSync(
-  "neutralino.config.json",
-  path.join(directory, "neutralino.config.json")
+const config = JSON.parse(fs.readFileSync("neutralino.config.json", "utf8"));
+config.modes.window.hidden = hk4e;
+fs.writeFileSync(
+  path.join(directory, "neutralino.config.json"),
+  JSON.stringify(config, null, 2) + "\n"
 );
 run("rsync", ["-rlptu", "dist", directory]);
 if (hk4e)

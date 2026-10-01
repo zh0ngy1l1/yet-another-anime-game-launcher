@@ -8,6 +8,7 @@ import { exit, GLOBAL_onClose, logerror } from "./utils";
 import { launchOwnership } from "./launcher/launch-ownership";
 import { BootstrapSession, startBootstrap } from "./bootstrap";
 import { prepareBootstrapArtwork } from "./bootstrap-artwork";
+import { createBootstrapAdapter } from "./bootstrap-compat";
 
 function createPlates(
   tag: string,
@@ -32,16 +33,16 @@ if (typeof Neutralino == "undefined") {
     document.addEventListener("contextmenu", event => event.preventDefault());
   }
   const root = document.getElementById("root") as HTMLElement;
-  const session = new BootstrapSession(input => {
-    if (typeof Neutralino.custom?.bootstrap !== "function") {
-      return Promise.reject(
-        Error(
-          "Yaagl OS requires the matching local native runtime (bootstrap API missing)."
-        )
-      );
-    }
-    return Neutralino.custom.bootstrap(input);
+  const bootstrap = createBootstrapAdapter({
+    channel: import.meta.env["YAAGL_CHANNEL_CLIENT"],
+    native:
+      typeof Neutralino.custom?.bootstrap === "function"
+        ? input => Neutralino.custom.bootstrap(input)
+        : undefined,
+    show: () => Neutralino.window.show(),
+    failure: message => session.stop(message),
   });
+  const session = new BootstrapSession(bootstrap);
   // Install the normal close gate before the first asynchronous setup call.
   // A late sidecar acknowledgement must register its hook before shutdown.
   let closing: Promise<void> | undefined;
