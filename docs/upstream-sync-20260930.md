@@ -59,7 +59,8 @@ release/PR.
 Node `16.20.2` / pnpm `7.33.7`: frozen install and secret generation completed.
 TypeScript, full ESLint and Prettier passed; ESLint reports nine existing warnings
 and zero errors. Full Vitest: **39 files / 2,195 tests passed**, including all 22
-resource cases with the real public ZIP enabled. All ten channel frontends built.
+resource cases with the real public ZIP enabled. All ten channel frontends built; a final pass after the shared adapters uses
+`.tmp/upstream-sync-frontends-final/`.
 Fifteen isolated legacy/native packaging adapter checks passed; changed build
 scripts parse and the tag workflow YAML parses. HSR's command diff matches the
 upstream patch exactly. The native startup adapter's 22 tests preserve required
@@ -73,9 +74,80 @@ Both native asset verifiers passed. Public Wine archive and seven cached native
 inputs matched existing manifest pins. Preparation used disposable copies;
 loader probes executed only their authored fixture, with no game or live prefix.
 
-Detailed source, package, installation and final delivery results are recorded
-below after completion. Local logs: `.tmp/upstream-sync-checks/`; raw public
+Local logs: `.tmp/upstream-sync-checks/`; raw public
 artifact/source audit: `.tmp/upstream-sync-audit/`.
+
+## Packaged and installed candidate
+
+- Both the Global production bundle and the universal `YAAGL_TEST=1` route built
+  from clean commit **`f00f01cdb5cc8fdb4d15b2f052bedb679dd73443`**. Later delivery
+  changes are documentation only. Both package verifiers passed **554 files**,
+  native/sidecar/ASAR identities, signatures/dependencies, profile and bundle
+  identifiers, the new DXMT download URL, complete-bundle update policy, and
+  **four xdelta codec round trips** each. The universal test profile/identifier
+  and both region-selection markers were checked; it was not launched.
+- Global candidate:
+  `build/upstream-sync-20260930/Yaagl OS.app`.
+  Universal routing check output: `Yaagl Uni Test.app`.
+  Build logs: `package-global.log`, `package-universal-test.log` under the checks
+  directory. The package declares its exact source SHA in `manifests/build.json`.
+- Installed: **`/Applications/Yaagl OS.app`**.
+  Recoverable previous app:
+  **`/Applications/Yaagl OS.rollback-before-upstream-20260930.app`**.
+  The earlier `/Applications/Yaagl OS.rollback-20260928.app` was also retained.
+  No running app was replaced. Staging, installed and previous bundles matched
+  all recorded file hashes/modes; the old bundle has 554 files as well.
+- The normal installed wrapper reached a visible **Launch Game** screen with
+  blank status and no red error/warning. Native readiness and sidecar startup
+  were checked. Sophon had transient cold-start connection retries, then became
+  ready. No install/update/repair or launch action was selected.
+- Manual launcher-update action produced the complete-app-bundle informational
+  dialog, verified from its owned dialog process invocation; no upstream
+  resource update was offered. Normal native quit invoked the cleanup hook and
+  both sidecars stopped. AppleScript's immediate `-128` reflects the native
+  asynchronous close veto; the launcher then exited normally. The candidate
+  was reopened for the user's test and reached native readiness a second time.
+- All **22 stored settings** retained identical hashes. All **2,795 Wine-prefix
+  metadata entries** (paths, sizes, mtimes, modes, inodes) were unchanged. DXMT
+  remains `0.80.0` in the user's live cache until the next launch acquires the
+  upgrade. No game, prefix or shared Wine files were changed to test the new
+  component; acquisition verification used isolated directories.
+- Installed executable clipboard fixture passed copy of status/error text,
+  select-all, cut/paste and transfer to TextEdit, including icon changes. It
+  used isolated fixture resources and then exited; the prior text clipboard
+  was restored if it still held the fixture's text.
+- Compiled Global Sophon passed isolated health, unknown-task WebSocket and
+  public Global `7.1.0` metadata checks, submitted zero game operations and
+  stopped its service. This verifies the packaged service, not an update run.
+
+Installation/screenshot/preservation evidence lives in `.tmp/upstream-sync-install/`.
+Recovery of the old app after trying the new graphics version also needs its old
+DXMT cache/version marker: a read-only copy of the prior `dxmt/` and all storage
+files is retained at `.tmp/upstream-sync-install/profile-recovery/`. Restore only
+with the launcher/game fully stopped; do not replace a live prefix or remove
+ownership/recovery guards. Application replacement itself preserved all settings.
+
+## Test setup failures and remaining limits
+
+The first stock-Neutralino fixture omitted its configured icon and crashed in
+`window::setIcon` (PID 44916, the report supplied during this task). A second
+fixture omitted Vite's channel environment export and correctly displayed the
+required-native-runtime error. Both were isolated harness mistakes; no product
+source fix or guard relaxation was used to hide them. After preflight verified
+both icon and baked `hkrpgos` channel, the real stock-native fixture passed visible
+startup, rendering, clock release and normal cleanup/exit. All fixture processes
+ended. Evidence: `stock-bootstrap-summary.json` and
+`stock-bootstrap-dVaHP1/result.json` in the checks directory.
+
+Native compilation emits existing C++/AppKit deprecation warnings; frontend
+bundles emit size warnings. No new source-check errors remain. Public graphics
+are downloaded at launch, not embedded in the app. Their checksum is recorded
+as provenance, not enforced by the inherited downloader. DXMT requires at least
+macOS 15 by binary metadata; outer app remains unnotarized. New graphics gameplay,
+older OS versions and non-Global gameplay remain unqualified. Stock client runtime
+smoke used an aliased app fixture to avoid automatic Wine setup; it is not live
+HSR/BH3/NAP/CBJQ gameplay evidence. Remote CI/release publication was not performed
+as a validation substitute.
 
 ## Manual acceptance still required
 
