@@ -1,5 +1,8 @@
 # Yet another anime game launcher (Yaagl)
 
+Start with the [developer handoff](docs/developer-handoff.md) for fork provenance,
+source comparisons, module responsibilities, validation and remaining work.
+
 ## Build this fork on Apple Silicon
 
 See [the complete macOS build instructions](docs/build-macos.md) for prerequisites,

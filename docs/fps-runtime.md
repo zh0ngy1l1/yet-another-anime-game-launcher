@@ -40,7 +40,11 @@ supervisor. Normal launcher quit waits for the existing cleanup protocol. A
 disappearing window alone is not proof that the game or cleanup has completed.
 After owned completion, YAAGL waits for Wine, restores captured registry values
 and game/runtime files, then removes private resources and releases the guard.
-Primary game/worker errors remain reported even if restoration succeeds.
+Genuine primary game failures remain errors even if restoration succeeds. Optional
+FPS worker/probe failures appear as warnings with diagnostic evidence; recovered
+cleanup-only history clears after every cleanup gate confirms completion.
+Successful idle status is blank. Confirmed running status is exactly
+`game is running (DO NOT CLOSE THE LAUNCHER)`.
 
 On interruption or an unresolved lifetime, keep the profile, request, journal and
 preparation receipt. Do not force-kill Wine, delete guards, or launch another app
@@ -83,8 +87,9 @@ worker termination is classified independently of game and cleanup errors.
 The application requires macOS 14+; actual qualification is on Apple Silicon
 macOS 26.6.2 with Rosetta. Earlier OS gameplay, Intel-native application builds,
 China gameplay, higher graphics loads and arbitrary Wine distributions remain
-outside the finite tested configuration. Native Fullscreen and Game Mode are
-outside this delivery.
+outside the finite tested configuration. The FPS delivery evidence above predates Native Fullscreen and Game Mode.
+They are now available separately; see [fullscreen validation](native-fullscreen-validation-20260923.md)
+and [Game Mode validation](game-mode-validation-20260923.md). Activation does not establish a performance gain.
 
 The [7.1.0 runtime validation](genshin-runtime-validation-20260922.md) records
 subsequent authenticated gameplay, automatic Persistent-cache transition and
