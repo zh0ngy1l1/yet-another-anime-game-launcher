@@ -1,0 +1,13 @@
+diff --git a/emulators/wine-devel/Portfile b/emulators/wine-devel/Portfile
+--- a/emulators/wine-devel/Portfile
++++ b/emulators/wine-devel/Portfile
+@@ -94,7 +94,8 @@
+ patchfiles-append \
+     dwproton/gi-timeout/0009-HACK-ws2_32-Allow-changing-request-timeout-with-WINE.patch \
+     dwproton/cn-fix/0001-crypt32-Don-t-sort-items-when-updating-attributes-fo.patch \
+-    mf/0003-mfreadwrite-reader-Rely-on-the-video-processor-sampl.patch
++    mf/0003-mfreadwrite-reader-Rely-on-the-video-processor-sampl.patch \
++    allow-fixed-size-fullscreen.patch
+ 
+ configure.checks.implicit_function_declaration.whitelist-append \
+     __clear_cache \
