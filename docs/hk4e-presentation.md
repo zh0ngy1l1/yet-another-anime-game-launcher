@@ -6,6 +6,11 @@
 > See [the acceptance record and recovered trace](hk4e-real-launch-followup-20261001.md).
 > The original pre-gameplay verification account below is retained for context.
 
+The subsequent [packaged validation](hk4e-launch-followup-delivery-20261001.md#completed-packaged-real-game-validation)
+observed the hashing candidate's signed-in start screen, correct running name and
+icon, native fullscreen with Game Mode On, and normal exit/restoration. This is
+one Global configuration; the existing coverage limits remain.
+
 The Game Mode host now displays **Genshin Impact** for `GenshinImpact.exe` and
 **原神** for `YuanShen.exe`. Both carry the official Genshin desktop shortcut icon
 and retain `com.zh0ngy1l1.yaagl.hk4e-game`. The launcher remains **Yaagl OS**.

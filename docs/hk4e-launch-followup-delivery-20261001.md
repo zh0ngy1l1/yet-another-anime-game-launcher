@@ -52,24 +52,69 @@ warnings remain. The native launcher executable retains the accepted package's
 hash; the executable change is the frontend's embedded preparation recipe.
 The outer app remains unsigned/unnotarized as before.
 
-The new candidate was opened through its normal wrapper after confirming no game
-or launcher was active. It loaded the shared **Yaagl OS R2** profile, whose build
-manifest then matched `5f1cff9`, and rendered the expected **Launch Game** control.
-The manual run's logs/settings/manifests had already been preserved. No game
-launch was started: macOS reported `CGSSessionScreenIsLocked=true` with
-`loginwindow` foreground. Reading the rendered launcher window was possible,
-but interacting with the locked desktop requires the user's password or Touch ID.
-No authentication bypass or synthetic input through the lock screen was attempted.
-The user was asked to unlock the Mac; packaged real-game validation remains
-uncompleted at this authentication boundary. No new permissions were enabled.
-The diagnostic launcher then quit normally and both owned sidecars exited.
-Preserved settings and the private runtime/window-state directory inventories
-remained unchanged; no game input, update, repair or settings experiment occurred.
+The initial packaged launcher check stopped at a locked macOS desktop before any
+game input. The launcher rendered, then quit normally with its sidecars. After
+the user unlocked the desktop, the remaining real-game validation completed as
+described below. No new macOS permissions or authentication workaround was needed.
 
 No cursor, Retina, resolution or geometry behavior changes are included. The
 previous [auxiliary-window displacement observation](hk4e-cursor-investigation.md)
 remains a known limitation, not a passing case, and was not investigated further.
 The running warning remains `Game is running (DO NOT CLOSE THE LAUNCHER)`.
+
+## Completed packaged real-game validation
+
+The same verified `5f1cff9` package was opened through its normal wrapper after
+confirming the desktop was unlocked and no launcher/game was active. Current
+logs, settings and manifests were preserved first. The shared **Yaagl OS R2**
+profile loaded the candidate, and one normal **Launch Game** action used the same
+Global/Wine 11/FPS 150/native fullscreen/Game Mode/Steam configuration as the
+accepted manual run. Retina, HDR, ReShade and Launch Fix remained disabled.
+
+The game reached its signed-in start screen. Its running application name was
+**Genshin Impact**, with the stable game bundle identifier and the expected
+publisher icon; the running host's icon bytes matched the admitted Global asset.
+Using the ordinary green window control entered native fullscreen. The HUD
+showed **Game Mode On** and approximately **150 FPS** at the start screen.
+The launcher displayed its required running warning. This validates the packaged
+preparation path and these observed presentation/lifecycle behaviors; this run
+stayed at the start screen and does not extend gameplay or configuration coverage.
+
+| Nonoverlapping preparation component | Accepted manual run (s) | New candidate (s) |
+| --- | ---: | ---: |
+| Private runtime | 24.448 | 17.434 |
+| FPS registry snapshot | 6.081 | 6.499 |
+| Setup | 10.772 | 10.809 |
+| Wine/Steam bridge readiness | 5.528 | 6.025 |
+| Other preparation | 1.012 | 1.043 |
+| **Preparation total** | **47.841** | **41.810** |
+
+Inside private-runtime preparation, the recipe measures **24.418 → 17.414 s**,
+including four complete inventories totaling **22.508 → 15.497 s**. Those are
+nested intervals, not additional time. Native phases retain their own monotonic
+origin; forwarded JavaScript receipt timestamps are not phase starts. Creation
+acknowledgement measures **0.973 → 0.971 s**; trace-origin-to-acknowledgement is
+**48.815 → 42.782 s**. The 6.031 s lower preparation time is a comparison of two
+individual real runs, with uncontrolled cache/load differences. The three paired
+recipe measurements remain the controlled comparison. Screenshots establish
+visible start-screen rendering, not the earliest readiness or click-to-play time.
+Before the trace, bootstrap-to-DOM took 8.745 s in log time, and the following
+35.293 s included deliberate operator inspection. Automation click dispatch to
+the first timing-log receipt was about 0.123 s, including dispatch/logging rather
+than isolating queue latency. These intervals are outside measured preparation.
+
+The in-game power control and its **OK** exit confirmation closed the game
+normally with exit code zero. All 21 JavaScript spans and nine native phases
+completed successfully. Exit-status receipt to completed cleanup took **14.410 s**
+in wall-clock log time, separate from preparation and visible readiness.
+The launcher remained open until restoration and private-resource
+cleanup completed, then returned to **Launch Game** without a recovery warning.
+Read-only checks confirmed the actual request's temporary bridge, private runtime
+and window-state directories were absent. All 22 preserved settings retained
+identical hashes. The diagnostic launcher then
+quit normally and both owned sidecars exited; pre-existing unrelated Wine device
+processes were left alone. No executable source changed during this validation,
+so the existing committed-source package was reused without rebuilding.
 
 ## Local evidence
 
@@ -81,6 +126,11 @@ the paired measurements and prototypes; `validation-summary.json` records checks
 boundary. `preserved-bundles-verified.json` confirms all 554 installed files and
 562 accepted-candidate files matched their preserved inventories. The unrelated
 empty `preparation-trace.log` is retained untouched and is not committed.
+`live-unlocked/` contains the completed run's before/after logs and settings,
+request timings, presentation screenshots, process checks and preservation hashes;
+`live-trace-analysis.json` there correlates the complete request and cleanup.
+All 554 installed files and both 562-file staged candidates still match their
+original inventories after this run. Raw account and machine data stays local.
 
 Only the existing feature branch is delivered to the fork. There is no main
 movement, upstream integration, history rewrite, force push, PR or release.
