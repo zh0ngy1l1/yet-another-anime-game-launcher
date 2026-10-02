@@ -1,0 +1,14 @@
+AUX_SNAP initial parent={{104, 446}, {632, 438}} child={{224, 606}, {232, 178}} parent_style=f parent_space4=0
+PASS parent is fullscreen eligible
+AUX_SNAP entered-before-update parent={{0, 0}, {1512, 949}} child={{224, 606}, {232, 178}} parent_style=400f parent_space4=1
+PASS Win32 mutation starts only in an actual fullscreen Space
+PASS observer can signal Win32 update
+AUX_SNAP desired-after-win32-update parent={{0, 0}, {1512, 949}} child={{255, 507}, {316, 240}} parent_style=400f parent_space4=1
+PASS Win32 update changed auxiliary size
+PASS parent remained fullscreen during Win32 update
+AUX_SNAP final-after-exit parent={{104, 446}, {632, 438}} child={{255, 507}, {316, 240}} parent_style=f parent_space4=0
+PASS parent left native fullscreen
+AUX_COMPARE original={{224, 606}, {232, 178}} desired={{255, 507}, {316, 240}} final={{255, 507}, {316, 240}}
+PASS explicit auxiliary size update survives fullscreen exit
+PASS explicit auxiliary frame update survives fullscreen exit
+RESULT failures=0

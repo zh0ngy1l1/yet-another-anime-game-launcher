@@ -1,0 +1,66 @@
+[
+  {
+    "case": "patched-off",
+    "enabled": false,
+    "retina": false,
+    "global": "absent",
+    "app": "absent",
+    "exitCode": 0
+  },
+  {
+    "case": "patched-on",
+    "enabled": true,
+    "retina": false,
+    "global": "Y",
+    "app": "absent",
+    "exitCode": 0
+  },
+  {
+    "case": "patched-on-repeat",
+    "enabled": true,
+    "retina": false,
+    "global": "Y",
+    "app": "absent",
+    "exitCode": 0
+  },
+  {
+    "case": "patched-retina",
+    "enabled": true,
+    "retina": true,
+    "global": "Y",
+    "app": "absent",
+    "exitCode": 0
+  },
+  {
+    "case": "patched-close",
+    "enabled": true,
+    "retina": false,
+    "global": "Y",
+    "app": "absent",
+    "exitCode": 0
+  },
+  {
+    "case": "patched-app-off",
+    "enabled": false,
+    "retina": false,
+    "global": "Y",
+    "app": "N",
+    "exitCode": 0
+  },
+  {
+    "case": "patched-app-on",
+    "enabled": true,
+    "retina": false,
+    "global": "N",
+    "app": "Y",
+    "exitCode": 0
+  },
+  {
+    "case": "patched-green",
+    "enabled": true,
+    "retina": false,
+    "global": "Y",
+    "app": "absent",
+    "exitCode": 0
+  }
+]

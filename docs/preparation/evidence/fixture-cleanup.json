@@ -1,0 +1,29 @@
+{
+  "completedUtc": "2026-10-02T01:17:57.367693+00:00",
+  "removedOwnedPrefixes": [
+    ".tmp/validation/patched-off/test-prefix",
+    ".tmp/validation/baseline-off/test-prefix",
+    ".tmp/validation/patched-app-off/test-prefix",
+    ".tmp/validation/patched-on/test-prefix",
+    ".tmp/validation/patched-on-repeat/test-prefix",
+    ".tmp/validation/patched-retina/test-prefix",
+    ".tmp/validation/patched-close/test-prefix",
+    ".tmp/validation/patched-app-on/test-prefix",
+    ".tmp/final-validation/patched-off/test-prefix",
+    ".tmp/final-validation/patched-fixed/test-prefix",
+    ".tmp/final-validation/patched-resizable/test-prefix",
+    ".tmp/final-validation/callbacks/test-prefix",
+    ".tmp/final-validation/patched-app-off/test-prefix",
+    ".tmp/final-validation/patched-on/test-prefix",
+    ".tmp/final-validation/patched-on-repeat/test-prefix",
+    ".tmp/final-validation/patched-retina/test-prefix",
+    ".tmp/final-validation/patched-close/test-prefix",
+    ".tmp/final-validation/patched-app-on/test-prefix",
+    ".tmp/final-validation/patched-green/test-prefix",
+    ".tmp/final-validation/baseline-resizable/test-prefix",
+    ".tmp/callback-rerun/callbacks/test-prefix"
+  ],
+  "allServersDrainedBeforeRemoval": true,
+  "rawLogsAndBuildArtifactsRetained": true,
+  "acceptedGamePrefixTouched": false
+}

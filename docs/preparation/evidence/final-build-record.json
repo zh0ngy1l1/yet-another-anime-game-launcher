@@ -1,0 +1,47 @@
+{
+  "baselineTree": "763e3aa9df162f403f5ef8dcff995c5db58fc044",
+  "patchSha256": "0b1e9a96bc72a07510b420d2a851614167afe1fe73f39b8951457b6bd0b5bf02",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.6.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+  "sdk": "26.5",
+  "outputs": [
+    {
+      "path": "lib/wine/x86_64-unix/winemac.so",
+      "sha256": "a81727288b827e0084f708449eb4b595ca0ddad5312a8ea850db6022d05f0748",
+      "size": 492816
+    },
+    {
+      "path": "lib/wine/x86_64-windows/winemac.drv",
+      "sha256": "22d9dd76fd49697078652ccb7df133177befd60dfeaccc604ea021097f4ac269",
+      "size": 75028
+    },
+    {
+      "path": "lib/wine/i386-windows/winemac.drv",
+      "sha256": "c1ce3d05269f11e6fc3d48fb00f327fcb846ffde629f7c2ce7eb672e13a1c187",
+      "size": 62977
+    }
+  ],
+  "wineCommit": "db11d0fe6a169c457e23d007e20404643d067aa8",
+  "overlayCommit": "0d029255bce8f2f4ac47a1984b59ba82e09d9829",
+  "localSourceCommit": "782396a1b55452aaeacbafaffdff9072e25e9216",
+  "runtimeArchiveSha256": "4ebba536115e937c3826fa5808dbed50cd5e91c8454999b54cbe0cd2a43d8b4c",
+  "launcherBase": "fc56d843461a313fdc5c19af2a2a47eaf8f2f6ac",
+  "sourceDelta": {
+    "files": 6,
+    "insertions": 93,
+    "deletions": 7
+  },
+  "overlayRegistrationDelta": {
+    "files": 1,
+    "insertions": 2,
+    "deletions": 1
+  },
+  "nativeSourceFileCounts": [
+    "3\t0\tdlls/winemac.drv/cocoa_window.h",
+    "73\t6\tdlls/winemac.drv/cocoa_window.m",
+    "1\t0\tdlls/winemac.drv/macdrv.h",
+    "1\t0\tdlls/winemac.drv/macdrv_cocoa.h",
+    "4\t0\tdlls/winemac.drv/macdrv_main.c",
+    "11\t1\tdlls/winemac.drv/window.c"
+  ],
+  "binaryDistribution": "No binaries published; outputs are isolated local fixture artifacts."
+}

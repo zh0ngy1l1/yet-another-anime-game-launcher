@@ -1,0 +1,7 @@
+PASS entry latches fixed-window handling
+PASS failed entry restores frame after eligibility changes
+PASS failed entry clears transition and saved children
+PASS failed exit preserves snapshot for retry
+PASS successful retry restores and clears latch
+PASS repeated late callbacks leave closing shell hidden and release snapshots
+RESULT failures=0

@@ -1,0 +1,8 @@
+AUX_MODE resizable_parent=1
+AUX_RECT initial x=220 y=200 width=240 height=180
+AUX_RECT before-update x=220 y=200 width=240 height=180
+AUX_REQUEST x=251 y=237 width=324 height=242
+AUX_UPDATE success=1 error=0
+AUX_RECT desired x=251 y=237 width=324 height=242
+AUX_RECT final x=251 y=237 width=324 height=242
+AUX_DONE updated=1

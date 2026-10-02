@@ -1,0 +1,7 @@
+reg: The operation completed successfully
+RESULT failures=0
+Traceback (most recent call last):
+  File "/Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher/native/wine-fullscreen/tests/check-geometry.py", line 16, in <module>
+    assert first[2:]==last[2:], (arg,name,first,last)
+           ^^^^^^^^^^^^^^^^^^^
+AssertionError: ('/Users/david/code/home/yaagl_vibecoding/yet-another-anime-game-launcher/.tmp/hk4e-cursor-investigation/logs/retina-off-windows.log', 'YAAGL owned', ('0', 'YAAGL owned', '155,146,486,332', '480,300', '14ca0000', '00000100'), ('59', 'YAAGL owned', '-278,36,486,332', '480,300', '14ca0000', '00000100'))

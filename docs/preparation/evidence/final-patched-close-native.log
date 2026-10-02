@@ -1,0 +1,31 @@
+SNAP initial title=YAAGL fixed style=7 behavior=a4 frame={{83, 573}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+SNAP initial title=YAAGL resizable style=f behavior=a4 frame={{109, 550}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+SNAP initial title=YAAGL fixed-max style=f behavior=a4 frame={{133, 529}, {480, 332}} min={480, 300} max={480, 300} active=1 space4=0 zoom=1
+SNAP initial title=YAAGL owned style=7 behavior=148 frame={{158, 507}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL tool style=17 behavior=148 frame={{183, 493}, {480, 324}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL popup style=7 behavior=124 frame={{208, 463}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL dialog style=3 behavior=148 frame={{233, 441}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL ownerless-dialog style=7 behavior=124 frame={{258, 419}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL noactivate style=87 behavior=148 frame={{283, 397}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL disabled style=7 behavior=a4 frame={{333, 353}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+SNAP initial title=YAAGL constrained style=f behavior=a4 frame={{359, 330}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+PASS fixed eligibility matches setting
+PASS fixed Cocoa style remains nonresizable
+PASS fixed green button matches setting
+PASS resizable eligibility retained
+PASS YAAGL owned
+PASS YAAGL tool
+PASS YAAGL popup
+PASS YAAGL dialog
+PASS YAAGL ownerless-dialog
+PASS YAAGL noactivate
+PASS child has no Cocoa top-level window
+SNAP before-enter title=YAAGL fixed style=7 behavior=a4 frame={{83, 573}, {480, 332}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+PASS ordinary startup never enters fullscreen
+PASS close requested while native entry is pending
+SNAP closed-during-entry title=YAAGL fixed style=7 behavior=a4 frame={{83, 573}, {480, 300}} min={480, 300} max={480, 300} active=1 space4=0 zoom=1
+CLOSE visible=0 closing=1
+PASS target closes safely during entry (observer retains Cocoa object)
+PASS closed target has no pending transition or fullscreen Space
+PASS other fixture windows remain usable
+RESULT failures=0

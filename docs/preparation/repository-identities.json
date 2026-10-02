@@ -1,0 +1,16 @@
+{
+  "launcherRepository": "https://github.com/yaagl/yet-another-anime-game-launcher",
+  "existingFork": "https://github.com/zh0ngy1l1/yet-another-anime-game-launcher",
+  "launcherBase": "fc56d843461a313fdc5c19af2a2a47eaf8f2f6ac",
+  "prototypeBranch": "prep/native-fullscreen-prototype-20261001",
+  "prototypeHead": "4bfcc9dd1a89590cdcdc0e138677060cdd49b933",
+  "assessmentBranch": "prep/fullscreen-assessment-20261001",
+  "relationship": "Both launcher preparation branches start directly at the same upstream base; neither includes accepted feature-branch commits. The local Wine extraction commit is separate and represented by the hosted patch.",
+  "nativeSourceBaseCommit": "db11d0fe6a169c457e23d007e20404643d067aa8",
+  "nativeOverlayBase": "0d029255bce8f2f4ac47a1984b59ba82e09d9829",
+  "nativePreparedTree": "763e3aa9df162f403f5ef8dcff995c5db58fc044",
+  "nativeLocalBranch": "prep/generic-fixed-fullscreen",
+  "nativeLocalHead": "782396a1b55452aaeacbafaffdff9072e25e9216",
+  "distributionRepositoryHead": "66b9e0e9284c43ccb9d1d546325fb53d63f88128",
+  "overlayDefaultHead": "098941d867f8793f559035e298ceb69a8e69f1f3"
+}

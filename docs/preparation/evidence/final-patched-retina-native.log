@@ -1,0 +1,65 @@
+SNAP initial title=YAAGL fixed style=7 behavior=a4 frame={{41, 767}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+SNAP initial title=YAAGL resizable style=f behavior=a4 frame={{54, 766}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+SNAP initial title=YAAGL fixed-max style=f behavior=a4 frame={{66, 755}, {240, 182}} min={240, 150} max={240, 150} active=1 space4=0 zoom=1
+SNAP initial title=YAAGL owned style=7 behavior=148 frame={{79, 744}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL tool style=17 behavior=148 frame={{91, 737}, {240, 174}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL popup style=7 behavior=124 frame={{104, 722}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL dialog style=3 behavior=148 frame={{116, 711}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL ownerless-dialog style=7 behavior=124 frame={{129, 700}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL noactivate style=87 behavior=148 frame={{141, 689}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=0
+SNAP initial title=YAAGL disabled style=7 behavior=a4 frame={{166, 667}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+SNAP initial title=YAAGL constrained style=f behavior=a4 frame={{179, 656}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+PASS fixed eligibility matches setting
+PASS fixed Cocoa style remains nonresizable
+PASS fixed green button matches setting
+PASS resizable eligibility retained
+PASS YAAGL owned
+PASS YAAGL tool
+PASS YAAGL popup
+PASS YAAGL dialog
+PASS YAAGL ownerless-dialog
+PASS YAAGL noactivate
+PASS child has no Cocoa top-level window
+SNAP before-enter title=YAAGL fixed style=7 behavior=a4 frame={{41, 767}, {240, 182}} min={0, 0} max={3.4028234663852886e+38, 3.4028234663852886e+38} active=1 space4=0 zoom=1
+PASS ordinary startup never enters fullscreen
+SNAP entered title=YAAGL fixed style=4007 behavior=a4 frame={{636, 399}, {240, 150}} min={240, 150} max={240, 150} active=1 space4=1 zoom=1
+PASS Cocoa native fullscreen style set
+PASS window belongs to an actual fullscreen Space (type 4)
+SNAP exited title=YAAGL fixed style=7 behavior=a4 frame={{41, 767}, {240, 182}} min={240, 150} max={240, 150} active=1 space4=0 zoom=1
+PASS Cocoa native fullscreen style cleared
+PASS window left fullscreen Space
+PASS windowed frame restored exactly
+PASS fixed Cocoa style restored without resize permission
+SNAP entered title=YAAGL fixed style=4007 behavior=a4 frame={{636, 399}, {240, 150}} min={240, 150} max={240, 150} active=1 space4=1 zoom=1
+PASS Cocoa native fullscreen style set
+PASS window belongs to an actual fullscreen Space (type 4)
+SNAP exited title=YAAGL fixed style=7 behavior=a4 frame={{41, 767}, {240, 182}} min={240, 150} max={240, 150} active=1 space4=0 zoom=1
+PASS Cocoa native fullscreen style cleared
+PASS window left fullscreen Space
+PASS windowed frame restored exactly
+PASS fixed Cocoa style restored without resize permission
+SNAP entered title=YAAGL fixed style=4007 behavior=a4 frame={{636, 399}, {240, 150}} min={240, 150} max={240, 150} active=1 space4=1 zoom=1
+PASS Cocoa native fullscreen style set
+PASS window belongs to an actual fullscreen Space (type 4)
+SNAP exited title=YAAGL fixed style=7 behavior=a4 frame={{41, 767}, {240, 182}} min={240, 150} max={240, 150} active=1 space4=0 zoom=1
+PASS Cocoa native fullscreen style cleared
+PASS window left fullscreen Space
+PASS windowed frame restored exactly
+PASS fixed Cocoa style restored without resize permission
+SNAP resizable-entered title=YAAGL resizable style=400f behavior=a4 frame={{0, 0}, {1512, 949}} min={55.5, 0} max={3024, 1964} active=1 space4=1 zoom=1
+PASS resizable still enters native fullscreen Space
+SNAP resizable-exited title=YAAGL resizable style=f behavior=a4 frame={{54, 766}, {240, 182}} min={55.5, 0} max={3024, 1964} active=1 space4=0 zoom=1
+PASS resizable exits and restores frame
+SNAP fixed-max-entered title=YAAGL fixed-max style=400f behavior=a4 frame={{636, 383}, {240, 182}} min={240, 182} max={240, 182} active=1 space4=1 zoom=1
+PASS fixed maximize-box window enters native Space
+SNAP fixed-max-exited title=YAAGL fixed-max style=f behavior=a4 frame={{66, 755}, {240, 182}} min={240, 150} max={240, 150} active=1 space4=0 zoom=1
+PASS fixed maximize-box window restores frame
+PASS fixed maximize-box window retains fixed constraints
+SNAP constrained-entered title=YAAGL constrained style=400f behavior=a4 frame={{636, 399}, {240, 150}} min={240, 150} max={240, 150} active=1 space4=1 zoom=1
+PASS constrained resizable window enters native Space
+PASS application min/max constraints retained
+SNAP constrained-exited title=YAAGL constrained style=f behavior=a4 frame={{179, 656}, {240, 182}} min={240, 150} max={240, 150} active=1 space4=0 zoom=1
+PASS constrained window restores frame
+PASS disabled window cannot enter fullscreen
+PASS no automatic reentry after user exit
+RESULT failures=0

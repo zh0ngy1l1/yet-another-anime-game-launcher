@@ -1,0 +1,18 @@
+{
+  "acceptedBranch": "fix/hk4e-presentation-launch-prep-20261001",
+  "acceptedHead": "86d6c80624413f895806afcdd8ff7f93b059d759",
+  "main": "08928a6413d38ae0345a348eae17b94428776527",
+  "upstreamBase": "fc56d843461a313fdc5c19af2a2a47eaf8f2f6ac",
+  "userAcceptance": "The user personally tested the optimized candidate and reports that the game works exactly as intended. This is user acceptance of the accepted candidate, not validation of the extracted prototype.",
+  "appExecutableSource": "5f1cff960aa82e2538f08caf4022299bfb92efc5",
+  "checkedUtc": "2026-10-02T01:07:39.176493+00:00",
+  "appEntries": 562,
+  "appInventorySha256": "756b1f4f72bf9f37ffef921c3420be71de2a1f65e7b56d836da11c1b45281c0f",
+  "untrackedTrace": {
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "size": 0
+  },
+  "differences": [],
+  "installedAppOrGameUsed": false,
+  "performanceTuningPerformed": false
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "case": "baseline-resizable",
+    "exitCode": 0,
+    "passed": true
+  },
+  {
+    "case": "patched-resizable",
+    "exitCode": 0,
+    "passed": true
+  },
+  {
+    "case": "patched-fixed",
+    "exitCode": 0,
+    "passed": false
+  },
+  {
+    "case": "callbacks",
+    "exitCode": 0,
+    "passed": false
+  }
+]
