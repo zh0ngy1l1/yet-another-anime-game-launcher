@@ -14,6 +14,7 @@ node_modules
 /build/
 
 *.app
+!/sidecar/wine-game-mode/hosts/*/*.app/
 
 .DS_Store
 
