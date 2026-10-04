@@ -12,7 +12,8 @@ The signed host is now `Genshin Impact.app` for Global and `原神.app` for Chin
 Routing selects the path from the already admitted resolved executable; each
 host rejects the wrong regional location/target. Preparation validates the exact
 regional mapping and encodes JSON asset names as UTF-8 filesystem bytes before
-copying and comparing full inventories. Build, manifest, signatures, asset checks
+copying and comparing full inventories, including non-ASCII asset parent paths.
+Packaging reads NUL-delimited Git paths so Unicode filenames are not C-quoted. Build, manifest, signatures, asset checks
 and relocated-host fixtures use the same names. The stable identifier, external
 and embedded display names, official icon, request format, ownership checks and
 ordinary Wine helper route remain. No Dock/Launch Services database was reset.

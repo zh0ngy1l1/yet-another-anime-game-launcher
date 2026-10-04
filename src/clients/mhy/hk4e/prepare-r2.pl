@@ -129,8 +129,9 @@ my $apply_r2 = !exists($m->{applyR2}) || $m->{applyR2};
 my $game_mode = $m->{gameMode};
 my $output = $game_mode ? $game_mode->{ntdll}{$apply_r2 ? 'r2' : 'plain'}{sha256} :
     $apply_r2 ? $m->{outputSha256} : $input;
-my ($game_target, $game_prefix, $game_host, @game_stat);
+my ($game_target, $game_prefix, $game_host, $game_assets, @game_stat);
 if ($game_mode) {
+    $game_assets = encode_utf8($m->{gameModeAssets});
     die "Game Mode requires fullscreen/compatible manifest" unless $m->{fullscreen} && $game_mode->{schema} == 1 &&
         $game_mode->{bundleIdentifier} eq 'com.zh0ngy1l1.yaagl.hk4e-game';
     die "Unsupported Game Mode loader input" unless
@@ -138,7 +139,7 @@ if ($game_mode) {
     for my $a (@{$game_mode->{files}}) {
         die "Game Mode asset path" if $a->{path} =~ m{(?:^/|(?:^|/)\.\.(?:/|$))};
         die "Game Mode bundled asset mismatch: $a->{path}" unless
-            hash_file($m->{gameModeAssets} . "/" . encode_utf8($a->{path})) eq $a->{sha256};
+            hash_file($game_assets . "/" . encode_utf8($a->{path})) eq $a->{sha256};
     }
     for my $path ($m->{gameModeExecutable}, $m->{gameModePrefix}) {
         die "Game Mode requires absolute paths without control characters" unless defined($path) &&
@@ -158,7 +159,7 @@ if ($game_mode) {
         $game_host eq (basename($game_target) eq 'YuanShen.exe' ?
             "hosts/cn/\x{539f}\x{795e}.app" : 'hosts/global/Genshin Impact.app');
     $game_host = encode_utf8($game_host);
-    system('/usr/bin/codesign', '--verify', '--strict', "$m->{gameModeAssets}/$game_host") == 0
+    system('/usr/bin/codesign', '--verify', '--strict', "$game_assets/$game_host") == 0
         or die "Game Mode host signature invalid";
 }
 if ($m->{fullscreen}) {
@@ -211,7 +212,7 @@ my $ok = eval {
     }
     if ($game_mode) {
         my $asset = $game_mode->{ntdll}{$apply_r2 ? 'r2' : 'plain'};
-        copy("$m->{gameModeAssets}/$asset->{path}", $copy . $rel) or die "copy Game Mode ntdll: $!";
+        copy("$game_assets/$asset->{path}", $copy . $rel) or die "copy Game Mode ntdll: $!";
         $copied->{$rel}[2] = $asset->{size};
         for my $a (@{$game_mode->{files}}) {
             next if $a->{path} eq 'ntdll.so' || $a->{path} eq 'ntdll-r2.so';
@@ -225,7 +226,7 @@ my $ok = eval {
             for my $dir (make_path(dirname($copy . $p))) {
                 $copied->{substr($dir, length($copy))} = ['directory', (stat($dir))[2] & 07777];
             }
-            copy("$m->{gameModeAssets}/$asset_path", $copy . $p) or die "copy Game Mode asset: $!";
+            copy("$game_assets/$asset_path", $copy . $p) or die "copy Game Mode asset: $!";
             chmod($a->{mode}, $copy . $p) or die "Game Mode asset permissions: $!";
             $copied->{$p} = ['file', $a->{mode}, $a->{size}, $a->{sha256}];
         }

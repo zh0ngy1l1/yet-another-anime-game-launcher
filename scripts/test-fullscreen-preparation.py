@@ -41,11 +41,12 @@ with tempfile.TemporaryDirectory(prefix='yaagl-fullscreen-prep-') as tmp:
         assert set(parent.iterdir())==existing;p.write_bytes(original)
         print('PASS incompatible module rejects before copy',asset['path'])
     prefix=root/'prefix';prefix.mkdir()
+    regional_assets=root/'原神 assets';shutil.copytree(r/'sidecar/wine-game-mode',regional_assets)
     for fps in [False,True]:
         for name in ['GenshinImpact.exe','YuanShen.exe']:
             game=root/name;game.write_bytes(b'fixture only, never executed')
             m={**base,'applyR2':fps,'fullscreen':fs,'fullscreenAssets':str(r/'sidecar/wine-fullscreen'),
-               'gameMode':gm,'gameModeAssets':str(r/'sidecar/wine-game-mode'),
+               'gameMode':gm,'gameModeAssets':str(regional_assets),
                'gameModeExecutable':str(game),'gameModePrefix':str(prefix)}
             result=subprocess.run(['perl',str(r/'src/clients/mhy/hk4e/prepare-r2.pl'),str(source),str(parent),json.dumps(m)],capture_output=True,text=True,check=True)
             copy=Path(result.stdout.strip());native=copy/'lib/wine/x86_64-unix'

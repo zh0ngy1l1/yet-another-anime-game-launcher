@@ -9,7 +9,7 @@ const output = (command, args) => cp.execFileSync(command, args, {encoding: "utf
 const sha = file => crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const write = (file, value) => { fs.mkdirSync(path.dirname(file), {recursive:true}); fs.writeFileSync(file, JSON.stringify(value,null,2)+"\n"); };
 function copyTracked(prefix, destination) {
-  for(const file of output("git",["ls-files","--",prefix]).split("\n").filter(Boolean)) {
+  for(const file of output("git",["ls-files","-z","--",prefix]).split("\0").filter(Boolean)) {
     const target = path.join(destination,path.relative(prefix,file));
     fs.mkdirSync(path.dirname(target),{recursive:true}); fs.copyFileSync(file,target);
   }
