@@ -81,3 +81,5 @@ not an actual China game Dock-hover test. These brief Global runs are not a new
 all-settings or extended-gameplay qualification. Main and the separate assessment
 and prototype branches were not changed; delivery is limited to this feature branch.
 
+The feature branch was pushed to the fork without force. No PR or release was
+created. The unrelated untracked preparation trace was preserved.
