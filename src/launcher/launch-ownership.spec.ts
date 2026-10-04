@@ -202,9 +202,7 @@ it("keeps progress independent from errors, pins confirmed running status, and c
   expect(own.state()).toMatchObject({ failed: false, error: "", warning: "" });
   next.running();
   next.phase("FPS discovery");
-  expect(own.state().detail).toBe(
-    "Game is running (DO NOT CLOSE THE LAUNCHER)"
-  );
+  expect(own.state().detail).toBe("Game is running. DO NOT QUIT THE LAUNCHER");
   expect(own.state().error).toBe("");
   next.ended();
   next.succeed();
@@ -260,4 +258,35 @@ it("labels observation and cleanup retries without changing either retry gate", 
   await cleanup;
   owner.succeed();
   owner.finish();
+});
+
+it("does not regress cleanup or settled status on delayed callbacks from the same request", () => {
+  const own = createLaunchOwnership(),
+    owner = own.claim();
+  owner.running();
+  owner.ended();
+  owner.phase("Delayed preparation");
+  owner.running();
+  expect(own.state()).toMatchObject({
+    held: true,
+    running: false,
+    detail: "Game has exited. Finishing cleanup…",
+  });
+  owner.succeed();
+  owner.phase("Delayed preparation");
+  owner.running();
+  owner.ended();
+  expect(own.state()).toMatchObject({ held: true, running: false, detail: "" });
+  owner.finish();
+  const next = own.claim();
+  owner.phase("Old preparation");
+  owner.running();
+  owner.ended();
+  owner.succeed();
+  expect(own.state()).toMatchObject({
+    held: true,
+    running: false,
+    detail: "Preparing launch",
+  });
+  next.finish();
 });

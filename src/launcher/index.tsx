@@ -272,6 +272,7 @@ export async function createLauncher({
                 }
               >
                 <h3
+                  id="launch-status"
                   style={
                     "text-shadow: 1px 1px 2px #333;color:white;margin-bottom:5px;margin-top:8px;"
                   }

@@ -1,7 +1,7 @@
 import { createSignal } from "solid-js";
 import { deferred } from "../utils/operation";
 
-export const RUNNING_STATUS = "Game is running (DO NOT CLOSE THE LAUNCHER)";
+export const RUNNING_STATUS = "Game is running. DO NOT QUIT THE LAUNCHER";
 
 export class LaunchFailure extends Error {
   constructor(
@@ -70,6 +70,7 @@ export function createLaunchOwnership() {
     setState(value => ({
       ...value,
       held: closing,
+      running: false,
       canRetry: false,
       detail: !value.failed && !value.warning ? "" : value.detail,
     }));
@@ -83,17 +84,21 @@ export function createLaunchOwnership() {
     if (mine.claimed)
       throw new LaunchFailure("A launch already owns preparation or cleanup");
     mine.claimed = true;
+    let stage: "preparing" | "running" | "cleanup" | "settled" = "preparing";
     const update = (detail: string, failed: boolean) => {
-      if (current === mine)
+      if (current === mine && stage !== "settled")
         setState(value =>
           failed
             ? { ...value, error: detail, failed: true }
-            : { ...value, detail: value.running ? RUNNING_STATUS : detail }
+            : stage === "preparing"
+            ? { ...value, detail: value.running ? RUNNING_STATUS : detail }
+            : value
         );
     };
     return {
       succeed: (detail = "") => {
-        if (current === mine)
+        if (current === mine) {
+          stage = "settled";
           setState(value => ({
             ...value,
             detail,
@@ -101,22 +106,40 @@ export function createLaunchOwnership() {
             error: "",
             failed: false,
           }));
+        }
+      },
+      stopped: () => {
+        if (current === mine) {
+          stage = "settled";
+          setState(value => ({
+            ...value,
+            running: false,
+            detail: "Launch stopped. See the error above.",
+          }));
+        }
       },
       running: () => {
-        if (current === mine)
+        if (
+          current === mine &&
+          (stage === "preparing" || stage === "running")
+        ) {
+          stage = "running";
           setState(value => ({
             ...value,
             running: true,
             detail: RUNNING_STATUS,
           }));
+        }
       },
       ended: () => {
-        if (current === mine)
+        if (current === mine && stage !== "settled") {
+          stage = "cleanup";
           setState(value => ({
             ...value,
             running: false,
             detail: "Game has exited. Finishing cleanup…",
           }));
+        }
       },
       warning: (warning: string) => {
         if (current === mine) setState(value => ({ ...value, warning }));

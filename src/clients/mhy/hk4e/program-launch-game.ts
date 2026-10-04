@@ -10,6 +10,7 @@ import {
 } from "../../../launcher/launch-ownership";
 import { admitFpsLaunch } from "./fps-admission";
 import { launchFpsGame } from "./launch-fps-game";
+import { FpsBridgePreparationFailure, prepareFpsBridge } from "./fps-bridge";
 import { createLaunchFix } from "./launch-fix";
 import { hk4eWineDebug } from "./launch-diagnostics";
 import { createLaunchTiming, LaunchTiming } from "./launch-timing";
@@ -117,6 +118,12 @@ async function* launchGameDisabledProgram(
     normalExit = false;
   let primary: unknown;
   const secondary: unknown[] = [];
+  let bridge: Awaited<ReturnType<typeof prepareFpsBridge>> | undefined;
+  let preparationRecovery: (() => Promise<void>) | undefined;
+  let launchIssued = false,
+    observedExit = false,
+    bridgeReleased = false,
+    bridgeDisposed = false;
   const check = () => {
     if (signal.aborted)
       throw new Error("Launch cancelled before game creation");
@@ -160,11 +167,7 @@ async function* launchGameDisabledProgram(
 cd "%~dp0"
 copy "${wine.toWinePath(
       join(gameDir, atob("SG9Zb0tQcm90ZWN0LnN5cw=="))
-    )}" "%WINDIR%\\system32\\"
-cd /d "${wine.toWinePath(gameDir)}"
-"${wine.toWinePath(
-      join(gameDir, gameExecutable)
-    )}" -platform_type CLOUD_THIRD_PARTY_PC -is_cloud 1`;
+    )}" "%WINDIR%\\system32\\"`;
     await journal.capture(resolve("config.bat"));
     await journal.capture(
       join(
@@ -180,7 +183,6 @@ cd /d "${wine.toWinePath(gameDir)}"
       patchProgram(gameDir, wine, server, config, journal.capture)
     );
     await mkdirp(resolve("./logs"));
-    yield ["setStateText", "GAME_RUNNING"];
     const logfile = resolve(`./logs/game_${Date.now()}.log`);
     void log(
       `HK4E disabled request ${directory}: Steam Patch=${
@@ -188,20 +190,77 @@ cd /d "${wine.toWinePath(gameDir)}"
       }; Launch Fix=${config.blockNet === true}; Wine output: ${logfile}`
     ).catch(() => undefined);
     check();
+    // Keep the ordinary route's protection copy, but let the existing bridge
+    // attribute the actual game and retain its handle/jobs. No FPS worker or
+    // FPS registry operations are requested on this path.
+    if (!config.steamPatch)
+      await timing.measure("protection-copy-helper", () =>
+        wine.exec(
+          "cmd",
+          ["/c", wine.toWinePath(resolve("config.bat"))],
+          {},
+          "/dev/null"
+        )
+      );
+    await timing.measure("wine-wait-setup", waitWine);
+    const environment = {
+      ...gameEnvironment(wine, config),
+      ...windowSession.environment,
+    };
+    try {
+      bridge = await timing.measure("game-observer-artifacts", () =>
+        prepareFpsBridge({
+          wine: {
+            ...wine.executionContext,
+            environment: {
+              ...wine.executionContext.environment,
+              ...environment,
+            },
+          },
+          executable: join(gameDir, gameExecutable),
+          steamPatch: config.steamPatch,
+          gameDirectory: gameDir,
+          gameDxmtConfig: environment.DXMT_CONFIG ?? "",
+          log: logfile,
+          diagnostic: text => {
+            void log(text).catch(() => undefined);
+          },
+          event: text => {
+            void log(text).catch(() => undefined);
+          },
+          running: owner.running,
+          ended: owner.ended,
+          gameFailure: (text, known) => {
+            if (known) {
+              primary ??= new Error(text);
+              owner.problem(
+                "The game exited unexpectedly. See the launch log for details."
+              );
+            } else
+              owner.warning(
+                "The game has exited, but the launcher could not determine its exit status. See the launch log for details."
+              );
+          },
+        })
+      );
+    } catch (error) {
+      if (error instanceof FpsBridgePreparationFailure)
+        preparationRecovery = error.retryCleanup;
+      throw error;
+    }
+    timing.emit({ event: "bridge-identity", token: bridge.token });
+    check();
+    await timing.measure("wine-bridge-boot-ready", () => bridge!.boot());
+    check();
     await timing.measure("launch-fix-ready", async () => launchFix?.start());
     check();
 
     prepared();
-    await wine.exec2(
-      config.steamPatch ? "C:\\windows\\system32\\steam.exe" : "cmd",
-      config.steamPatch
-        ? [wine.toWinePath(join(gameDir, gameExecutable))]
-        : ["/c", `${wine.toWinePath(resolve("./config.bat"))} `],
-      { ...gameEnvironment(wine, config), ...windowSession.environment },
-      logfile,
-      true
-    );
-    normalExit = true;
+    launchIssued = true; // A failed acknowledgement can still have created a game.
+    await bridge.launch();
+    await bridge.waitForGameExit();
+    observedExit = true;
+    normalExit = bridge.normalGameExit();
   } catch (error) {
     primary = error;
   } finally {
@@ -211,6 +270,22 @@ cd /d "${wine.toWinePath(gameDir)}"
     for (;;) {
       const errors: unknown[] = [];
       try {
+        if (bridge && !bridgeReleased) {
+          if (launchIssued) {
+            if (!observedExit) {
+              await bridge.waitForGameExit();
+              observedExit = true;
+              normalExit = bridge.normalGameExit();
+            }
+            owner.ended();
+            await bridge.release();
+          } else await bridge.discardBeforeLaunch();
+          bridgeReleased = true;
+        }
+        if (preparationRecovery) {
+          await preparationRecovery();
+          preparationRecovery = undefined;
+        }
         await launchFix?.finish();
         owner.phase("Waiting for Wine before restoring launch files");
         await waitWine();
@@ -239,6 +314,10 @@ cd /d "${wine.toWinePath(gameDir)}"
           }
         }
         if (!errors.length) {
+          if (bridge && !bridgeDisposed) {
+            await bridge.dispose();
+            bridgeDisposed = true;
+          }
           if (!journalDone) {
             await journal.dispose();
             journalDone = true;
@@ -370,7 +449,8 @@ async function* ownedLaunchGameProgram(
     reshade: input.config.reshade === true,
     launchFix: input.config.blockNet === true,
   });
-  let delegated = false;
+  let delegated = false,
+    completed = false;
   let preparedRuntime: Wine | undefined;
   let windowSession:
     | Awaited<ReturnType<typeof createWindowSession>>
@@ -423,6 +503,7 @@ async function* ownedLaunchGameProgram(
         prepared,
         preparationStopped
       );
+      completed = true;
       return;
     }
     const admitted = { ...admission, wine: input.wine.executionContext };
@@ -529,7 +610,7 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
     if (!delegated) {
       logDiagnostic(error);
       owner.problem(errorMessage(error));
-      owner.phase("Launch stopped. See the error above.");
+      owner.stopped();
     }
     throw error instanceof LaunchFailure
       ? error
@@ -539,6 +620,7 @@ copy "${wine.toWinePath(join(gameDir, protection))}" "%WINDIR%\\system32\\"`
     if (!delegated) {
       await windowSession?.finish(false);
       if (preparedRuntime) await disposeR2Wine(preparedRuntime);
+      if (completed) owner.succeed();
       owner.finish();
     }
   }

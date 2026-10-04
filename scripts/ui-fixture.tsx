@@ -12,6 +12,18 @@ import type { Config } from "../src/config";
 import type { Wine } from "../src/wine";
 import type { Github } from "../src/github";
 import "../src/app.css";
+import { launchOwnership } from "../src/launcher/launch-ownership";
+import { deferred } from "../src/utils/operation";
+
+let statusRun:
+  | {
+      owner: ReturnType<typeof launchOwnership.claim>;
+      observed: ReturnType<typeof deferred<void>>;
+      exited: ReturnType<typeof deferred<void>>;
+      restored: ReturnType<typeof deferred<void>>;
+    }
+  | undefined;
+let previousRun: typeof statusRun;
 
 Neutralino.init();
 const root = window.NL_PATH.startsWith("/")
@@ -69,7 +81,26 @@ async function main() {
       update: forbidden,
       install: forbidden,
       predownload: forbidden,
-      launch: forbidden,
+      async *launch() {
+        if (!Reflect.get(window, "NL_UI_STATUS_FIXTURE")) forbidden();
+        previousRun = statusRun;
+        const run = (statusRun = {
+          owner: launchOwnership.claim(),
+          observed: deferred<void>(),
+          exited: deferred<void>(),
+          restored: deferred<void>(),
+        });
+        yield ["setStateText", "PATCHING"];
+        await run.observed.promise;
+        run.owner.running();
+        // A late task-queue preparation update must not replace ownership status.
+        yield ["setStateText", "PATCHING"];
+        await run.exited.promise;
+        run.owner.ended();
+        await run.restored.promise;
+        run.owner.succeed();
+        run.owner.finish();
+      },
       checkIntegrity: forbidden,
       async *init() {},
       async createConfig(locale, value) {
@@ -105,7 +136,18 @@ async function main() {
       if (command.sequence <= last) return;
       last = command.sequence;
       let data: unknown;
-      if (command.action === "click")
+      if (command.action === "observed") statusRun!.observed.resolve();
+      else if (command.action === "ended") statusRun!.exited.resolve();
+      else if (command.action === "restored") statusRun!.restored.resolve();
+      else if (command.action === "late") {
+        const owner = (command.previous ? previousRun : statusRun)!.owner;
+        owner.phase("Delayed preparation callback");
+        owner.running();
+        if (command.previous) {
+          owner.ended();
+          owner.succeed();
+        }
+      } else if (command.action === "click")
         (document.querySelector(command.selector) as HTMLElement).click();
       else if (command.action === "game")
         (
@@ -164,6 +206,10 @@ async function main() {
           controls,
           data,
           html: document.body.innerHTML,
+          status: document.querySelector("#launch-status")?.textContent ?? "",
+          launchDisabled: (
+            document.querySelector(".launch-button button") as HTMLButtonElement
+          ).disabled,
         })
       );
     } catch (error) {

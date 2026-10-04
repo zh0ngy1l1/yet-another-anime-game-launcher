@@ -54,6 +54,10 @@ recipe copies. It never executes Wine or a game and adds no production test flag
 The native bootstrap, normal-close, rendered-settings and runtime RPC fixtures
 remain separate entrypoints because they exercise different application boundaries.
 
+The rendered launch-status regression uses the native WebKit fixture described in
+[the launch-status correction](hk4e-launch-status-20261003.md). It uses an isolated
+profile and inert launch gates, and checks visible status text and enabled controls.
+
 ## Explicit game validation tools
 
 These are manual operations, separate from the source suite. The metadata-only

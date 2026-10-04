@@ -235,7 +235,7 @@ export function createLaunchTransaction(
           uniqueObservations
         );
         owner.problem(message);
-        owner.phase("Launch stopped. See the error above.");
+        owner.stopped();
       } else owner.succeed();
       owner.finish();
       ended = true;

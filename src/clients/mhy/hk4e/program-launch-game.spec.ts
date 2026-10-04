@@ -33,7 +33,8 @@ vi.mock("./launch-fix", () => ({
   }),
 }));
 
-vi.mock("./fps-bridge", () => ({
+vi.mock("./fps-bridge", async () => ({
+  ...(await vi.importActual<typeof import("./fps-bridge")>("./fps-bridge")),
   prepareFpsBridge: vi.fn(() => {
     throw Error("unexpected FPS acquisition");
   }),
@@ -131,6 +132,11 @@ function input() {
     waitUntilServerOff: vi.fn(async () => undefined),
     toWinePath: (path: string) => "Z:" + path.replaceAll("/", "\\"),
     prefix: "/prefix",
+    executionContext: {
+      loader: "/wine/bin/wine",
+      prefix: "/prefix",
+      environment: {},
+    },
     attributes: { renderBackend: "dxmt" },
   } as unknown as Wine;
   return {
@@ -147,37 +153,91 @@ async function drain(program: ReturnType<typeof launchGameProgram>) {
   }
 }
 it.each([false, true])(
-  "disabled retains invalid target and upstream DXMT/Steam=%s without FPS operations",
+  "ordinary Steam=%s observes only its attributed game, retaining normal DXMT without an FPS worker",
   async steam => {
-    stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
-    stored.set(FPS_UNLOCK_TARGET_KEY, "invalid retained text");
-    const request = input();
-    request.config.steamPatch = steam;
-    await drain(launchGameProgram(request));
-    expect(prepareFpsBridge).not.toHaveBeenCalled();
-    expect(request.wine.exec2).toHaveBeenCalledWith(
-      steam ? "C:\\windows\\system32\\steam.exe" : "cmd",
-      steam ? ["Z:\\game\\GenshinImpact.exe"] : ["/c", "Z:\\app\\config.bat "],
-      expect.objectContaining({
-        WINEDEBUG: "fixme-all,err-unwind,+timestamp,err+seh,+loaddll,+pid",
-        DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
-        MTL_HUD_ENABLED: "1",
-        WINE_ENABLE_TIMEOUT_FIX: "1",
-        WINEESYNC: "1",
-      }),
-      expect.stringMatching(/\/app\/logs\/game_/),
-      true
-    );
-    expect(files.has("/app/config.bat")).toBe(false);
-    expect(launchOwnership.state().held).toBe(false);
-    expect(
-      timingEvents().filter(
-        event => event.phase === "preparation" && event.event === "end"
-      )
-    ).toMatchObject([{ outcome: "ok" }]);
-    expect(
-      timingEvents().filter(event => event.event === "game-execution-boundary")
-    ).toHaveLength(1);
+    vi.useFakeTimers();
+    try {
+      stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
+      stored.set(FPS_UNLOCK_TARGET_KEY, "invalid retained text");
+      const request = input(),
+        native = boundary(steam);
+      request.config.steamPatch = steam;
+      const boot = deferred<void>();
+      native.io.start.mockImplementation(value => ({
+        ...native.start(value),
+        started: boot.promise,
+      }));
+      const actual = await vi.importActual<typeof import("./fps-bridge")>(
+        "./fps-bridge"
+      );
+      vi.mocked(prepareFpsBridge).mockImplementationOnce(value =>
+        actual.prepareFpsBridge(value, native.io)
+      );
+      const running = drain(launchGameProgram(request));
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(native.io.start).toHaveBeenCalledOnce();
+      expect(launchOwnership.state()).toMatchObject({
+        running: false,
+        detail: "Preparing launch",
+        held: true,
+      });
+      expect(native.events).not.toContain("launch");
+      boot.resolve();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(launchOwnership.state()).toMatchObject({
+        running: true,
+        detail: "Game is running. DO NOT QUIT THE LAUNCHER",
+      });
+      const observed = vi.mocked(prepareFpsBridge).mock.calls[0][0];
+      expect(observed).toMatchObject({
+        executable: "/game/GenshinImpact.exe",
+        steamPatch: steam,
+        gameDxmtConfig: "d3d11.preferredMaxFrameRate=60;",
+        wine: {
+          environment: {
+            DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
+            MTL_HUD_ENABLED: "1",
+            WINE_ENABLE_TIMEOUT_FIX: "1",
+          },
+        },
+      });
+      expect(native.events).not.toContain("start");
+      expect(native.events.some(event => event.startsWith("registry:"))).toBe(
+        false
+      );
+      expect(request.wine.exec2).not.toHaveBeenCalled();
+      native.corrupt(true);
+      native.exit();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(launchOwnership.state().running).toBe(true); // Unknown token is not an exit.
+      expect(files.has("/app/config.bat")).toBe(true);
+      native.corrupt(false);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(launchOwnership.state()).toMatchObject({
+        running: false,
+        held: true,
+        detail: "Game has exited. Finishing cleanup…",
+      });
+      observed.running?.(); // delayed observation cannot resurrect an exited request
+      expect(launchOwnership.state().running).toBe(false);
+      expect(files.has("/app/config.bat")).toBe(true); // foreground execution still outstanding
+      native.direct.resolve({ confirmed: true, status: 0 });
+      await vi.advanceTimersByTimeAsync(1000);
+      await running;
+      expect(files.has("/app/config.bat")).toBe(false);
+      expect(launchOwnership.state()).toMatchObject({
+        held: false,
+        running: false,
+        detail: "",
+      });
+      expect(
+        timingEvents().filter(
+          event => event.event === "game-execution-boundary"
+        )
+      ).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   }
 );
 
@@ -286,7 +346,7 @@ it.each([false, true])(
         errors: () => [],
       };
       vi.mocked(createLaunchFix).mockReturnValue(fix);
-      if (fps) {
+      {
         const actual = await vi.importActual<typeof import("./fps-bridge")>(
           "./fps-bridge"
         );
@@ -305,6 +365,8 @@ it.each([false, true])(
       await vi.advanceTimersByTimeAsync(1000);
       expect(native.events).not.toContain("launch");
       expect(request.wine.exec2).not.toHaveBeenCalled();
+      native.direct.resolve({ confirmed: true, status: 0 });
+      await vi.advanceTimersByTimeAsync(1000);
       expect(fix.finish).toHaveBeenCalled();
       expect(launchOwnership.state().held).toBe(true);
       expect(
@@ -335,16 +397,35 @@ it.each([false, true])(
     }
   }
 );
-it("disabled non-DXMT keeps its environment and admits unsupported retained FPS preferences", async () => {
-  stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
-  stored.set(FPS_UNLOCK_TARGET_KEY, "361");
-  const request = input();
-  request.wine.attributes = {};
-  await drain(launchGameProgram(request));
-  const environment = vi.mocked(request.wine.exec2).mock.calls[0][2];
-  expect(environment).not.toHaveProperty("DXMT_CONFIG");
-  expect(prepareFpsBridge).not.toHaveBeenCalled();
+it("ordinary non-DXMT keeps its environment and admits unsupported retained FPS preferences", async () => {
+  vi.useFakeTimers();
+  try {
+    stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
+    stored.set(FPS_UNLOCK_TARGET_KEY, "361");
+    const request = input(),
+      native = boundary();
+    request.wine.attributes = {};
+    const actual = await vi.importActual<typeof import("./fps-bridge")>(
+      "./fps-bridge"
+    );
+    vi.mocked(prepareFpsBridge).mockImplementationOnce(value =>
+      actual.prepareFpsBridge(value, native.io)
+    );
+    const running = drain(launchGameProgram(request));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(
+      vi.mocked(prepareFpsBridge).mock.calls[0][0].wine.environment
+    ).not.toHaveProperty("DXMT_CONFIG");
+    expect(native.events).not.toContain("start");
+    native.exit();
+    native.direct.resolve({ confirmed: true, status: 0 });
+    await vi.advanceTimersByTimeAsync(1000);
+    await running;
+  } finally {
+    vi.useRealTimers();
+  }
 });
+
 it("rejects invalid enabled settings before resource acquisition or setup", async () => {
   stored.set(FPS_UNLOCK_ENABLED_KEY, "true");
   stored.set(FPS_UNLOCK_TARGET_KEY, "0");
@@ -453,33 +534,6 @@ it.each([false, true])(
     }
   }
 );
-it("disabled command completion cannot release admission before its request-owned Wine wait", async () => {
-  stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
-  const request = input(),
-    command = deferred<void>(),
-    wait = deferred<void>();
-  vi.mocked(request.wine.exec2).mockImplementation(
-    () => command.promise as unknown as ReturnType<Wine["exec2"]>
-  );
-  vi.mocked(request.wine.waitUntilServerOff)
-    .mockImplementationOnce(async () => undefined as never)
-    .mockImplementation(
-      () => wait.promise as unknown as ReturnType<Wine["waitUntilServerOff"]>
-    );
-  const running = drain(launchGameProgram(request));
-  await settle();
-  expect(await GLOBAL_onClose(false)).toBe(false);
-  expect(launchOwnership.reserve()).toBeUndefined();
-  command.resolve();
-  await settle();
-  expect(await GLOBAL_onClose(false)).toBe(false);
-  expect(files.has("/app/config.bat")).toBe(true);
-  wait.resolve();
-  await running;
-  expect(await GLOBAL_onClose(false)).toBe(true);
-  launchOwnership.cancelClose();
-  expect(files.has("/app/config.bat")).toBe(false);
-});
 
 it("preserves registry execution failure when temporary-file removal also fails", async () => {
   stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
@@ -546,7 +600,7 @@ it.each(
           } as never)
       );
       vi.mocked(createLaunchFix).mockReturnValue(fix);
-      if (fps) {
+      {
         const actual = await vi.importActual<typeof import("./fps-bridge")>(
           "./fps-bridge"
         );
@@ -566,7 +620,7 @@ it.each(
         expect(native.events).not.toContain("launch");
         expect(launchOwnership.state().held).toBe(true);
         expect(await GLOBAL_onClose(false)).toBe(false);
-        if (fps) expect(events).toEqual(["bridge:boot", "block:start"]);
+        expect(events).toEqual(["bridge:boot", "block:start"]);
         ready.resolve();
         await vi.advanceTimersByTimeAsync(11000);
       } else expect(createLaunchFix).not.toHaveBeenCalled();
@@ -581,21 +635,16 @@ it.each(
           )?.[0].wine.environment.DXMT_CONFIG
         ).toBe(`d3d11.preferredMaxFrameRate=${target};`);
         expect(request.wine.exec2).not.toHaveBeenCalled();
-        native.exit();
-        native.stopped();
-        native.direct.resolve({ confirmed: true, status: 0 });
-        await vi.advanceTimersByTimeAsync(2000);
-      } else
-        expect(request.wine.exec2).toHaveBeenCalledWith(
-          "C:\\windows\\system32\\steam.exe",
-          ["Z:\\game\\GenshinImpact.exe"],
-          expect.objectContaining({
-            DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
-            WINE_ENABLE_TIMEOUT_FIX: "1",
-          }),
-          expect.any(String),
-          true
-        );
+      } else {
+        expect(native.events).not.toContain("start");
+        expect(
+          vi.mocked(prepareFpsBridge).mock.calls[0][0].gameDxmtConfig
+        ).toBe("d3d11.preferredMaxFrameRate=60;");
+      }
+      native.exit();
+      native.stopped();
+      native.direct.resolve({ confirmed: true, status: 0 });
+      await vi.advanceTimersByTimeAsync(2000);
       if (block) {
         expect(fix.finish).toHaveBeenCalled();
         expect(launchOwnership.state().held).toBe(true);
@@ -655,7 +704,7 @@ it.each([false, true])(
         finish: () => restored.promise,
         errors: () => [launchError],
       });
-      if (fps) {
+      {
         const actual = await vi.importActual<typeof import("./fps-bridge")>(
           "./fps-bridge"
         );
@@ -734,7 +783,7 @@ it.each(
             isDirectory: path === "/prefix",
           } as never)
       );
-      if (fps) {
+      {
         const actual = await vi.importActual<typeof import("./fps-bridge")>(
           "./fps-bridge"
         );
@@ -763,29 +812,73 @@ it.each(
       expect(request.wine.setProps).toHaveBeenCalledWith(
         expect.objectContaining({ retina: false })
       );
-      if (fps) {
-        expect(native.events).toContain("fps:120");
-        native.exit();
-        native.stopped();
-        native.direct.resolve({ confirmed: true, status: 0 });
-        await vi.advanceTimersByTimeAsync(2000);
-      } else {
-        expect(prepareFpsBridge).not.toHaveBeenCalled();
-        expect(request.wine.exec2).toHaveBeenCalledWith(
-          steam ? "C:\\windows\\system32\\steam.exe" : "cmd",
-          expect.any(Array),
-          expect.objectContaining({
-            DXMT_CONFIG: "d3d11.preferredMaxFrameRate=60;",
-          }),
-          expect.any(String),
-          true
-        );
+      if (fps) expect(native.events).toContain("fps:120");
+      else {
+        expect(native.events).not.toContain("start");
+        expect(
+          vi.mocked(prepareFpsBridge).mock.calls[0][0].gameDxmtConfig
+        ).toBe("d3d11.preferredMaxFrameRate=60;");
       }
+      expect(launchOwnership.state().running).toBe(true);
+      native.exit();
+      native.stopped();
+      native.direct.resolve({ confirmed: true, status: 0 });
+      await vi.advanceTimersByTimeAsync(2000);
       await running;
       expect(disposeR2Wine).toHaveBeenCalledTimes(fps || fullscreen ? 1 : 0);
       expect(launchOwnership.state().held).toBe(false);
     } finally {
       clock.mockRestore();
+      vi.useRealTimers();
+    }
+  }
+);
+
+it.each([false, true])(
+  "ordinary cancellation=%s after game creation retains observation and restoration",
+  async cancel => {
+    vi.useFakeTimers();
+    try {
+      stored.set(FPS_UNLOCK_ENABLED_KEY, "false");
+      const request = input(),
+        native = boundary(true);
+      request.config.steamPatch = true;
+      if (!cancel)
+        native.io.command.mockImplementation(async (directory, text) => {
+          await native.command(directory, text);
+          if (text.split(" ")[2] === "launch") native.status.error = 5;
+        });
+      const actual = await vi.importActual<typeof import("./fps-bridge")>(
+        "./fps-bridge"
+      );
+      vi.mocked(prepareFpsBridge).mockImplementationOnce(value =>
+        actual.prepareFpsBridge(value, native.io)
+      );
+      const iterator = launchGameProgram(request),
+        observed = drain(iterator).catch(error => error);
+      await vi.advanceTimersByTimeAsync(1000);
+      const returning = cancel ? iterator.return() : Promise.resolve();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(launchOwnership.state()).toMatchObject({
+        held: true,
+        running: true,
+      });
+      expect(await GLOBAL_onClose(false)).toBe(false);
+      expect(native.events).not.toContain("release");
+      expect(files.has("/app/config.bat")).toBe(true);
+      native.exit();
+      native.direct.resolve({ confirmed: true, status: 0 });
+      await vi.advanceTimersByTimeAsync(1000);
+      const result = await observed;
+      await returning;
+      if (!cancel) expect(result.message).toMatch(/not acknowledged/);
+      expect(launchOwnership.state()).toMatchObject({
+        held: false,
+        running: false,
+      });
+      expect(files.has("/app/config.bat")).toBe(false);
+      expect(native.events).not.toContain("start");
+    } finally {
       vi.useRealTimers();
     }
   }

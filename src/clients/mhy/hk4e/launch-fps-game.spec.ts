@@ -772,7 +772,7 @@ it.each([1168, 87, 998])(
     expect(rig.ownership.state()).toMatchObject({
       held: true,
       failed: false,
-      detail: "Game is running (DO NOT CLOSE THE LAUNCHER)",
+      detail: "Game is running. DO NOT QUIT THE LAUNCHER",
     });
     expect(rig.ownership.state().warning).toContain(
       "FPS unlock is unavailable"
@@ -845,7 +845,7 @@ it("a timed-out probe of the confirmed game cannot fail launch or abandon a late
     transaction = rig.start();
   await tick(100);
   expect(rig.ownership.state().detail).toBe(
-    "Game is running (DO NOT CLOSE THE LAUNCHER)"
+    "Game is running. DO NOT QUIT THE LAUNCHER"
   );
   const gate = deferred<void>(),
     command = rig.native.command;
@@ -857,7 +857,7 @@ it("a timed-out probe of the confirmed game cannot fail launch or abandon a late
   expect(rig.ownership.state()).toMatchObject({
     held: true,
     failed: false,
-    detail: "Game is running (DO NOT CLOSE THE LAUNCHER)",
+    detail: "Game is running. DO NOT QUIT THE LAUNCHER",
   });
   expect(rig.ownership.state().warning).toContain("FPS unlock is unavailable");
   expect(rig.ownership.beginClose()).toBe(false);
@@ -888,7 +888,7 @@ it("a successful transaction clears an earlier launch error without losing its e
     held: true,
     failed: false,
     error: "",
-    detail: "Game is running (DO NOT CLOSE THE LAUNCHER)",
+    detail: "Game is running. DO NOT QUIT THE LAUNCHER",
   });
   expect(await rig.finish(successful)).toBeUndefined();
   expect(rig.ownership.state()).toMatchObject({
