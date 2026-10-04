@@ -9,7 +9,8 @@
 # include "compatible-ntdll.h"
 #endif
 
-#define YAAGL_HOST_SUFFIX "/YAAGL HK4E.app/Contents/MacOS"
+#define YAAGL_GLOBAL_HOST "Genshin Impact.app/Contents/MacOS"
+#define YAAGL_CN_HOST "原神.app/Contents/MacOS"
 #define YAAGL_REQUEST "yaagl-game-mode.request"
 #ifdef YAAGL_GAME_HOST
 static char yaagl_expected_ntdll[65];
@@ -43,16 +44,22 @@ static char *yaagl_route( char **argv )
     int fd, routed, socketfd;
     char *end;
     const char *socket = getenv( "WINESERVERSOCKET" );
-    const char *noexec = getenv( "WINELOADERNOEXEC" );
+    const char *noexec = getenv( "WINELOADERNOEXEC" ), *host_path, *target_name;
+    int target_region;
 
     if (!self || !(dir = realpath_dirname( self ))) yaagl_fail( "cannot locate loader" );
     free( (void *)self );
-    native_dir = remove_tail( dir, YAAGL_HOST_SUFFIX );
-    routed = native_dir != NULL;
+    native_dir = remove_tail( dir, "/" YAAGL_GLOBAL_HOST );
+    routed = native_dir ? 1 : 0;
+    if (!native_dir)
+    {
+        native_dir = remove_tail( dir, "/" YAAGL_CN_HOST );
+        if (native_dir) routed = 2;
+    }
     if (!native_dir) native_dir = strdup( dir );
     free( dir );
 #ifdef YAAGL_GAME_HOST
-    if (!routed) yaagl_fail( "host must run inside its fixed app bundle" );
+    if (routed != YAAGL_GAME_HOST) yaagl_fail( "host must run inside its regional app bundle" );
 #else
     if (routed) yaagl_fail( "ordinary loader cannot be a game host" );
 #endif
@@ -101,7 +108,21 @@ static char *yaagl_route( char **argv )
     if (errno || *end || number < 0 || number > INT_MAX) yaagl_fail( "invalid server socket" );
     socketfd = (int)number;
     if (fstat( socketfd, &st ) || !S_ISSOCK( st.st_mode )) yaagl_fail( "missing inherited server socket" );
+    target_name = strrchr( target, '/' );
+    target_name = target_name ? target_name + 1 : target;
+    if (!strcmp( target_name, "GenshinImpact.exe" ))
+    {
+        target_region = 1;
+        host_path = YAAGL_GLOBAL_HOST "/wine";
+    }
+    else if (!strcmp( target_name, "YuanShen.exe" ))
+    {
+        target_region = 2;
+        host_path = YAAGL_CN_HOST "/wine";
+    }
+    else yaagl_fail( "unsupported regional executable" );
 #ifdef YAAGL_GAME_HOST
+    if (routed != target_region) yaagl_fail( "host region does not match selected executable" );
     if (strcmp( digest, YAAGL_NTDLL_PLAIN ) && strcmp( digest, YAAGL_NTDLL_R2 ))
         yaagl_fail( "unsupported request ntdll identity" );
     strcpy( yaagl_expected_ntdll, digest );
@@ -109,7 +130,7 @@ static char *yaagl_route( char **argv )
     unsetenv( "YAAGL_GAME_MODE_IMAGE" );
     return native_dir;
 #else
-    host = build_path( native_dir, "YAAGL HK4E.app/Contents/MacOS/wine" );
+    host = build_path( native_dir, host_path );
     /* Keep argv[0], PID, cwd, environment, inherited handles and server socket. */
     execv( host, argv );
     yaagl_fail( "cannot exec required game host" );

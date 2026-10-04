@@ -49,10 +49,12 @@ with tempfile.TemporaryDirectory(prefix='yaagl-fullscreen-prep-') as tmp:
                'gameModeExecutable':str(game),'gameModePrefix':str(prefix)}
             result=subprocess.run(['perl',str(r/'src/clients/mhy/hk4e/prepare-r2.pl'),str(source),str(parent),json.dumps(m)],capture_output=True,text=True,check=True)
             copy=Path(result.stdout.strip());native=copy/'lib/wine/x86_64-unix'
-            app=native/'YAAGL HK4E.app'
+            app=native/('原神.app' if name=='YuanShen.exe' else 'Genshin Impact.app')
             info=plistlib.loads((app/'Contents/Info.plist').read_bytes())
             assert info['CFBundleName']==info['CFBundleDisplayName']==('原神' if name=='YuanShen.exe' else 'Genshin Impact')
             assert info['CFBundleIdentifier']==gm['bundleIdentifier']
+            assert app.stem==info['CFBundleDisplayName']
+            assert list(native.glob('*.app'))==[app]
             assert not (native/'hosts').exists()
             assert sha(app/'Contents/Resources/GameIcon.icns')==sha(r/'sidecar/wine-game-mode'/gm['hosts'][name]/'Contents/Resources/GameIcon.icns')
             expected=gm['ntdll']['r2' if fps else 'plain']['sha256']
@@ -66,7 +68,7 @@ with tempfile.TemporaryDirectory(prefix='yaagl-fullscreen-prep-') as tmp:
             print('PASS Game Mode/FPS/fullscreen composition and request binding',fps,name)
     assets=root/'bad-assets';shutil.copytree(r/'sidecar/wine-game-mode',assets)
     host=assets/gm['hosts']['YuanShen.exe']/'Contents/MacOS/wine';original=host.read_bytes()
-    for defect in ['missing','mismatch','source-loader','prefix','target','region']:
+    for defect in ['missing','mismatch','source-loader','prefix','target','region','swapped-region']:
         bad={**m,'gameModeAssets':str(assets)}
         old_loader=(source/paths[-1]).read_bytes()
         if defect=='missing':host.unlink()
@@ -74,10 +76,11 @@ with tempfile.TemporaryDirectory(prefix='yaagl-fullscreen-prep-') as tmp:
         if defect=='source-loader':(source/paths[-1]).write_bytes(b'wrong loader')
         if defect=='prefix':bad['gameModePrefix']='/does-not-exist'
         if defect=='target':bad['gameModeExecutable']=str(source/paths[0])
+        if defect=='swapped-region':bad['gameMode']={**gm,'hosts':{'YuanShen.exe':gm['hosts']['GenshinImpact.exe']}}
         if defect=='region':bad['gameMode']={**gm,'hosts':{'YuanShen.exe':'../invalid.app'}}
         existing=set(parent.iterdir())
         result=subprocess.run(['perl',str(r/'src/clients/mhy/hk4e/prepare-r2.pl'),str(source),str(parent),json.dumps(bad)],capture_output=True,text=True)
         assert result.returncode and set(parent.iterdir())==existing,(defect,result.stderr)
         host.write_bytes(original);(source/paths[-1]).write_bytes(old_loader)
         print('PASS Game Mode rejected before copy',defect)
-print('17 fullscreen/Game Mode preparation cases passed; no Wine execution')
+print('18 fullscreen/Game Mode preparation cases passed; no Wine execution')

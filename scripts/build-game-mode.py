@@ -93,11 +93,11 @@ for name, size in [('16x16', 16), ('16x16@2x', 32), ('32x32', 32), ('32x32@2x', 
         stdout=subprocess.DEVNULL)
 icns = work / 'GameIcon.icns'
 run('iconutil', '-c', 'icns', iconset, '-o', icns)
-hosts = {'GenshinImpact.exe': 'hosts/global/YAAGL HK4E.app',
-         'YuanShen.exe': 'hosts/cn/YAAGL HK4E.app'}
+hosts = {'GenshinImpact.exe': 'hosts/global/Genshin Impact.app',
+         'YuanShen.exe': 'hosts/cn/原神.app'}
 for region in (None, 'global', 'cn'):
     host = region is not None
-    app = stage / ('hosts/' + region + '/YAAGL HK4E.app') if host else None
+    app = stage / hosts['YuanShen.exe' if region == 'cn' else 'GenshinImpact.exe'] if host else None
     dest = app / 'Contents/MacOS/wine' if host else stage / 'wine'
     dest.parent.mkdir(parents=True, exist_ok=True)
     info = here / ('Info-cn.plist' if region == 'cn' else 'Info.plist')
@@ -110,7 +110,7 @@ for region in (None, 'global', 'cn'):
         original = (source / 'loader/wine_info.plist.in').read_text().replace('@PACKAGE_VERSION@', '11.0')
         info.write_text(original)
         assert 'LSSupportsGameMode' not in plistlib.loads(info.read_bytes())
-    run('clang', *flags, *(['-DYAAGL_GAME_HOST'] if host else []), here / 'loader.c', '-o', dest,
+    run('clang', *flags, *(['-DYAAGL_GAME_HOST=' + ('2' if region == 'cn' else '1')] if host else []), here / 'loader.c', '-o', dest,
         '-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,' + str(info),
         '-Wl,-no_pie,-image_base,0x200000000,-no_huge,-no_fixup_chains,'
         '-segaddr,WINE_RESERVE,0x1000,-segaddr,WINE_TOP_DOWN,0x7ff000000000')

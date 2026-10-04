@@ -12,23 +12,23 @@
   "ntdll": {
     "plain": {
       "path": "ntdll.so",
-      "sha256": "5c14399a38dace1e65c7cd8ec4b4b8eb8cd89541f6dd4507faf278ef5dcf8aa2",
+      "sha256": "d5bd9640d9e43fc099a62c3d2d9bd4efbdfe8af1a3d6108d8cc156f7197972fc",
       "size": 616560
     },
     "r2": {
       "path": "ntdll-r2.so",
-      "sha256": "db2a82a355acbc3fd20ce69a6ae15b58aea19613881dd02e1e82b8ec69318e9a",
+      "sha256": "3b17b14817dfd35684f3aac122ff48b8190534c554d184c5902a003da2c9577e",
       "size": 616576
     }
   },
   "hosts": {
-    "GenshinImpact.exe": "hosts/global/YAAGL HK4E.app",
-    "YuanShen.exe": "hosts/cn/YAAGL HK4E.app"
+    "GenshinImpact.exe": "hosts/global/Genshin Impact.app",
+    "YuanShen.exe": "hosts/cn/\u539f\u795e.app"
   },
   "sourceFiles": {
     "native/wine-game-mode/loader.c": "f84c5ace53c95de48a2329db7a0238b4533d5536845172c41055007843cf3c04",
     "native/wine-game-mode/main.h": "ed0a9f8950a71d30ff70b1e0bf1d6cc2b32ab267b77833ebe4843e8eaaebe1bf",
-    "native/wine-game-mode/routing.h": "9765eda57b8ba150d64122c3d35815ef389e4b087f69ca46d535fc8fc5aac9e3",
+    "native/wine-game-mode/routing.h": "582e7e50cef56627c5c678ff450768f6aa99f27b4141deaa7b25cbf8adc4e09a",
     "native/wine-game-mode/Info.plist": "3d0cc97bfa1d3335971ab477425fe4a3b1c5b88e28566636a9af104944dd68a6",
     "native/wine-game-mode/Info-cn.plist": "3e1f5e78a68ca84c6eea94cb034078cff29fdf3e581290e898d3123ac5c8823a",
     "native/wine-game-mode/genshin.ico": "1e94e4cc67e39a844bc26b57e103d5f8767b175fc5e7fd3930165d6559768709",
@@ -37,72 +37,72 @@
     "native/wine-r2/0001-ntdll-use-current-protection-for-rosetta-toggle.patch": "88dd45f99c6438db828688239286192b1405c90f22d03ef5c54b62bb22c52458",
     "native/wine-fullscreen/prepare-sources.py": "2e1166adedfbab690549827fd014e9fc6b57cc29ee983c14f2a5ce36e33d1917",
     "native/wine-fullscreen/configure-engine.sh": "d15061465d0ad58b2d000cc1eb659b3c1c62bc5d96e677777f0b840edd29c309",
-    "scripts/build-game-mode.py": "55c8b69b6a879c496d905d5959fcb0ccfb43186f979480a1aaafe87c5331df6f"
+    "scripts/build-game-mode.py": "7278e35d8eedfb1c2febc68f4812d39496bed5b4b913c4aec3c15219face47ad"
   },
   "files": [
     {
-      "path": "hosts/cn/YAAGL HK4E.app/Contents/Info.plist",
+      "path": "hosts/cn/\u539f\u795e.app/Contents/Info.plist",
       "sha256": "3e1f5e78a68ca84c6eea94cb034078cff29fdf3e581290e898d3123ac5c8823a",
       "size": 1122,
       "mode": 420
     },
     {
-      "path": "hosts/cn/YAAGL HK4E.app/Contents/MacOS/wine",
-      "sha256": "13d18771d093b75a823783c08e9658862bc25551485cc77ff206e3fa873afbf8",
+      "path": "hosts/cn/\u539f\u795e.app/Contents/MacOS/wine",
+      "sha256": "998818b84255ece7a61f288161bd364b423f3ddc1968e232e57ef27d2a39fc44",
       "size": 33216,
       "mode": 493
     },
     {
-      "path": "hosts/cn/YAAGL HK4E.app/Contents/Resources/GameIcon.icns",
+      "path": "hosts/cn/\u539f\u795e.app/Contents/Resources/GameIcon.icns",
       "sha256": "5f48289f02ecf1ff88a8a921389537324d7415fb1a7b38cbeb3bf4cadd0b0477",
       "size": 229108,
       "mode": 420
     },
     {
-      "path": "hosts/cn/YAAGL HK4E.app/Contents/_CodeSignature/CodeResources",
+      "path": "hosts/cn/\u539f\u795e.app/Contents/_CodeSignature/CodeResources",
       "sha256": "ddd47cf4960a078fecdd4073cc8410db46d7dcd249906d18f57a3ed2b4ad7a0c",
       "size": 2448,
       "mode": 420
     },
     {
-      "path": "hosts/global/YAAGL HK4E.app/Contents/Info.plist",
+      "path": "hosts/global/Genshin Impact.app/Contents/Info.plist",
       "sha256": "3d0cc97bfa1d3335971ab477425fe4a3b1c5b88e28566636a9af104944dd68a6",
       "size": 1138,
       "mode": 420
     },
     {
-      "path": "hosts/global/YAAGL HK4E.app/Contents/MacOS/wine",
-      "sha256": "829608ab8b65ea986327cd3e2fe061d9a9352b044a57e9849ead839e65841e8a",
+      "path": "hosts/global/Genshin Impact.app/Contents/MacOS/wine",
+      "sha256": "5049ca33d95cc17e33e2c9a318f236b877b4753e68f192f4d313a35783244761",
       "size": 33216,
       "mode": 493
     },
     {
-      "path": "hosts/global/YAAGL HK4E.app/Contents/Resources/GameIcon.icns",
+      "path": "hosts/global/Genshin Impact.app/Contents/Resources/GameIcon.icns",
       "sha256": "5f48289f02ecf1ff88a8a921389537324d7415fb1a7b38cbeb3bf4cadd0b0477",
       "size": 229108,
       "mode": 420
     },
     {
-      "path": "hosts/global/YAAGL HK4E.app/Contents/_CodeSignature/CodeResources",
+      "path": "hosts/global/Genshin Impact.app/Contents/_CodeSignature/CodeResources",
       "sha256": "ddd47cf4960a078fecdd4073cc8410db46d7dcd249906d18f57a3ed2b4ad7a0c",
       "size": 2448,
       "mode": 420
     },
     {
       "path": "ntdll-r2.so",
-      "sha256": "db2a82a355acbc3fd20ce69a6ae15b58aea19613881dd02e1e82b8ec69318e9a",
+      "sha256": "3b17b14817dfd35684f3aac122ff48b8190534c554d184c5902a003da2c9577e",
       "size": 616576,
       "mode": 493
     },
     {
       "path": "ntdll.so",
-      "sha256": "5c14399a38dace1e65c7cd8ec4b4b8eb8cd89541f6dd4507faf278ef5dcf8aa2",
+      "sha256": "d5bd9640d9e43fc099a62c3d2d9bd4efbdfe8af1a3d6108d8cc156f7197972fc",
       "size": 616560,
       "mode": 493
     },
     {
       "path": "wine",
-      "sha256": "8f8e629353e72462eb69e9dc6ff7791f39e51023a00c88f555b6673290e45ffe",
+      "sha256": "3a2c57db07e257f1910a38c8e5357b74e932b3dc7d4327b99d462a893dbc7997",
       "size": 32784,
       "mode": 493
     }

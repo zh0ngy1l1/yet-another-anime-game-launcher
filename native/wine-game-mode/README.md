@@ -1,6 +1,6 @@
 # HK4E Game Mode loader and native child routing
 
-The fixed `YAAGL HK4E.app` is the actual Wine game process, not a forwarding
+The regional `Genshin Impact.app` / `原神.app` is the actual Wine game process, not a forwarding
 parent. Its stable identity is `com.zh0ngy1l1.yaagl.hk4e-game`. External and
 embedded plists match. Sealed Global and China variants display `Genshin Impact`
 and `原神` respectively, declare the games category and `LSSupportsGameMode`, and
@@ -116,3 +116,9 @@ injected into the game. They distinguish resolved images from command lines,
 check effective Foundation bundle identity, PID, argv, cwd, inherited native and
 Windows handles, failures, normal completion and disposal. They are not Game Mode
 activation evidence or benchmarks.
+
+The regional bundle filename supplies the Dock hover label and must agree with
+the embedded/external display name. Both variants keep the same bundle identifier.
+The loader derives the path from the admitted resolved executable, and each host
+accepts only its own regional location and target. Preparation retains UTF-8 path
+bytes for filesystem inventory comparisons. No Dock or Launch Services reset is used.

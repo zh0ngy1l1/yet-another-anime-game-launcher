@@ -61,8 +61,8 @@ def macho(path):
 assert macho(assets / 'ntdll.so')[2] != macho(assets / 'ntdll-r2.so')[2], \
     'R2 has identical machine code to plain ntdll; rebuild the patched virtual.o'
 
-assert manifest['hosts'] == {'GenshinImpact.exe': 'hosts/global/YAAGL HK4E.app',
-                             'YuanShen.exe': 'hosts/cn/YAAGL HK4E.app'}
+assert manifest['hosts'] == {'GenshinImpact.exe': 'hosts/global/Genshin Impact.app',
+                             'YuanShen.exe': 'hosts/cn/原神.app'}
 hosts = {path + '/Contents/MacOS/wine': executable for executable, path in manifest['hosts'].items()}
 for relative in ['wine', 'ntdll.so', 'ntdll-r2.so', *hosts]:
     p = assets / relative
@@ -87,6 +87,7 @@ for relative in ['wine', 'ntdll.so', 'ntdll-r2.so', *hosts]:
             source = here / ('Info-cn.plist' if cn else 'Info.plist')
             assert info == plistlib.loads((app / 'Contents/Info.plist').read_bytes()) == plistlib.loads(source.read_bytes())
             assert info['CFBundleName'] == info['CFBundleDisplayName'] == ('原神' if cn else 'Genshin Impact')
+            assert app.stem == info['CFBundleDisplayName'], 'Dock label must match regional bundle filename'
             assert info['CFBundleIconFile'] == 'GameIcon.icns'
             icon = app / 'Contents/Resources' / info['CFBundleIconFile']
             data = icon.read_bytes()

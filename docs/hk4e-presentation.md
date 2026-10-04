@@ -11,11 +11,18 @@ observed the hashing candidate's signed-in start screen, correct running name an
 icon, native fullscreen with Game Mode On, and normal exit/restoration. This is
 one Global configuration; the existing coverage limits remain.
 
+The October 3 Dock correction is described in [the verification record](hk4e-dock-name-20261003.md).
+
 The Game Mode host now displays **Genshin Impact** for `GenshinImpact.exe` and
 **原神** for `YuanShen.exe`. Both carry the official Genshin desktop shortcut icon
 and retain `com.zh0ngy1l1.yaagl.hk4e-game`. The launcher remains **Yaagl OS**.
-The private runtime’s internal `YAAGL HK4E.app/Contents/MacOS/wine` path remains
-fixed; changing this routing identity would add risk without improving presentation.
+The private runtime uses `Genshin Impact.app/Contents/MacOS/wine` for Global and
+`原神.app/Contents/MacOS/wine` for China. The bundle filename must match the
+regional display name: the Dock hover label used the old `YAAGL HK4E.app` filename
+even after the embedded/external plists and running application name were corrected.
+The October 1 validation did not inspect the Dock tooltip. On October 3 this was
+reproduced on a newly prepared runtime, with no pre-existing game Dock tile.
+The fix keeps the stable bundle identifier and needs no Dock/Launch Services reset.
 
 ## Origin and affected surfaces
 
@@ -63,9 +70,12 @@ The developer build extracts the source ICO's 256px PNG, produces smaller sizes
 with macOS `sips`, and packages an ICNS using `iconutil`. It builds and signs two
 regional host variants with matching external/embedded plists and the same
 identifier. Preparation verifies all pinned assets, selects by the already
-admitted game executable, relocates only that sealed variant to the existing
-fixed host path, and checks the resulting signature and inventory. The request
-and child classifier are unchanged. Normal builds/launches use bundled assets;
+admitted game executable, relocates only that sealed variant to its regional
+bundle filename, and checks the resulting signature and inventory. JSON asset
+paths are encoded as UTF-8 filesystem bytes so China inventory keys agree with
+`File::Find`. The loader derives the regional path from the admitted resolved
+image and rejects a host moved under another region’s name. The request format
+and child ownership checks are unchanged. Normal builds/launches use bundled assets;
 there is no network icon dependency or launch-time signature rewrite.
 
 The complete documented native build was rerun from the same pinned Wine 11.0,

@@ -29,13 +29,13 @@ for region, executable, display_name in [('global', 'GenshinImpact.exe', 'Genshi
         run('clang', '-arch', 'x86_64', '-dynamiclib', '-mmacosx-version-min=14.0',
             '-framework', 'Foundation', source / 'tests/entry-probe.m', '-o', ntdll)
         (directory / 'compatible-ntdll.h').write_text(f'#define YAAGL_NTDLL_PLAIN "{sha(ntdll)}"\n#define YAAGL_NTDLL_R2 "{sha(ntdll)}"\n')
-        app = native / 'YAAGL HK4E.app'; host = app / 'Contents/MacOS/wine'
+        app = native / (display_name + '.app'); host = app / 'Contents/MacOS/wine'
         host.parent.mkdir(parents=True)
         info = source / ('Info-cn.plist' if region == 'cn' else 'Info.plist')
         shutil.copy2(info, app / 'Contents/Info.plist')
-        shutil.copytree(root / 'sidecar/wine-game-mode/hosts' / region / 'YAAGL HK4E.app/Contents/Resources', app / 'Contents/Resources')
+        shutil.copytree(root / 'sidecar/wine-game-mode/hosts' / region / (display_name + '.app/Contents/Resources'), app / 'Contents/Resources')
         run('clang', '-arch', 'x86_64', '-O2', '-mmacosx-version-min=14.0', '-fvisibility=hidden',
-            '-fno-stack-protector', '-DYAAGL_GAME_HOST', '-Wno-deprecated-declarations', '-I'+str(directory),
+            '-fno-stack-protector', '-DYAAGL_GAME_HOST=' + ('2' if region == 'cn' else '1'), '-Wno-deprecated-declarations', '-I'+str(directory),
             source / 'loader.c', '-o', host,
             '-Wl,-segalign,0x1000,-pagezero_size,0x1000,-sectcreate,__TEXT,__info_plist,' + str(info),
             '-Wl,-no_pie,-image_base,0x200000000,-no_huge,-no_fixup_chains,-segaddr,WINE_RESERVE,0x1000,-segaddr,WINE_TOP_DOWN,0x7ff000000000')
@@ -72,19 +72,24 @@ for region, executable, display_name in [('global', 'GenshinImpact.exe', 'Genshi
             env.pop('YAAGL_GAME_MODE_IMAGE', None)
             assert observed['environment'] == env
             print('PASS loader context, PID, preloader export and effective bundle', image)
-        for defect in ['missing-host', 'ntdll', 'request-runtime', 'prefix', 'target-inode']:
+        for defect in ['missing-host', 'old-bundle-name', 'wrong-region', 'ntdll', 'request-runtime', 'prefix', 'target-inode']:
             a, b = socket.socketpair()
             env.update(YAAGL_GAME_MODE_IMAGE=str(game), WINESERVERSOCKET=str(a.fileno()))
             original_ntdll = ntdll.read_bytes()
             original_request = request.read_text()
             if defect == 'missing-host': host.rename(host.with_name('missing'))
+            renamed = native / ('YAAGL HK4E.app' if defect == 'old-bundle-name' else
+                                ('Genshin Impact.app' if region == 'cn' else '原神.app'))
+            if defect in ['old-bundle-name', 'wrong-region']: app.rename(renamed)
             if defect == 'ntdll': ntdll.write_bytes(b'mismatch')
             if defect == 'request-runtime': env['YAAGL_GAME_MODE_REQUEST'] = str(directory/'unrelated')
             if defect == 'prefix': env['WINEPREFIX'] = str(directory)
             if defect == 'target-inode': request.write_text(original_request.replace(f'{game.stat().st_dev} {game.stat().st_ino}', '0 0'))
-            result = subprocess.run(arguments, executable=native/'wine', env=env, pass_fds=(a.fileno(),), capture_output=True)
+            entry = renamed/'Contents/MacOS/wine' if defect in ['old-bundle-name', 'wrong-region'] else native/'wine'
+            result = subprocess.run(arguments, executable=entry, env=env, pass_fds=(a.fileno(),), capture_output=True)
             assert result.returncode == 1 and b'yaagl-game-mode:' in result.stderr, (defect, result)
             if defect == 'missing-host': host.with_name('missing').rename(host)
+            if defect in ['old-bundle-name', 'wrong-region']: renamed.rename(app)
             ntdll.write_bytes(original_ntdll); request.write_text(original_request)
             env.update(YAAGL_GAME_MODE_REQUEST=str(request), WINEPREFIX=str(prefix))
             a.close(); b.close()

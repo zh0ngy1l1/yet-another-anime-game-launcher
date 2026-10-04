@@ -27,7 +27,7 @@ FPS target, VSync, keyboard mappings and all other game settings retain their
 existing behavior. Window memory, registry recovery and normal ownership-based
 cleanup remain as described in [native fullscreen](native-fullscreen.md).
 
-The actual game runs in a small, fixed, signed `YAAGL HK4E.app` inside the existing
+The actual game runs in a small, signed `Genshin Impact.app` (Global) or `原神.app` (China) inside the existing
 request-private runtime. Its displayed name is **Genshin Impact** for Global or
 **原神** for China, with the official Genshin shortcut icon as a bundle fallback.
 Both regional variants retain `com.zh0ngy1l1.yaagl.hk4e-game`; the executable and

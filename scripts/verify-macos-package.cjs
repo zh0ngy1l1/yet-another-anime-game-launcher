@@ -48,7 +48,9 @@ for (const asset of fullscreen.outputs) {
 const windowHelper = JSON.parse(fs.readFileSync(path.join(resources,"sources/window-state/manifest.json")));
 const gameMode = JSON.parse(fs.readFileSync(path.join(resources,"sources/wine-game-mode/manifest.json")));
 for (const [executable, host] of Object.entries(gameMode.hosts)) {
-  assert(js.includes(executable) && js.includes(host), "Frontend must select both packaged regional hosts");
+  // esbuild's ASCII output escapes the Chinese bundle filename in JS literals.
+  const escapedHost = host.replace(/[^\x20-\x7e]/g, c => "\\u" + c.charCodeAt(0).toString(16).toUpperCase().padStart(4,"0"));
+  assert(js.includes(executable) && (js.includes(host) || js.includes(escapedHost)), "Frontend must select both packaged regional hosts");
 }
 for (const asset of gameMode.files) {
   assert(js.includes(asset.sha256), "Frontend must pin packaged Game Mode asset");

@@ -8,6 +8,7 @@ use File::Temp qw(tempdir);
 use File::Path qw(make_path remove_tree);
 use File::Basename qw(dirname basename);
 use JSON::PP;
+use Encode qw(encode_utf8);
 use Fcntl qw(O_RDONLY O_NOFOLLOW);
 use Time::HiRes qw(clock_gettime CLOCK_MONOTONIC);
 use POSIX ();
@@ -137,7 +138,7 @@ if ($game_mode) {
     for my $a (@{$game_mode->{files}}) {
         die "Game Mode asset path" if $a->{path} =~ m{(?:^/|(?:^|/)\.\.(?:/|$))};
         die "Game Mode bundled asset mismatch: $a->{path}" unless
-            hash_file("$m->{gameModeAssets}/$a->{path}") eq $a->{sha256};
+            hash_file($m->{gameModeAssets} . "/" . encode_utf8($a->{path})) eq $a->{sha256};
     }
     for my $path ($m->{gameModeExecutable}, $m->{gameModePrefix}) {
         die "Game Mode requires absolute paths without control characters" unless defined($path) &&
@@ -150,10 +151,13 @@ if ($game_mode) {
         basename($game_target) =~ /^(?:GenshinImpact|YuanShen)\.exe$/;
     @game_stat = stat($game_target);
     # Select sealed metadata by the admitted executable, including universal
-    # packages. Both variants retain the fixed runtime path and bundle identity.
+    # packages. The bundle filename also supplies the Dock label. Keep filesystem
+    # paths as UTF-8 bytes, matching File::Find inventory keys on macOS.
     $game_host = $game_mode->{hosts}{basename($game_target)};
     die "Invalid regional Game Mode host" unless defined($game_host) &&
-        $game_host =~ m{^hosts/(?:global|cn)/YAAGL HK4E\.app$};
+        $game_host eq (basename($game_target) eq 'YuanShen.exe' ?
+            "hosts/cn/\x{539f}\x{795e}.app" : 'hosts/global/Genshin Impact.app');
+    $game_host = encode_utf8($game_host);
     system('/usr/bin/codesign', '--verify', '--strict', "$m->{gameModeAssets}/$game_host") == 0
         or die "Game Mode host signature invalid";
 }
@@ -211,16 +215,17 @@ my $ok = eval {
         $copied->{$rel}[2] = $asset->{size};
         for my $a (@{$game_mode->{files}}) {
             next if $a->{path} eq 'ntdll.so' || $a->{path} eq 'ntdll-r2.so';
-            my $path = $a->{path};
+            my $asset_path = encode_utf8($a->{path});
+            my $path = $asset_path;
             if ($path =~ m{^hosts/}) {
                 next unless index($path, "$game_host/") == 0;
-                $path = 'YAAGL HK4E.app/' . substr($path, length($game_host) + 1);
+                $path = basename($game_host) . '/' . substr($path, length($game_host) + 1);
             }
             my $p = "/lib/wine/x86_64-unix/$path";
             for my $dir (make_path(dirname($copy . $p))) {
                 $copied->{substr($dir, length($copy))} = ['directory', (stat($dir))[2] & 07777];
             }
-            copy("$m->{gameModeAssets}/$a->{path}", $copy . $p) or die "copy Game Mode asset: $!";
+            copy("$m->{gameModeAssets}/$asset_path", $copy . $p) or die "copy Game Mode asset: $!";
             chmod($a->{mode}, $copy . $p) or die "Game Mode asset permissions: $!";
             $copied->{$p} = ['file', $a->{mode}, $a->{size}, $a->{sha256}];
         }
@@ -230,7 +235,7 @@ my $ok = eval {
         print {$f} "YAAGL-HK4E-GAME-MODE-1\n$game_prefix\n$game_target\n$game_stat[0] $game_stat[1]\n$output\n" or die $!;
         close($f) or die $!;
         $copied->{$request} = ['file', 0600, (stat($copy . $request))[7], hash_file($copy . $request)];
-        system('/usr/bin/codesign', '--verify', '--strict', "$copy/lib/wine/x86_64-unix/YAAGL HK4E.app") == 0
+        system('/usr/bin/codesign', '--verify', '--strict', "$copy/lib/wine/x86_64-unix/" . basename($game_host)) == 0
             or die "Prepared Game Mode host signature invalid";
     }
     die "R2 artifact mismatch" unless hash_file($copy . $rel) eq $output;
