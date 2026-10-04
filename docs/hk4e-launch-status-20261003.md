@@ -63,3 +63,55 @@ installation and rollback identities are recorded below after delivery checks.
 Private evidence is retained under `.tmp/launch-status-20261003`; no broad build
 or evidence cleanup is part of this correction. Both the prior rollback and the
 pre-change installed application must remain recoverable until manual acceptance.
+
+## Delivered build and live evidence
+
+Executable source: `30f813291b628f13265398da37370fafe26d39b7`.
+Built with `YAAGL_BUILD_OUTPUT=build/launch-status-20261003 ./build-macos.sh`.
+The package gate passed all 562 file identities, source/toolchain manifests,
+regional Game Mode/routing/icon/signature/dependency checks and four xdelta
+round trips. Source checks passed: 40 Vitest files, 2,204 tests, one optional
+public-artifact test skipped; TypeScript/formatting passed and ESLint reported
+zero errors (10 warnings). Both real Wine bridge suites passed (direct and Steam),
+including exact attribution, no retargeting, exit-before-worker and guarded release.
+The rendered native UI fixture passed both launches and stale/delayed-event checks.
+
+On this Mac, with the user's unchanged FPS-disabled, Steam Patch, native fullscreen
+and Game Mode settings, three bounded real-game sessions reached the signed-in
+start screen:
+
+| Application | Request | Game PID | Fresh private runtime |
+| --- | --- | --- | --- |
+| Built candidate | `mut6m7j5-1` | 25295 | `r2-jpDW7csq6T` |
+| Installed, first launch | `mut6u61b-1` | 28006 | `r2-acT5PufsGP` |
+| Installed, relaunch in the same launcher | `mut6yqr8-2` | 30064 | `r2-TvyTPifOCL` |
+
+Screenshots and native accessibility headings confirm the exact running warning
+in the real launcher, with the game visibly running. Candidate and installed-first
+checks entered/left native fullscreen and switched focus back to the launcher;
+the warning persisted. Game Mode showed On. Hover screenshots on all three runs
+show `Genshin Impact` and its existing icon. Normal in-game exit confirmed code 0,
+cleanup text while restoration remained pending, then blank idle and enabled
+Launch/Settings controls. Bridge records show no FPS worker on these ordinary
+runs. Every private runtime, game job and foreground execution completed cleanup.
+The launcher then quit normally. Accessibility polling's `other` records during
+Space transitions mean its window tree was unavailable; screenshots and fresh
+headings on return establish the displayed status.
+
+`/Applications/Yaagl OS.app` matches all 562 candidate files, including SHA-256,
+mode and size, after the installed smoke checks. All 22 pre-existing `.storage`
+files are byte-for-byte unchanged. No game, Wine, bridge, launcher, Sophon or aria2
+process from this task remains. The pre-change application is recoverable at
+`/Applications/Yaagl OS.rollback-before-status-20261003.app` (source
+`9fb0e1ddbfc37ca8b3fb3ced61ae91f0a30b9074`). The earlier
+`/Applications/Yaagl OS.rollback-20261003.app` is also preserved unchanged.
+The new staging candidate and evidence remain; nothing was broadly deleted.
+
+Private evidence: `.tmp/launch-status-20261003/delivery-verification.json`,
+`installation.json`, `rendered-status-assertions.json`, source/native/package logs,
+and `candidate-*`, `installed-1-*`, `installed-2-*` screenshots, accessibility
+snapshots and request logs. These checks qualify delivery, not manual acceptance
+or extended gameplay. Live testing kept FPS disabled as saved; enabled FPS paths
+were checked through the production-generator and native Wine fixtures. The user
+still needs to test playing, fullscreen transitions, normal cleanup and relaunch.
+This follow-up documentation commit does not change the delivered executable source.
